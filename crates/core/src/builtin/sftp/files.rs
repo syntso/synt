@@ -4,12 +4,17 @@ use std::sync::Arc;
 use synt_actions::{ActionError, Context, Registry, Risk};
 use synt_journal::ResourceRef;
 use synt_ssh::{FileSessions, Pool, Sftp, SshError};
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
-use super::{SftpList, SftpMkdir, SftpRead, SftpRemove, SftpRename, SftpStat, SftpWrite};
+use super::{
+    SftpDownload, SftpList, SftpMkdir, SftpRead, SftpRemove, SftpRename, SftpStat, SftpUpload,
+    SftpWrite,
+};
 use crate::builtin::ssh::{failure, hidden_root, is_root, logs_in_as_root, resolve};
+use crate::link::Link;
 
 const CONCURRENT_CALLS: usize = 8;
+const CONCURRENT_TRANSFERS: usize = 4;
 
 pub(super) const LARGEST_READ: u64 = 4 * 1024 * 1024;
 pub(super) const LARGEST_WRITE: u64 = 640 * 1024;
@@ -18,6 +23,7 @@ pub(super) const LARGEST_WRITE: u64 = 640 * 1024;
 pub struct Files {
     sessions: FileSessions,
     calls: Arc<Semaphore>,
+    transfers: Arc<Semaphore>,
 }
 
 impl Files {
@@ -25,6 +31,7 @@ impl Files {
         Self {
             sessions: FileSessions::new(pool),
             calls: Arc::new(Semaphore::new(CONCURRENT_CALLS)),
+            transfers: Arc::new(Semaphore::new(CONCURRENT_TRANSFERS)),
         }
     }
 
@@ -33,6 +40,8 @@ impl Files {
         registry.register(SftpStat::new(self.clone()))?;
         registry.register(SftpRead::new(self.clone()))?;
         registry.register(SftpWrite::new(self.clone()))?;
+        registry.register(SftpUpload::new(self.clone()))?;
+        registry.register(SftpDownload::new(self.clone()))?;
         registry.register(SftpMkdir::new(self.clone()))?;
         registry.register(SftpRemove::new(self.clone()))?;
         registry.register(SftpRename::new(self.clone()))
@@ -65,6 +74,13 @@ impl Files {
             .await
             .map_err(|error| failed(&error))
     }
+
+    pub(super) async fn transfer_slot(&self) -> Result<OwnedSemaphorePermit, ActionError> {
+        Arc::clone(&self.transfers)
+            .acquire_owned()
+            .await
+            .map_err(|_| ActionError::failed("sftp is shutting down"))
+    }
 }
 
 pub(super) fn per_call_risk(target: Option<&ResourceRef>, declared: Risk) -> Risk {
@@ -75,7 +91,7 @@ pub(super) fn per_call_risk(target: Option<&ResourceRef>, declared: Risk) -> Ris
     declared
 }
 
-fn failed(error: &SshError) -> ActionError {
+pub(super) fn failed(error: &SshError) -> ActionError {
     match error {
         SshError::Sftp { .. } | SshError::SftpLost { .. } | SshError::SftpClosed => {
             ActionError::Failed(error.to_string())
@@ -86,4 +102,10 @@ fn failed(error: &SshError) -> ActionError {
         )),
         other => failure(other),
     }
+}
+
+pub(super) fn link(context: &Context) -> Result<Arc<Link>, ActionError> {
+    context
+        .connection::<Link>()
+        .ok_or_else(|| ActionError::failed("this call has no connection to carry the file"))
 }

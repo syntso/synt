@@ -1,3 +1,4 @@
+mod download;
 mod file_info;
 mod files;
 mod list;
@@ -8,8 +9,10 @@ mod remote_path;
 mod remove;
 mod rename;
 mod stat;
+mod upload;
 mod write;
 
+pub use download::{DownloadParams, Downloaded, SftpDownload};
 pub use file_info::FileInfo;
 pub use files::Files;
 pub use list::{Listing, SftpList};
@@ -20,4 +23,5 @@ pub use remote_path::RemotePath;
 pub use remove::{Removed, SftpRemove};
 pub use rename::{RenameParams, Renamed, SftpRename};
 pub use stat::SftpStat;
+pub use upload::{SftpUpload, UploadParams, Uploaded};
 pub use write::{SftpWrite, WriteParams, WriteResult};

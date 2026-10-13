@@ -1,6 +1,5 @@
-use std::io;
-
 use russh_sftp::client::error::Error;
+use russh_sftp::protocol::StatusCode;
 
 use crate::SshError;
 
@@ -13,23 +12,8 @@ pub(super) fn failure(operation: &'static str, path: &str) -> impl FnOnce(Error)
     move |error| classify(operation, path, &error)
 }
 
-pub(super) fn io_failure(
-    operation: &'static str,
-    path: &str,
-) -> impl FnOnce(io::Error) -> SshError {
-    let path = path.to_owned();
-
-    move |error| match error
-        .get_ref()
-        .and_then(|inner| inner.downcast_ref::<Error>())
-    {
-        Some(inner) => classify(operation, path, inner),
-        None => SshError::Sftp {
-            operation,
-            path,
-            reason: error.to_string(),
-        },
-    }
+pub(super) fn is_eof(error: &Error) -> bool {
+    matches!(error, Error::Status(status) if status.status_code == StatusCode::Eof)
 }
 
 fn classify(operation: &'static str, path: String, error: &Error) -> SshError {

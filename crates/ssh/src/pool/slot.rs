@@ -7,7 +7,7 @@ use tokio::time;
 
 use super::{ConnectionStatus, DialAttempt, Holders, Lease, Phase, Slots, locked};
 use crate::session::Connection;
-use crate::{SshError, Target};
+use crate::{Algorithms, SshError, Target};
 
 const RETRY_PAUSE: Duration = Duration::from_secs(3);
 
@@ -49,6 +49,13 @@ impl Slot {
             state: phase.state(),
             leases: locked(&self.holders).count(),
             error: phase.error().map(ToString::to_string),
+        }
+    }
+
+    pub(crate) fn algorithms(&self) -> Option<Algorithms> {
+        match &*locked(&self.phase) {
+            Phase::Connected(connection) => connection.algorithms(),
+            _ => None,
         }
     }
 
@@ -139,17 +146,17 @@ impl Slot {
     }
 
     async fn open(&self) -> Result<Connection, SshError> {
-        let through = self.reach_upstream().await?;
+        let pool = self.pool.upgrade().ok_or(SshError::PoolClosed)?;
+        let through = self.reach_upstream(&pool).await?;
 
-        Connection::open(&self.target, through.as_ref()).await
+        pool.connector().open(&self.target, through.as_ref()).await
     }
 
-    async fn reach_upstream(&self) -> Result<Option<Connection>, SshError> {
+    async fn reach_upstream(&self, pool: &Arc<Slots>) -> Result<Option<Connection>, SshError> {
         let Some(previous) = self.target.previous_hop() else {
             return Ok(None);
         };
 
-        let pool = self.pool.upgrade().ok_or(SshError::PoolClosed)?;
         let lease = pool.lease(&previous);
         let connection = lease.connection().await?;
 

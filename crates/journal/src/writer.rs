@@ -29,7 +29,8 @@ struct Inner {
 }
 
 struct Request {
-    event: NewEvent,
+    events: Vec<NewEvent>,
+    opens_call: bool,
     reply: oneshot::Sender<Result<Seq, JournalError>>,
 }
 
@@ -61,7 +62,7 @@ impl JournalWriter {
     }
 
     pub fn append(&self, event: NewEvent) -> Result<Seq, JournalError> {
-        let answer = self.submit(event)?;
+        let answer = self.submit(vec![event], false)?;
 
         answer
             .blocking_recv()
@@ -69,7 +70,22 @@ impl JournalWriter {
     }
 
     pub async fn append_async(&self, event: NewEvent) -> Result<Seq, JournalError> {
-        let answer = self.submit(event)?;
+        self.append_together(vec![event]).await
+    }
+
+    pub async fn append_together(&self, events: Vec<NewEvent>) -> Result<Seq, JournalError> {
+        let answer = self.submit(events, false)?;
+
+        answer.await.map_err(|_| JournalError::WriterClosed)?
+    }
+
+    pub async fn open_call(
+        &self,
+        request: NewEvent,
+        follow_ups: Vec<NewEvent>,
+    ) -> Result<Seq, JournalError> {
+        let events = std::iter::once(request).chain(follow_ups).collect();
+        let answer = self.submit(events, true)?;
 
         answer.await.map_err(|_| JournalError::WriterClosed)?
     }
@@ -84,8 +100,13 @@ impl JournalWriter {
 
     fn submit(
         &self,
-        event: NewEvent,
+        events: Vec<NewEvent>,
+        opens_call: bool,
     ) -> Result<oneshot::Receiver<Result<Seq, JournalError>>, JournalError> {
+        if events.is_empty() {
+            return Err(JournalError::NothingToAppend);
+        }
+
         let requests = self
             .inner
             .requests
@@ -94,7 +115,11 @@ impl JournalWriter {
         let (reply, answer) = oneshot::channel();
 
         requests
-            .send(Request { event, reply })
+            .send(Request {
+                events,
+                opens_call,
+                reply,
+            })
             .map_err(|_| JournalError::WriterClosed)?;
 
         Ok(answer)
@@ -117,24 +142,48 @@ fn serve(mut journal: Journal, incoming: &Receiver<Request>) {
             .chain(incoming.try_iter().take(MAX_BATCH - 1))
             .collect();
 
-        let (events, replies): (Vec<NewEvent>, Vec<_>) = batch
-            .into_iter()
-            .map(|request| (request.event, request.reply))
-            .unzip();
+        let (events, waiting) = assign(journal.anchors().head.seq, batch);
 
         match journal.append_all(&events) {
-            Ok(seqs) => {
-                for (reply, seq) in replies.into_iter().zip(seqs) {
+            Ok(_) => {
+                for (reply, seq) in waiting {
                     let _ = reply.send(Ok(seq));
                 }
             }
             Err(error) => {
                 let error = Arc::new(error);
 
-                for reply in replies {
+                for (reply, _) in waiting {
                     let _ = reply.send(Err(JournalError::Commit(Arc::clone(&error))));
                 }
             }
         }
     }
+}
+
+type Waiting = (oneshot::Sender<Result<Seq, JournalError>>, Seq);
+
+fn assign(head: Seq, batch: Vec<Request>) -> (Vec<NewEvent>, Vec<Waiting>) {
+    let mut events = Vec::with_capacity(batch.len());
+    let mut waiting = Vec::with_capacity(batch.len());
+    let mut next = head.next();
+
+    for request in batch {
+        let first = next;
+
+        for (index, event) in request.events.into_iter().enumerate() {
+            let event = if request.opens_call && index > 0 {
+                event.call(first)
+            } else {
+                event
+            };
+
+            events.push(event);
+            next = next.next();
+        }
+
+        waiting.push((request.reply, first));
+    }
+
+    (events, waiting)
 }

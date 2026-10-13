@@ -55,6 +55,7 @@ impl Session {
         let (replies, queue) = mpsc::channel(OUTGOING_BACKLOG);
         let (frames, streams) = mpsc::channel(STREAM_BACKLOG);
         let writer = tokio::spawn(outgoing::write_all(outgoing, queue, streams));
+        let link = Arc::new(Link::new(frames));
 
         let session = Self {
             core,
@@ -64,9 +65,10 @@ impl Session {
             apps,
             replies,
             in_flight: Arc::new(Semaphore::new(IN_FLIGHT_LIMIT)),
-            link: Arc::new(Link::new(frames)),
+            link: Arc::clone(&link),
         };
         session.run(&mut incoming, peer).await;
+        link.close();
 
         let _ = writer.await;
     }

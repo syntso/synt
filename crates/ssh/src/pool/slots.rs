@@ -4,17 +4,20 @@ use std::time::Duration;
 
 use super::{ConnectionStatus, Lease, Slot, locked};
 use crate::Target;
+use crate::session::Connector;
 
 pub(crate) struct Slots {
-    slots: Mutex<HashMap<Target, Arc<Slot>>>,
+    by_target: Mutex<HashMap<Target, Arc<Slot>>>,
     grace: Duration,
+    connector: Connector,
 }
 
 impl Slots {
     pub(crate) fn new(grace: Duration) -> Arc<Self> {
         Arc::new(Self {
-            slots: Mutex::new(HashMap::new()),
+            by_target: Mutex::new(HashMap::new()),
             grace,
+            connector: Connector::default(),
         })
     }
 
@@ -22,8 +25,12 @@ impl Slots {
         self.grace
     }
 
+    pub(crate) fn connector(&self) -> &Connector {
+        &self.connector
+    }
+
     pub(crate) fn lease(self: &Arc<Self>, target: &Target) -> Lease {
-        let mut slots = locked(&self.slots);
+        let mut slots = locked(&self.by_target);
 
         let reusable = slots
             .get(target)
@@ -40,7 +47,7 @@ impl Slots {
     }
 
     pub(crate) fn retire(&self, slot: &Arc<Slot>, release: u64) -> bool {
-        let mut slots = locked(&self.slots);
+        let mut slots = locked(&self.by_target);
 
         if !slot.idle_since(release) {
             return false;
@@ -58,7 +65,7 @@ impl Slots {
     }
 
     pub(crate) fn statuses(&self) -> Vec<ConnectionStatus> {
-        let slots: Vec<Arc<Slot>> = locked(&self.slots).values().map(Arc::clone).collect();
+        let slots: Vec<Arc<Slot>> = locked(&self.by_target).values().map(Arc::clone).collect();
 
         let mut statuses: Vec<ConnectionStatus> = slots.iter().map(|slot| slot.status()).collect();
         statuses.sort_by(|left, right| left.target.cmp(&right.target));

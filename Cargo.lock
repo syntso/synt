@@ -2066,9 +2066,11 @@ name = "synt-client"
 version = "0.0.0"
 dependencies = [
  "bytes",
+ "data-encoding",
  "futures-util",
  "serde",
  "serde_json",
+ "sha2",
  "synt-platform",
  "synt-proto",
  "thiserror",
@@ -2085,6 +2087,7 @@ dependencies = [
  "futures-util",
  "serde",
  "serde_json",
+ "sha2",
  "synt-actions",
  "synt-client",
  "synt-journal",

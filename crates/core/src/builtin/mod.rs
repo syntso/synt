@@ -13,9 +13,10 @@ pub use session::{
     SshSessionOpen,
 };
 pub use sftp::{
-    FileInfo, Files, Listing, Made, PathParams, ReadParams, ReadResult, RemotePath, Removed,
-    RenameParams, Renamed, SftpList, SftpMkdir, SftpRead, SftpRemove, SftpRename, SftpStat,
-    SftpWrite, WriteParams, WriteResult,
+    DownloadParams, Downloaded, FileInfo, Files, Listing, Made, PathParams, ReadParams, ReadResult,
+    RemotePath, Removed, RenameParams, Renamed, SftpDownload, SftpList, SftpMkdir, SftpRead,
+    SftpRemove, SftpRename, SftpStat, SftpUpload, SftpWrite, UploadParams, Uploaded, WriteParams,
+    WriteResult,
 };
-pub use ssh::{ConnectionInfo, ExecParams, ExecResult, SshConnections, SshExec};
+pub use ssh::{ConnectionInfo, ExecParams, ExecResult, SshConnections, SshExec, SshWarm, Warmed};
 pub use tunnel::{CloseParams, OpenParams, TunnelClose, TunnelInfo, TunnelList, TunnelOpen};

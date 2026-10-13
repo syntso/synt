@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use bytes::Bytes;
 use futures_util::SinkExt;
@@ -29,6 +29,7 @@ pub(crate) struct Connection {
     notifications: broadcast::WeakSender<Notification>,
     streams: Arc<Streams>,
     next_id: AtomicU64,
+    next_stream: AtomicU32,
     reader: JoinHandle<()>,
 }
 
@@ -57,6 +58,7 @@ impl Connection {
             notifications,
             streams,
             next_id: AtomicU64::new(1),
+            next_stream: AtomicU32::new(StreamId::FIRST_OPENED_BY_CLIENT.0),
             reader,
         }
     }
@@ -85,6 +87,12 @@ impl Connection {
     }
 
     pub(crate) fn claim(&self, stream: StreamId) -> StreamReceiver {
+        self.streams.claim(stream)
+    }
+
+    pub(crate) fn open_stream(&self) -> StreamReceiver {
+        let stream = StreamId(self.next_stream.fetch_add(1, Ordering::Relaxed));
+
         self.streams.claim(stream)
     }
 

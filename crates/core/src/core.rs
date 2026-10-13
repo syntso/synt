@@ -2,8 +2,8 @@ use std::any::Any;
 use std::sync::Arc;
 
 use serde_json::{Value, json};
-use synt_actions::{ActionError, Completed, Context, Handle, Prepared, Registry, Risk};
-use synt_journal::{Actor, EventKind, JournalError, JournalWriter, ResourceRef, Seq};
+use synt_actions::{ActionError, Completed, Context, Handle, Prepared, Registry};
+use synt_journal::{Actor, EventKind, JournalError, JournalWriter, NewEvent, ResourceRef, Seq};
 use synt_proto::{ActionCall, ActionOutcome, ApprovalAnswer, ErrorCode, RequestSeq, RpcError};
 use tokio::task;
 use tokio_util::sync::CancellationToken;
@@ -38,36 +38,49 @@ impl Core {
         departed: &CancellationToken,
         link: &Arc<Link>,
     ) -> Result<ActionOutcome, RpcError> {
-        let parsed = ParsedCall::from_call(call, &self.registry)?;
+        let ParsedCall {
+            action,
+            handle,
+            target,
+            details,
+            params,
+            shown_params,
+        } = ParsedCall::from_call(call, &self.registry)?;
+
         let call = Call {
             actor,
-            action: &parsed.action,
-            target: parsed.target.as_ref(),
+            action: &action,
+            target: target.as_ref(),
+        };
+        let request = Recorder::request(&call, details);
+
+        let Some(handle) = handle else {
+            let error = RpcError::new(
+                ErrorCode::UNKNOWN_ACTION,
+                format!("no action named {action}"),
+            );
+            return Err(self.reject(request, failed(&call, error)).await);
         };
 
-        let request = self
-            .recorder
-            .requested(&call, parsed.details)
-            .await
-            .map_err(|error| unavailable(&error))?;
-
-        let handle = self.find(&call, request).await?;
-
         if handle.person_only() && !acts_for_person(actor) {
-            let reason = format!("{} is for the person only", parsed.action);
-            return Err(self.deny(&call, request, reason).await);
+            let reason = format!("{action} is for the person only");
+            return Err(self.reject(request, denied(&call, reason)).await);
         }
 
-        let prepared = self.prepare(&call, request, handle, &parsed.params).await?;
+        let prepared = match prepare_blocking(handle, call.target, params).await {
+            Ok(prepared) => prepared,
+            Err(error) => return Err(self.reject(request, failed(&call, failure(&error))).await),
+        };
 
-        self.admit(
-            &call,
-            request,
-            prepared.risk(),
-            &parsed.shown_params,
+        let access = AccessRequest {
+            actor,
+            action: &action,
+            risk: prepared.risk(),
+            target: call.target,
+            params: &shown_params,
             departed,
-        )
-        .await?;
+        };
+        let request = self.admit(&call, request, &access).await?;
 
         self.perform(&call, request, prepared, link).await
     }
@@ -84,53 +97,66 @@ impl Core {
         &self.broker
     }
 
-    async fn find(&self, call: &Call<'_>, request: Seq) -> Result<&Handle, RpcError> {
-        if let Some(handle) = self.registry.get(call.action) {
-            return Ok(handle);
-        }
-
-        let error = RpcError::new(
-            ErrorCode::UNKNOWN_ACTION,
-            format!("no action named {}", call.action),
-        );
-        Err(self.fail(call, request, error).await)
-    }
-
-    async fn prepare(
-        &self,
-        call: &Call<'_>,
-        request: Seq,
-        handle: &Handle,
-        params: &Value,
-    ) -> Result<Prepared, RpcError> {
-        match prepare_blocking(handle, call.target, params).await {
-            Ok(prepared) => Ok(prepared),
-            Err(error) => Err(self.fail(call, request, failure(&error)).await),
-        }
-    }
-
     async fn admit(
         &self,
         call: &Call<'_>,
-        request: Seq,
-        risk: Risk,
-        params: &Value,
-        departed: &CancellationToken,
-    ) -> Result<(), RpcError> {
-        let access = AccessRequest {
-            actor: call.actor,
-            action: call.action,
-            risk,
-            target: call.target,
-            params,
-            departed,
+        request: NewEvent,
+        access: &AccessRequest<'_>,
+    ) -> Result<Seq, RpcError> {
+        if let Some(decision) = self.broker.settled(access) {
+            return self.admit_at_once(call, request, decision).await;
+        }
+
+        let request = self
+            .recorder
+            .open(request, Vec::new())
+            .await
+            .map_err(|error| unavailable(&error))?;
+
+        let decision = self.broker.decide(access).await;
+
+        self.admit_after_asking(call, request, decision).await
+    }
+
+    async fn admit_at_once(
+        &self,
+        call: &Call<'_>,
+        request: NewEvent,
+        decision: Decision,
+    ) -> Result<Seq, RpcError> {
+        let steps = match decision {
+            Decision::Deny { reason } => {
+                return Err(self.reject(request, denied(call, reason)).await);
+            }
+            Decision::Allow => admission(call, None),
+            Decision::Approved(scope) => admission(call, Some(scope)),
         };
 
-        match self.broker.decide(&access).await {
-            Decision::Allow => Ok(()),
-            Decision::Approved(scope) => self.approve(call, request, scope).await,
-            Decision::Deny { reason } => Err(self.deny(call, request, reason).await),
-        }
+        self.recorder
+            .open(request, steps)
+            .await
+            .map_err(|error| unavailable(&error))
+    }
+
+    async fn admit_after_asking(
+        &self,
+        call: &Call<'_>,
+        request: Seq,
+        decision: Decision,
+    ) -> Result<Seq, RpcError> {
+        let steps = match decision {
+            Decision::Deny { reason } => {
+                return Err(self.conclude(request, denied(call, reason)).await);
+            }
+            Decision::Allow => admission(call, None),
+            Decision::Approved(scope) => admission(call, Some(scope)),
+        };
+
+        self.recorder
+            .follow_up(request, steps)
+            .await
+            .map(|()| request)
+            .map_err(|error| unavailable(&error))
     }
 
     async fn perform(
@@ -140,89 +166,80 @@ impl Core {
         prepared: Prepared,
         link: &Arc<Link>,
     ) -> Result<ActionOutcome, RpcError> {
-        self.mark(call, request, EventKind::Started).await?;
-
         let finishes_later = prepared.finishes_later();
         let connection: Arc<dyn Any + Send + Sync> = Arc::clone(link) as _;
         let context = Context::new(call.actor.clone(), request, call.target.cloned())
             .with_risk(prepared.risk())
             .with_connection(connection);
-        let ran = run_isolated(prepared, context).await;
 
-        match ran {
-            Ok(completed) => {
-                if !finishes_later {
-                    self.record(call, request, EventKind::Finished, &completed.summary)
-                        .await?;
-                }
+        let completed = match run_isolated(prepared, context).await {
+            Ok(completed) => completed,
+            Err(error) => return Err(self.conclude(request, failed(call, failure(&error))).await),
+        };
 
-                Ok(ActionOutcome {
-                    request: RequestSeq(request.get()),
-                    value: completed.value,
-                })
-            }
-            Err(error) => Err(self.fail(call, request, failure(&error)).await),
+        if !finishes_later {
+            let finished = Recorder::step(call, EventKind::Finished, &completed.summary);
+            self.recorder
+                .follow_up(request, vec![finished])
+                .await
+                .map_err(|error| unavailable(&error))?;
+        }
+
+        Ok(ActionOutcome {
+            request: RequestSeq(request.get()),
+            value: completed.value,
+        })
+    }
+
+    async fn reject(&self, request: NewEvent, (step, error): (NewEvent, RpcError)) -> RpcError {
+        match self.recorder.open(request, vec![step]).await {
+            Ok(_) => error,
+            Err(journal) => unavailable(&journal),
         }
     }
 
-    async fn mark(&self, call: &Call<'_>, request: Seq, kind: EventKind) -> Result<(), RpcError> {
-        self.record(call, request, kind, &Value::Null).await
-    }
-
-    async fn approve(&self, call: &Call<'_>, request: Seq, scope: Scope) -> Result<(), RpcError> {
-        let details = json!({ "scope": scope, "by": "person" });
-        self.record(call, request, EventKind::Approved, &details)
-            .await
-    }
-
-    async fn deny(&self, call: &Call<'_>, request: Seq, reason: String) -> RpcError {
-        let details = json!({ "reason": &reason });
-        let error = RpcError::new(ErrorCode::DENIED, reason);
-
-        match self
-            .record(call, request, EventKind::Denied, &details)
-            .await
-        {
+    async fn conclude(&self, request: Seq, (step, error): (NewEvent, RpcError)) -> RpcError {
+        match self.recorder.follow_up(request, vec![step]).await {
             Ok(()) => error,
-            Err(journal) => journal,
+            Err(journal) => unavailable(&journal),
         }
     }
+}
 
-    async fn fail(&self, call: &Call<'_>, request: Seq, error: RpcError) -> RpcError {
-        let details = json!({ "error": &error.message });
+fn admission(call: &Call<'_>, approval: Option<Scope>) -> Vec<NewEvent> {
+    let started = Recorder::step(call, EventKind::Started, &Value::Null);
 
-        match self
-            .record(call, request, EventKind::Failed, &details)
-            .await
-        {
-            Ok(()) => error,
-            Err(journal) => journal,
-        }
-    }
+    let Some(scope) = approval else {
+        return vec![started];
+    };
 
-    async fn record(
-        &self,
-        call: &Call<'_>,
-        request: Seq,
-        kind: EventKind,
-        details: &Value,
-    ) -> Result<(), RpcError> {
-        self.recorder
-            .follow_up(call, request, kind, details)
-            .await
-            .map(|_| ())
-            .map_err(|error| unavailable(&error))
-    }
+    let details = json!({ "scope": scope, "by": "person" });
+    let approved = Recorder::step(call, EventKind::Approved, &details);
+
+    vec![approved, started]
+}
+
+fn denied(call: &Call<'_>, reason: String) -> (NewEvent, RpcError) {
+    let details = json!({ "reason": &reason });
+    let step = Recorder::step(call, EventKind::Denied, &details);
+
+    (step, RpcError::new(ErrorCode::DENIED, reason))
+}
+
+fn failed(call: &Call<'_>, error: RpcError) -> (NewEvent, RpcError) {
+    let details = json!({ "error": &error.message });
+    let step = Recorder::step(call, EventKind::Failed, &details);
+
+    (step, error)
 }
 
 async fn prepare_blocking(
     handle: &Handle,
     target: Option<&ResourceRef>,
-    params: &Value,
+    params: Value,
 ) -> Result<Prepared, ActionError> {
     let handle = handle.clone();
     let target = target.cloned();
-    let params = params.clone();
 
     let preparing = task::spawn_blocking(move || handle.prepare(target.as_ref(), params));
 

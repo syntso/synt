@@ -10,7 +10,7 @@ use tokio::runtime;
 
 use super::{ConnectionState, Slot};
 use crate::session::Connection;
-use crate::{SshError, Target};
+use crate::{Algorithms, SshError, Target};
 
 type Connecting<'a> = Pin<Box<dyn Future<Output = Result<Connection, SshError>> + Send + 'a>>;
 
@@ -33,8 +33,18 @@ impl Lease {
         self.slot.status().state
     }
 
+    pub fn algorithms(&self) -> Option<Algorithms> {
+        self.slot.algorithms()
+    }
+
     pub(crate) fn connection(&self) -> Connecting<'_> {
         Box::pin(self.slot.connection())
+    }
+
+    pub(crate) async fn keep_spare_session(&self) -> Result<(), SshError> {
+        self.connection().await?.keep_spare_session().await;
+
+        Ok(())
     }
 
     pub(crate) async fn open_session(&self) -> Result<Channel<Msg>, SshError> {

@@ -23,8 +23,9 @@ pub async fn exec(
         .map_err(|_| SshError::Timeout(limits.timeout))??;
 
     let collected = run(&lease, command, limits, deadline).await?;
+    let elapsed = milliseconds(started.elapsed());
 
-    Ok(collected.finish(milliseconds(started.elapsed())))
+    Ok(collected.finish(elapsed, lease.algorithms()))
 }
 
 async fn run(

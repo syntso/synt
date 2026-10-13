@@ -1,5 +1,6 @@
 mod auth;
 mod config;
+mod dial;
 mod error;
 mod exec;
 mod home;
@@ -14,7 +15,8 @@ mod tunnel;
 pub use error::SshError;
 pub use exec::{ExecLimits, ExecOutput, exec};
 pub use pool::{ConnectionState, ConnectionStatus, Lease, Pool};
-pub use sftp::{Directory, FileEntry, FileKind, FileSessions, Sftp, WriteMode};
+pub use session::Algorithms;
+pub use sftp::{Directory, Download, FileEntry, FileKind, FileSessions, Sftp, Upload, WriteMode};
 pub use shell::{Shell, ShellEnd, ShellOutput, TerminalSize};
 pub use target::Target;
 pub use tunnel::{Destination, TunnelId, TunnelStatus, Tunnels};

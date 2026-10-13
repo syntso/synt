@@ -17,13 +17,14 @@ pub use builtin::{
     AttachedSession, ConnectionInfo, ExecParams, ExecResult, JournalPage, JournalVerify, Page,
     PageQuery, Ping, Pong, SessionAttach, SessionAttachParams, SessionClose, SessionCloseParams,
     SessionInfo, SessionList, SessionOpenParams, SessionResize, SessionResizeParams, SessionSize,
-    SshConnections, SshExec, SshSessionOpen,
+    SshConnections, SshExec, SshSessionOpen, SshWarm, Warmed,
 };
 pub use builtin::{CloseParams, OpenParams, TunnelClose, TunnelInfo, TunnelList, TunnelOpen};
 pub use builtin::{
-    FileInfo, Files, Listing, Made, PathParams, ReadParams, ReadResult, RemotePath, Removed,
-    RenameParams, Renamed, SftpList, SftpMkdir, SftpRead, SftpRemove, SftpRename, SftpStat,
-    SftpWrite, WriteParams, WriteResult,
+    DownloadParams, Downloaded, FileInfo, Files, Listing, Made, PathParams, ReadParams, ReadResult,
+    RemotePath, Removed, RenameParams, Renamed, SftpDownload, SftpList, SftpMkdir, SftpRead,
+    SftpRemove, SftpRename, SftpStat, SftpUpload, SftpWrite, UploadParams, Uploaded, WriteParams,
+    WriteResult,
 };
 pub use core::{Core, VERSION};
 pub use error::CoreError;

@@ -1,29 +1,29 @@
 use std::fmt::Display;
-use std::path::PathBuf;
+use std::mem;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use russh::AgentAuthError;
 use russh::client::{AuthResult, Handle, Handler};
-use russh::keys::agent::AgentIdentity;
 use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey};
 
-use super::{Agent, KeyFile, agent};
-use crate::home::ssh_directory;
+use super::{Agent, Candidate, Credentials, KeyFile, KeySource};
 use crate::{SshError, Target};
-
-const DEFAULT_KEYS: [&str; 3] = ["id_ed25519", "id_ecdsa", "id_rsa"];
-const AGENT_ATTEMPTS: usize = 5;
 
 pub(crate) struct Authenticator<'a> {
     target: &'a Target,
+    agent: Option<Agent>,
+    candidates: Vec<Candidate>,
     tried: Vec<String>,
     encrypted: Option<PathBuf>,
 }
 
 impl<'a> Authenticator<'a> {
-    pub(crate) fn new(target: &'a Target) -> Self {
+    pub(crate) fn new(target: &'a Target, credentials: Credentials) -> Self {
         Self {
             target,
+            agent: credentials.agent,
+            candidates: credentials.candidates,
             tried: Vec::new(),
             encrypted: None,
         }
@@ -32,85 +32,51 @@ impl<'a> Authenticator<'a> {
     pub(crate) async fn authenticate<H: Handler>(
         mut self,
         handle: &mut Handle<H>,
-    ) -> Result<(), SshError> {
-        let pinned = self.pinned_keys().await;
+    ) -> Result<PublicKey, SshError> {
+        let candidates = mem::take(&mut self.candidates);
 
-        if self.try_agent(handle, pinned.as_deref()).await? {
-            return Ok(());
-        }
-
-        for path in self.key_paths() {
-            if self.try_key_file(handle, path).await? {
-                return Ok(());
+        for candidate in candidates {
+            if let Some(accepted) = self.try_candidate(handle, candidate).await? {
+                return Ok(accepted);
             }
         }
 
         Err(self.failure())
     }
 
-    async fn pinned_keys(&self) -> Option<Vec<PublicKey>> {
-        let files = self.target.identity_files();
-
-        if files.is_empty() {
-            return None;
-        }
-
-        let mut keys = Vec::new();
-
-        for path in files {
-            if let Some(key) = KeyFile::public_key(path).await {
-                keys.push(key);
-            }
-        }
-
-        Some(keys)
-    }
-
-    async fn try_agent<H: Handler>(
+    async fn try_candidate<H: Handler>(
         &mut self,
         handle: &mut Handle<H>,
-        pinned: Option<&[PublicKey]>,
-    ) -> Result<bool, SshError> {
-        let Some(mut agent) = agent::connect().await else {
-            return Ok(false);
-        };
-        let Ok(identities) = agent.request_identities().await else {
-            return Ok(false);
-        };
-
-        let offered: Vec<PublicKey> = identities
-            .into_iter()
-            .filter_map(public_key)
-            .filter(|key| is_wanted(pinned, key))
-            .take(AGENT_ATTEMPTS)
-            .collect();
-
-        for key in offered {
-            if self.try_agent_key(handle, &mut agent, key).await? {
-                return Ok(true);
-            }
+        candidate: Candidate,
+    ) -> Result<Option<PublicKey>, SshError> {
+        match (candidate.source, candidate.key) {
+            (KeySource::Agent, Some(key)) => self.try_agent_key(handle, key).await,
+            (KeySource::File(path), _) => self.try_key_file(handle, &path).await,
+            (KeySource::Agent, None) => Ok(None),
         }
-
-        Ok(false)
     }
 
     async fn try_agent_key<H: Handler>(
         &mut self,
         handle: &mut Handle<H>,
-        agent: &mut Agent,
         key: PublicKey,
-    ) -> Result<bool, SshError> {
+    ) -> Result<Option<PublicKey>, SshError> {
         let hash = rsa_hash(handle, &key).await;
+
+        let Some(agent) = self.agent.as_mut() else {
+            return Ok(None);
+        };
+
         self.tried
             .push(format!("ssh-agent {}", key.fingerprint(HashAlg::Sha256)));
 
         let result = handle
-            .authenticate_publickey_with(self.target.user(), key, hash, agent)
+            .authenticate_publickey_with(self.target.user(), key.clone(), hash, agent)
             .await;
 
         match result {
-            Ok(result) => Ok(accepted(&result)),
-            Err(AgentAuthError::Key(_)) => Ok(false),
+            Ok(result) => Ok(accepted(&result).then_some(key)),
+            Err(AgentAuthError::Key(_)) => Ok(None),
             Err(AgentAuthError::Send(error)) => Err(self.lost(&error)),
         }
     }
@@ -118,29 +84,30 @@ impl<'a> Authenticator<'a> {
     async fn try_key_file<H: Handler>(
         &mut self,
         handle: &mut Handle<H>,
-        path: PathBuf,
-    ) -> Result<bool, SshError> {
-        let key = match KeyFile::read(&path).await? {
-            KeyFile::Missing => return Ok(false),
+        path: &Path,
+    ) -> Result<Option<PublicKey>, SshError> {
+        let key = match KeyFile::read(path).await? {
+            KeyFile::Missing => return Ok(None),
             KeyFile::Encrypted => {
-                self.encrypted.get_or_insert(path);
-                return Ok(false);
+                self.encrypted.get_or_insert_with(|| path.to_path_buf());
+                return Ok(None);
             }
             KeyFile::Unreadable => {
                 self.tried.push(format!("{} (unreadable)", path.display()));
-                return Ok(false);
+                return Ok(None);
             }
             KeyFile::Unsupported => {
                 self.tried.push(format!(
                     "{} (RSA works through ssh-agent only)",
                     path.display()
                 ));
-                return Ok(false);
+                return Ok(None);
             }
             KeyFile::Loaded(key) => key,
         };
 
-        let hash = rsa_hash(handle, key.public_key()).await;
+        let public = key.public_key().clone();
+        let hash = rsa_hash(handle, &public).await;
         let signing = PrivateKeyWithHashAlg::new(Arc::new(*key), hash);
         self.tried.push(path.display().to_string());
 
@@ -149,23 +116,7 @@ impl<'a> Authenticator<'a> {
             .await
             .map_err(|error| self.lost(&error))?;
 
-        Ok(accepted(&result))
-    }
-
-    fn key_paths(&self) -> Vec<PathBuf> {
-        let mut paths = self.target.identity_files().to_vec();
-
-        let defaults = ssh_directory()
-            .map(|directory| DEFAULT_KEYS.map(|name| directory.join(name)).to_vec())
-            .unwrap_or_default();
-
-        for path in defaults {
-            if !paths.contains(&path) {
-                paths.push(path);
-            }
-        }
-
-        paths
+        Ok(accepted(&result).then_some(public))
     }
 
     fn failure(self) -> SshError {
@@ -189,26 +140,9 @@ async fn rsa_hash<H: Handler>(handle: &Handle<H>, key: &PublicKey) -> Option<Has
     }
 
     match handle.best_supported_rsa_hash().await {
-        Ok(Some(hash)) => hash,
+        Ok(Some(Some(hash))) => Some(hash),
         _ => Some(HashAlg::Sha256),
     }
-}
-
-fn public_key(identity: AgentIdentity) -> Option<PublicKey> {
-    match identity {
-        AgentIdentity::PublicKey { key, .. } => Some(key),
-        AgentIdentity::Certificate { .. } => None,
-    }
-}
-
-fn is_wanted(pinned: Option<&[PublicKey]>, key: &PublicKey) -> bool {
-    let Some(pinned) = pinned else {
-        return true;
-    };
-
-    pinned
-        .iter()
-        .any(|known| known.key_data() == key.key_data())
 }
 
 fn accepted(result: &AuthResult) -> bool {

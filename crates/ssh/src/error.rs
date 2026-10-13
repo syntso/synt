@@ -28,6 +28,9 @@ pub enum SshError {
     )]
     HostKeyOtherType { host: String, fingerprint: String },
 
+    #[error("{host} is not in known_hosts, so Synt does not connect to it ahead of time")]
+    NotKnownHost { host: String },
+
     #[error("no accepted key, tried: {}", tried.join(", "))]
     NoAuthentication { tried: Vec<String> },
 
