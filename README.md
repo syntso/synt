@@ -21,7 +21,7 @@ A macOS app for SSH, terminals and files, with a way in for AI agents over [MCP]
 
 Early, nothing to install yet. macOS first.
 
-- [ ] Journal
+- [x] Journal
 - [ ] Core and protocol
 - [ ] SSH with jump hosts
 - [ ] Terminal

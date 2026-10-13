@@ -19,7 +19,7 @@ ci: cache the cargo registry
 ```
 
 - Types: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`, `style`, `revert`.
-- Scope: the crate without the `synt-` prefix, `app`, `mcp`, or nothing.
+- Scope: the crate without the `synt-` prefix, `mcp`, or nothing.
 - Subject: imperative, starts lowercase, no period, the whole line at most 72 characters.
 - A breaking change gets a `!`: `feat(proto)!: rename action.call`.
 
@@ -32,12 +32,12 @@ ci: cache the cargo registry
 - Errors with `thiserror`, one enum per crate. No `unwrap()` outside tests.
 - Full words in names: `connection`, not `conn`.
 
-## Comments
+## Shape of code
 
-- Every public item has a `///` doc comment. The first line says what it is or does.
-- `# Errors`, `# Panics` and `# Safety` where they apply. Key types get an `# Examples` that runs as a test.
-- An inline `//` explains why, when the code cannot. It never retells what the code does.
-- No commented-out code, no `TODO` without an issue number.
+- No comments and no doc comments. Names, types and small functions carry the meaning.
+- A blank line between logical steps; intermediate results get names.
+- Guards first, the main path flat below.
+- Imports grouped `std`, external crates, `crate::`.
 
 ## Before you push
 
@@ -47,4 +47,4 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-CI runs the same commands, plus `cargo deny check` for dependency licenses.
+CI runs the same commands on macOS, Windows and Linux, plus `cargo deny check` for dependency licenses.
