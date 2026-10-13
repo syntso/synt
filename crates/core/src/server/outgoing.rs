@@ -6,16 +6,16 @@ use tokio::sync::mpsc;
 
 pub(super) type Outgoing = FrameWriter<LocalStream>;
 
-pub(super) async fn write_all(mut outgoing: Outgoing, mut queue: mpsc::Receiver<Response>) {
+pub(super) async fn write_all(mut outgoing: Outgoing, mut queue: mpsc::Receiver<Message>) {
     let limit = outgoing.encoder().limit();
 
     while let Some(first) = queue.recv().await {
         let mut next = Some(first);
 
-        while let Some(response) = next {
-            let frame = Frame::message(encode(response, limit));
-
-            if outgoing.feed(frame).await.is_err() {
+        while let Some(message) = next {
+            if let Some(body) = encode(&message, limit)
+                && outgoing.feed(Frame::message(body)).await.is_err()
+            {
                 return;
             }
 
@@ -28,17 +28,22 @@ pub(super) async fn write_all(mut outgoing: Outgoing, mut queue: mpsc::Receiver<
     }
 }
 
-fn encode(response: Response, limit: usize) -> Bytes {
-    let id = response.id;
+fn encode(message: &Message, limit: usize) -> Option<Bytes> {
+    let reply_to = match message {
+        Message::Response(response) => Some(response.id),
+        Message::Request(_) | Message::Notification(_) => None,
+    };
 
-    match Message::from(response).encode() {
-        Ok(body) if body.len() <= limit => body,
-        Ok(_) => refusal(id, "the reply exceeds the frame limit"),
+    let problem = match message.encode() {
+        Ok(body) if body.len() <= limit => return Some(body),
+        Ok(_) => "the reply exceeds the frame limit",
         Err(error) => {
             eprintln!("synt-core: reply: {error}");
-            refusal(id, "the reply cannot be encoded")
+            "the reply cannot be encoded"
         }
-    }
+    };
+
+    reply_to.map(|id| refusal(id, problem))
 }
 
 fn refusal(id: Option<RequestId>, reason: &str) -> Bytes {

@@ -2,15 +2,17 @@
 pub enum Method {
     Hello,
     ActionCall,
+    ApprovalRespond,
 }
 
 impl Method {
-    pub const ALL: [Self; 2] = [Self::Hello, Self::ActionCall];
+    pub const ALL: [Self; 3] = [Self::Hello, Self::ActionCall, Self::ApprovalRespond];
 
     pub const fn name(self) -> &'static str {
         match self {
             Self::Hello => "hello",
             Self::ActionCall => "action.call",
+            Self::ApprovalRespond => "approval.respond",
         }
     }
 

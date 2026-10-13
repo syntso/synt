@@ -5,9 +5,10 @@ use futures_util::SinkExt;
 use serde::Serialize;
 use serde_json::Value;
 use synt_proto::{
-    Frame, FrameCodec, FrameError, FrameWriter, Message, Method, Request, RequestId, split_framed,
+    Frame, FrameCodec, FrameError, FrameWriter, Message, Method, Notification, Request, RequestId,
+    split_framed,
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, broadcast};
 use tokio::task::JoinHandle;
 
 use super::Duplex;
@@ -17,9 +18,12 @@ use crate::ClientError;
 
 type Outgoing = FrameWriter<Box<dyn Duplex>>;
 
+const NOTIFICATION_BACKLOG: usize = 64;
+
 pub(crate) struct Connection {
     outgoing: Mutex<Outgoing>,
     pending: Arc<Pending>,
+    notifications: broadcast::Sender<Notification>,
     next_id: AtomicU64,
     reader: JoinHandle<()>,
 }
@@ -30,11 +34,15 @@ impl Connection {
         let (incoming, outgoing) = split_framed(stream, FrameCodec::DEFAULT_LIMIT);
 
         let pending = Arc::new(Pending::new());
-        let reader = tokio::spawn(reader::route(incoming, Arc::clone(&pending)));
+        let (notifications, _) = broadcast::channel(NOTIFICATION_BACKLOG);
+
+        let routed = reader::route(incoming, Arc::clone(&pending), notifications.clone());
+        let reader = tokio::spawn(routed);
 
         Self {
             outgoing: Mutex::new(outgoing),
             pending,
+            notifications,
             next_id: AtomicU64::new(1),
             reader,
         }
@@ -54,6 +62,10 @@ impl Connection {
         let outcome = ticket.reply().await?;
 
         Ok(outcome.into_result()?)
+    }
+
+    pub(crate) fn subscribe(&self) -> broadcast::Receiver<Notification> {
+        self.notifications.subscribe()
     }
 
     fn next_id(&self) -> RequestId {

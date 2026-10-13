@@ -3,21 +3,22 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::StreamExt;
-use serde_json::Value;
+use serde_json::{Value, json};
 use synt_journal::Actor;
 use synt_platform::LocalStream;
 use synt_proto::{
-    ActionCall, ErrorCode, Frame, FrameReader, Message, Method, Request, Response, RpcError,
-    split_framed,
+    ActionCall, ApprovalAnswer, ErrorCode, Frame, FrameReader, Message, Method, Request, Response,
+    RpcError, split_framed,
 };
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
+use super::AppTrust;
 use super::greeting;
 use super::outgoing;
-use crate::access::Gate;
+use crate::broker::Registration;
 use crate::core::Core;
 
 const REQUEST_FRAME_LIMIT: usize = 64 * 1024;
@@ -27,20 +28,23 @@ const HANDSHAKE_LIMIT: Duration = Duration::from_secs(5);
 
 type Incoming = FrameReader<LocalStream>;
 
-pub(super) struct Session<G> {
-    core: Arc<Core<G>>,
+pub(super) struct Session {
+    core: Arc<Core>,
     tasks: TaskTracker,
     stop: CancellationToken,
-    replies: mpsc::Sender<Response>,
+    departed: CancellationToken,
+    trust: AppTrust,
+    replies: mpsc::Sender<Message>,
     in_flight: Arc<Semaphore>,
 }
 
-impl<G: Gate> Session<G> {
+impl Session {
     pub(super) async fn serve(
         stream: LocalStream,
-        core: Arc<Core<G>>,
+        core: Arc<Core>,
         tasks: TaskTracker,
         stop: CancellationToken,
+        trust: AppTrust,
     ) {
         let (mut incoming, outgoing) = split_framed(stream, REQUEST_FRAME_LIMIT);
         let (replies, queue) = mpsc::channel(OUTGOING_BACKLOG);
@@ -50,6 +54,8 @@ impl<G: Gate> Session<G> {
             core,
             tasks,
             stop,
+            departed: CancellationToken::new(),
+            trust,
             replies,
             in_flight: Arc::new(Semaphore::new(IN_FLIGHT_LIMIT)),
         };
@@ -59,9 +65,12 @@ impl<G: Gate> Session<G> {
     }
 
     async fn run(self, incoming: &mut Incoming) {
+        let _departure = self.departed.clone().drop_guard();
+
         let Some(actor) = self.greet(incoming).await else {
             return;
         };
+        let _registration = self.attend(&actor);
         let actor = Arc::new(actor);
 
         while let Some((permit, body)) = self.next_message(incoming).await {
@@ -78,14 +87,23 @@ impl<G: Gate> Session<G> {
             return None;
         };
 
-        let (id, greeted) = greeting::answer_first(&body);
+        let (id, greeted) = greeting::answer_first(&body, self.trust);
         let (actor, reply) = match greeted {
             Ok((actor, welcome)) => (Some(actor), Ok(welcome)),
             Err(error) => (None, Err(error)),
         };
 
-        let _ = self.replies.send(Response::new(id, reply)).await;
+        let _ = self.replies.send(Response::new(id, reply).into()).await;
         actor
+    }
+
+    fn attend(&self, actor: &Actor) -> Option<Registration> {
+        if *actor != Actor::Person {
+            return None;
+        }
+
+        let registration = self.core.broker().register(self.replies.clone());
+        Some(registration)
     }
 
     async fn next_message(&self, incoming: &mut Incoming) -> Option<(OwnedSemaphorePermit, Bytes)> {
@@ -101,7 +119,10 @@ impl<G: Gate> Session<G> {
             Ok(Message::Request(request)) => request,
             Ok(Message::Response(_) | Message::Notification(_)) => return,
             Err(error) => {
-                let _ = self.replies.send(Response::new(None, Err(error))).await;
+                let _ = self
+                    .replies
+                    .send(Response::new(None, Err(error)).into())
+                    .await;
                 return;
             }
         };
@@ -109,12 +130,13 @@ impl<G: Gate> Session<G> {
         let core = Arc::clone(&self.core);
         let actor = Arc::clone(actor);
         let replies = self.replies.clone();
+        let departed = self.departed.clone();
 
         self.tasks.spawn(async move {
             let id = request.id;
-            let outcome = answer(&core, &actor, request).await;
+            let outcome = answer(&core, &actor, request, &departed).await;
 
-            let _ = replies.send(Response::new(Some(id), outcome)).await;
+            let _ = replies.send(Response::new(Some(id), outcome).into()).await;
             drop(permit);
         });
     }
@@ -133,20 +155,27 @@ async fn read_message(
     }
 }
 
-async fn answer<G: Gate>(
-    core: &Core<G>,
+async fn answer(
+    core: &Core,
     actor: &Actor,
     request: Request,
+    departed: &CancellationToken,
 ) -> Result<Value, RpcError> {
     match request.method() {
         Some(Method::ActionCall) => {
             let call: ActionCall = request.into_params()?;
-            let outcome = core.dispatch(actor, call).await?;
+            let outcome = core.dispatch(actor, call, departed).await?;
 
             serde_json::to_value(outcome).map_err(|error| {
                 eprintln!("synt-core: outcome: {error}");
                 RpcError::internal("the outcome cannot be encoded")
             })
+        }
+        Some(Method::ApprovalRespond) => {
+            let answer: ApprovalAnswer = request.into_params()?;
+            core.respond(actor, answer)?;
+
+            Ok(json!({}))
         }
         Some(Method::Hello) => Err(RpcError::invalid_request("hello was already received")),
         None => Err(RpcError::new(

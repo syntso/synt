@@ -6,3 +6,5 @@ xcuserdata/
 DerivedData/
 *.xcuserstate
 /build
+
+/tools/

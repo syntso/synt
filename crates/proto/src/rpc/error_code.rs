@@ -19,6 +19,7 @@ impl ErrorCode {
     pub const ACTION_FAILED: Self = Self(-32_011);
     pub const DENIED: Self = Self(-32_012);
     pub const JOURNAL_UNAVAILABLE: Self = Self(-32_013);
+    pub const APPROVAL_UNKNOWN: Self = Self(-32_014);
 }
 
 impl fmt::Display for ErrorCode {

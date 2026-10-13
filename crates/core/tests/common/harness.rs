@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use synt_actions::Registry;
 use synt_client::Client;
-use synt_core::{Core, Ping, ReadOnlyGate};
+use synt_core::{Broker, Core, Ping};
 use synt_journal::{Event, Filter, Journal, JournalWriter, MemoryKeyStore, Seq};
 use synt_platform::Endpoint;
 use synt_proto::{ClientKind, Hello, RequestSeq};
@@ -28,7 +28,7 @@ impl Harness {
         let journal = journal(&directory);
         let touches = Arc::new(AtomicUsize::new(0));
 
-        let core = Core::new(registry(&touches), journal.clone(), ReadOnlyGate);
+        let core = Core::new(registry(&touches), journal.clone(), Broker::new());
         let server = RunningServer::spawn(&endpoint, core).unwrap();
 
         Self {

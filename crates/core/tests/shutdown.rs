@@ -7,7 +7,7 @@ use std::time::Duration;
 use common::{Harness, RunningServer, app_hello, ping};
 use synt_actions::Registry;
 use synt_client::{Client, ClientError};
-use synt_core::{Core, Ping, ReadOnlyGate, Server};
+use synt_core::{Broker, Core, Ping, Server};
 use synt_platform::LocalStream;
 use synt_proto::RequestSeq;
 use tokio::time;
@@ -80,9 +80,9 @@ async fn the_journal_stays_intact_across_a_restart() {
     assert!(harness.is_intact());
 }
 
-fn core(harness: &Harness) -> Core<ReadOnlyGate> {
+fn core(harness: &Harness) -> Core {
     let mut registry = Registry::new();
     registry.register(Ping).unwrap();
 
-    Core::new(registry, harness.journal(), ReadOnlyGate)
+    Core::new(registry, harness.journal(), Broker::new())
 }

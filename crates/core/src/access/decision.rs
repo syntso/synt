@@ -1,6 +1,9 @@
+use super::Scope;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
     Allow,
+    Approved(Scope),
     Deny { reason: String },
 }
 

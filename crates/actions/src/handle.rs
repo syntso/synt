@@ -1,34 +1,38 @@
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use serde_json::Value;
-use synt_journal::ActionId;
+use synt_journal::{ActionId, ResourceRef};
 
-use crate::{Action, ActionError, Context, Risk};
-
-type Running<'a> = Pin<Box<dyn Future<Output = Result<Value, ActionError>> + Send + 'a>>;
+use crate::bound::Bound;
+use crate::{Action, ActionError, Prepared, Risk};
 
 trait Erased: Send + Sync {
-    fn risk(&self) -> Risk;
+    fn declared_risk(&self) -> Risk;
 
-    fn call<'a>(&'a self, context: &'a Context, params: Value) -> Running<'a>;
+    fn prepare(
+        self: Arc<Self>,
+        target: Option<&ResourceRef>,
+        params: Value,
+    ) -> Result<Prepared, ActionError>;
 }
 
 impl<A: Action> Erased for A {
-    fn risk(&self) -> Risk {
+    fn declared_risk(&self) -> Risk {
         A::RISK
     }
 
-    fn call<'a>(&'a self, context: &'a Context, params: Value) -> Running<'a> {
-        Box::pin(async move {
-            let params = serde_json::from_value(params)
-                .map_err(|error| ActionError::InvalidParams(error.to_string()))?;
+    fn prepare(
+        self: Arc<Self>,
+        target: Option<&ResourceRef>,
+        params: Value,
+    ) -> Result<Prepared, ActionError> {
+        let params: A::Params = serde_json::from_value(params)
+            .map_err(|error| ActionError::InvalidParams(error.to_string()))?;
 
-            let output = self.run(context, params).await?;
+        let risk = Action::risk(self.as_ref(), target, &params);
+        let bound = Bound::new(self, params);
 
-            serde_json::to_value(output).map_err(|error| ActionError::failed(error.to_string()))
-        })
+        Ok(Prepared::new(risk, Box::new(bound)))
     }
 }
 
@@ -51,10 +55,14 @@ impl Handle {
     }
 
     pub fn risk(&self) -> Risk {
-        self.action.risk()
+        self.action.declared_risk()
     }
 
-    pub async fn call(&self, context: &Context, params: Value) -> Result<Value, ActionError> {
-        self.action.call(context, params).await
+    pub fn prepare(
+        &self,
+        target: Option<&ResourceRef>,
+        params: Value,
+    ) -> Result<Prepared, ActionError> {
+        Arc::clone(&self.action).prepare(target, params)
     }
 }
