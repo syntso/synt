@@ -1,6 +1,6 @@
 use russh::Sig;
 
-pub(super) fn signal_name(signal: &Sig) -> String {
+pub(crate) fn signal_name(signal: &Sig) -> String {
     let name = match signal {
         Sig::ABRT => "ABRT",
         Sig::ALRM => "ALRM",

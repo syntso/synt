@@ -9,7 +9,7 @@ const DEFAULT_PORT: u16 = 22;
 const JUMP_DEPTH_LIMIT: usize = 8;
 const HOST_TOKEN: &str = "%h";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Target {
     host: String,
     port: u16,
@@ -45,11 +45,21 @@ impl Target {
         &self.jumps
     }
 
-    pub(crate) fn hops(&self) -> Vec<&Target> {
-        let mut hops: Vec<&Target> = self.jumps.iter().flat_map(Target::hops).collect();
-        hops.push(self);
+    pub fn label(&self) -> String {
+        format!("{}@{}", self.user, self.address())
+    }
 
-        hops
+    pub(crate) fn previous_hop(&self) -> Option<Target> {
+        let (last, earlier) = self.jumps.split_last()?;
+
+        if earlier.is_empty() {
+            return Some(last.clone());
+        }
+
+        Some(Self {
+            jumps: earlier.to_vec(),
+            ..last.clone()
+        })
     }
 
     pub(crate) fn address(&self) -> String {

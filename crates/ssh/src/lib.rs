@@ -4,9 +4,17 @@ mod error;
 mod exec;
 mod home;
 mod known_hosts;
+mod pool;
 mod session;
+mod sftp;
+mod shell;
 mod target;
+mod tunnel;
 
 pub use error::SshError;
 pub use exec::{ExecLimits, ExecOutput, exec};
+pub use pool::{ConnectionState, ConnectionStatus, Lease, Pool};
+pub use sftp::{Directory, FileEntry, FileKind, FileSessions, Sftp, WriteMode};
+pub use shell::{Shell, ShellEnd, ShellOutput, TerminalSize};
 pub use target::Target;
+pub use tunnel::{Destination, TunnelId, TunnelStatus, Tunnels};

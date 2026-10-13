@@ -9,6 +9,10 @@ use crate::{Action, ActionError, Prepared, Risk};
 trait Erased: Send + Sync {
     fn declared_risk(&self) -> Risk;
 
+    fn person_only(&self) -> bool;
+
+    fn recorded_params(&self, params: &Value) -> Value;
+
     fn prepare(
         self: Arc<Self>,
         target: Option<&ResourceRef>,
@@ -19,6 +23,14 @@ trait Erased: Send + Sync {
 impl<A: Action> Erased for A {
     fn declared_risk(&self) -> Risk {
         A::RISK
+    }
+
+    fn person_only(&self) -> bool {
+        A::PERSON_ONLY
+    }
+
+    fn recorded_params(&self, params: &Value) -> Value {
+        Action::recorded_params(self, params)
     }
 
     fn prepare(
@@ -32,7 +44,7 @@ impl<A: Action> Erased for A {
         let risk = Action::risk(self.as_ref(), target, &params);
         let bound = Bound::new(self, params);
 
-        Ok(Prepared::new(risk, Box::new(bound)))
+        Ok(Prepared::new(risk, A::FINISHES_LATER, Box::new(bound)))
     }
 }
 
@@ -56,6 +68,14 @@ impl Handle {
 
     pub fn risk(&self) -> Risk {
         self.action.declared_risk()
+    }
+
+    pub fn person_only(&self) -> bool {
+        self.action.person_only()
+    }
+
+    pub fn recorded_params(&self, params: &Value) -> Value {
+        self.action.recorded_params(params)
     }
 
     pub fn prepare(

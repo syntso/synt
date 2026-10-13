@@ -1,11 +1,16 @@
+use std::any::Any;
+use std::sync::Arc;
+
 use serde_json::{Value, json};
 use synt_actions::{ActionError, Completed, Context, Handle, Prepared, Registry, Risk};
-use synt_journal::{Actor, EventKind, JournalError, JournalWriter, Seq};
+use synt_journal::{Actor, EventKind, JournalError, JournalWriter, ResourceRef, Seq};
 use synt_proto::{ActionCall, ActionOutcome, ApprovalAnswer, ErrorCode, RequestSeq, RpcError};
+use tokio::task;
 use tokio_util::sync::CancellationToken;
 
 use crate::access::{AccessRequest, Decision, Gate, Scope};
 use crate::broker::Broker;
+use crate::link::Link;
 use crate::parsed_call::ParsedCall;
 use crate::recorder::{Call, Recorder};
 
@@ -26,13 +31,14 @@ impl Core {
         }
     }
 
-    pub async fn dispatch(
+    pub(crate) async fn dispatch(
         &self,
         actor: &Actor,
         call: ActionCall,
         departed: &CancellationToken,
+        link: &Arc<Link>,
     ) -> Result<ActionOutcome, RpcError> {
-        let parsed = ParsedCall::from_call(call)?;
+        let parsed = ParsedCall::from_call(call, &self.registry)?;
         let call = Call {
             actor,
             action: &parsed.action,
@@ -46,12 +52,24 @@ impl Core {
             .map_err(|error| unavailable(&error))?;
 
         let handle = self.find(&call, request).await?;
+
+        if handle.person_only() && !acts_for_person(actor) {
+            let reason = format!("{} is for the person only", parsed.action);
+            return Err(self.deny(&call, request, reason).await);
+        }
+
         let prepared = self.prepare(&call, request, handle, &parsed.params).await?;
 
-        self.admit(&call, request, prepared.risk(), &parsed.params, departed)
-            .await?;
+        self.admit(
+            &call,
+            request,
+            prepared.risk(),
+            &parsed.shown_params,
+            departed,
+        )
+        .await?;
 
-        self.perform(&call, request, prepared).await
+        self.perform(&call, request, prepared, link).await
     }
 
     pub(crate) fn respond(
@@ -85,7 +103,7 @@ impl Core {
         handle: &Handle,
         params: &Value,
     ) -> Result<Prepared, RpcError> {
-        match handle.prepare(call.target, params.clone()) {
+        match prepare_blocking(handle, call.target, params).await {
             Ok(prepared) => Ok(prepared),
             Err(error) => Err(self.fail(call, request, failure(&error)).await),
         }
@@ -120,16 +138,23 @@ impl Core {
         call: &Call<'_>,
         request: Seq,
         prepared: Prepared,
+        link: &Arc<Link>,
     ) -> Result<ActionOutcome, RpcError> {
         self.mark(call, request, EventKind::Started).await?;
 
-        let context = Context::new(call.actor.clone(), request, call.target.cloned());
+        let finishes_later = prepared.finishes_later();
+        let connection: Arc<dyn Any + Send + Sync> = Arc::clone(link) as _;
+        let context = Context::new(call.actor.clone(), request, call.target.cloned())
+            .with_risk(prepared.risk())
+            .with_connection(connection);
         let ran = run_isolated(prepared, context).await;
 
         match ran {
             Ok(completed) => {
-                self.record(call, request, EventKind::Finished, &completed.summary)
-                    .await?;
+                if !finishes_later {
+                    self.record(call, request, EventKind::Finished, &completed.summary)
+                        .await?;
+                }
 
                 Ok(ActionOutcome {
                     request: RequestSeq(request.get()),
@@ -190,6 +215,24 @@ impl Core {
     }
 }
 
+async fn prepare_blocking(
+    handle: &Handle,
+    target: Option<&ResourceRef>,
+    params: &Value,
+) -> Result<Prepared, ActionError> {
+    let handle = handle.clone();
+    let target = target.cloned();
+    let params = params.clone();
+
+    let preparing = task::spawn_blocking(move || handle.prepare(target.as_ref(), params));
+
+    preparing.await.unwrap_or_else(|_| {
+        Err(ActionError::failed(
+            "preparing the call stopped unexpectedly",
+        ))
+    })
+}
+
 async fn run_isolated(prepared: Prepared, context: Context) -> Result<Completed, ActionError> {
     let running = tokio::spawn(async move { prepared.run(&context).await });
 
@@ -211,4 +254,8 @@ fn failure(error: &ActionError) -> RpcError {
     };
 
     RpcError::new(code, error.to_string())
+}
+
+fn acts_for_person(actor: &Actor) -> bool {
+    matches!(actor, Actor::Person | Actor::Core)
 }

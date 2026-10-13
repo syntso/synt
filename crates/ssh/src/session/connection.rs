@@ -1,10 +1,11 @@
 use std::fmt::Display;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use russh::Disconnect;
-use russh::client::{self, Config, Handle};
+use russh::client::{self, Config, Handle, Msg};
 use russh::keys::Algorithm;
+use russh::{Channel, Disconnect};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::time;
@@ -15,48 +16,74 @@ use crate::known_hosts::{KnownHosts, same_family};
 use crate::{SshError, Target};
 
 const CLOSE_LIMIT: Duration = Duration::from_secs(5);
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
+const KEEPALIVE_MISSES: usize = 3;
 const ORIGINATOR_ADDRESS: &str = "127.0.0.1";
 const ORIGINATOR_PORT: u32 = 0;
 const LANGUAGE_TAG: &str = "en";
 
+#[derive(Clone)]
 pub(crate) struct Connection {
-    hops: Vec<Handle<ClientHandler>>,
+    handle: Arc<Handle<ClientHandler>>,
 }
 
 impl Connection {
-    pub(crate) async fn open(target: &Target) -> Result<Self, SshError> {
+    pub(crate) async fn open(hop: &Target, through: Option<&Connection>) -> Result<Self, SshError> {
         let known_hosts = Arc::new(KnownHosts::load().await?);
-        let mut hops: Vec<Handle<ClientHandler>> = Vec::new();
+        let config = Arc::new(client_config(&known_hosts, hop));
 
-        for hop in target.hops() {
-            let config = Arc::new(client_config(&known_hosts, hop));
-            let handle = match hops.last() {
-                None => dial(hop, &config, &known_hosts).await?,
-                Some(previous) => tunnel(previous, hop, &config, &known_hosts).await?,
-            };
-            hops.push(handle);
-        }
+        let handle = match through {
+            None => dial(hop, &config, &known_hosts).await?,
+            Some(previous) => tunnel(&previous.handle, hop, &config, &known_hosts).await?,
+        };
 
-        Ok(Self { hops })
+        Ok(Self {
+            handle: Arc::new(handle),
+        })
     }
 
-    pub(crate) fn target(&self) -> Result<&Handle<ClientHandler>, SshError> {
-        self.hops
-            .last()
-            .ok_or_else(|| SshError::Channel("the connection has no hops".to_owned()))
+    pub(crate) fn is_closed(&self) -> bool {
+        self.handle.is_closed()
     }
 
-    pub(crate) async fn close(self) {
-        for handle in self.hops.iter().rev() {
-            let farewell = handle.disconnect(Disconnect::ByApplication, "", LANGUAGE_TAG);
-            let _ = time::timeout(CLOSE_LIMIT, farewell).await;
-        }
+    pub(crate) async fn open_session(&self) -> Result<Channel<Msg>, SshError> {
+        self.handle
+            .channel_open_session()
+            .await
+            .map_err(|error| SshError::Channel(error.to_string()))
+    }
+
+    pub(crate) async fn open_direct(
+        &self,
+        host: &str,
+        port: u16,
+        originator: SocketAddr,
+    ) -> Result<Channel<Msg>, SshError> {
+        self.handle
+            .channel_open_direct_tcpip(
+                host,
+                u32::from(port),
+                originator.ip().to_string(),
+                u32::from(originator.port()),
+            )
+            .await
+            .map_err(|error| SshError::Channel(error.to_string()))
+    }
+
+    pub(crate) async fn close(&self) {
+        let farewell = self
+            .handle
+            .disconnect(Disconnect::ByApplication, "", LANGUAGE_TAG);
+
+        let _ = time::timeout(CLOSE_LIMIT, farewell).await;
     }
 }
 
 fn client_config(known_hosts: &KnownHosts, hop: &Target) -> Config {
     let mut config = Config {
         nodelay: true,
+        keepalive_interval: Some(KEEPALIVE_INTERVAL),
+        keepalive_max: KEEPALIVE_MISSES,
         ..Config::default()
     };
 

@@ -1,10 +1,11 @@
 use std::io;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum SshError {
     #[error("ssh config: {0}")]
     Config(String),
@@ -46,8 +47,43 @@ pub enum SshError {
     )]
     CommandTimeout { limit: Duration, ended: bool },
 
+    #[error("the connection was lost before the command finished")]
+    ConnectionLost,
+
+    #[error("the connection pool has shut down")]
+    PoolClosed,
+
+    #[error("sftp {operation} {path}: {reason}")]
+    Sftp {
+        operation: &'static str,
+        path: String,
+        reason: String,
+    },
+
+    #[error("sftp {operation} {path}: the sftp session was lost: {reason}")]
+    SftpLost {
+        operation: &'static str,
+        path: String,
+        reason: String,
+    },
+
+    #[error("the sftp session closed")]
+    SftpClosed,
+
+    #[error("cannot listen on 127.0.0.1:{port}: {reason}")]
+    Listen { port: u16, reason: String },
+
+    #[error("refused a local connection: {limit} connections are already open through the tunnel")]
+    TunnelBusy { limit: usize },
+
     #[error(transparent)]
-    Io(#[from] io::Error),
+    Io(Arc<io::Error>),
+}
+
+impl From<io::Error> for SshError {
+    fn from(error: io::Error) -> Self {
+        Self::Io(Arc::new(error))
+    }
 }
 
 fn remote_state(ended: bool) -> &'static str {

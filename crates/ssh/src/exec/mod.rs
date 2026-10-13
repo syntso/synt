@@ -9,5 +9,5 @@ use collector::Collector;
 pub use exec::exec;
 pub use limits::ExecLimits;
 pub use output::ExecOutput;
-use signal_name::signal_name;
+pub(crate) use signal_name::signal_name;
 use stream_buffer::StreamBuffer;

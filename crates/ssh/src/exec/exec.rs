@@ -5,12 +5,12 @@ use russh::{Channel, ChannelMsg, Sig};
 use tokio::time;
 
 use super::{Collector, ExecLimits, ExecOutput};
-use crate::session::Connection;
-use crate::{SshError, Target};
+use crate::{Lease, Pool, SshError, Target};
 
 const STOP_GRACE: Duration = Duration::from_secs(2);
 
 pub async fn exec(
+    pool: &Pool,
     target: &Target,
     command: &str,
     limits: ExecLimits,
@@ -18,25 +18,22 @@ pub async fn exec(
     let started = Instant::now();
     let deadline = time::Instant::from_std(started) + limits.timeout;
 
-    let connection = time::timeout_at(deadline, Connection::open(target))
+    let lease = time::timeout_at(deadline, pool.acquire(target))
         .await
         .map_err(|_| SshError::Timeout(limits.timeout))??;
 
-    let outcome = run(&connection, command, limits, deadline).await;
-    connection.close().await;
-
-    let collected = outcome?;
+    let collected = run(&lease, command, limits, deadline).await?;
 
     Ok(collected.finish(milliseconds(started.elapsed())))
 }
 
 async fn run(
-    connection: &Connection,
+    lease: &Lease,
     command: &str,
     limits: ExecLimits,
     deadline: time::Instant,
 ) -> Result<Collector, SshError> {
-    let mut channel = time::timeout_at(deadline, start(connection, command))
+    let mut channel = time::timeout_at(deadline, start(lease, command))
         .await
         .map_err(|_| SshError::Timeout(limits.timeout))??;
 
@@ -49,12 +46,8 @@ async fn run(
     }
 }
 
-async fn start(connection: &Connection, command: &str) -> Result<Channel<Msg>, SshError> {
-    let channel = connection
-        .target()?
-        .channel_open_session()
-        .await
-        .map_err(|error| SshError::Channel(error.to_string()))?;
+async fn start(lease: &Lease, command: &str) -> Result<Channel<Msg>, SshError> {
+    let channel = lease.open_session().await?;
 
     channel
         .exec(true, command)

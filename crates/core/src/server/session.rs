@@ -20,9 +20,11 @@ use super::greeting;
 use super::outgoing;
 use crate::broker::Registration;
 use crate::core::Core;
+use crate::link::Link;
 
-const REQUEST_FRAME_LIMIT: usize = 64 * 1024;
+const REQUEST_FRAME_LIMIT: usize = 1024 * 1024;
 const OUTGOING_BACKLOG: usize = 64;
+const STREAM_BACKLOG: usize = 256;
 const IN_FLIGHT_LIMIT: usize = 32;
 const HANDSHAKE_LIMIT: Duration = Duration::from_secs(5);
 
@@ -36,6 +38,7 @@ pub(super) struct Session {
     apps: Arc<AppCheck>,
     replies: mpsc::Sender<Message>,
     in_flight: Arc<Semaphore>,
+    link: Arc<Link>,
 }
 
 impl Session {
@@ -50,7 +53,8 @@ impl Session {
 
         let (mut incoming, outgoing) = split_framed(stream, REQUEST_FRAME_LIMIT);
         let (replies, queue) = mpsc::channel(OUTGOING_BACKLOG);
-        let writer = tokio::spawn(outgoing::write_all(outgoing, queue));
+        let (frames, streams) = mpsc::channel(STREAM_BACKLOG);
+        let writer = tokio::spawn(outgoing::write_all(outgoing, queue, streams));
 
         let session = Self {
             core,
@@ -60,6 +64,7 @@ impl Session {
             apps,
             replies,
             in_flight: Arc::new(Semaphore::new(IN_FLIGHT_LIMIT)),
+            link: Arc::new(Link::new(frames)),
         };
         session.run(&mut incoming, peer).await;
 
@@ -112,7 +117,7 @@ impl Session {
         tokio::select! {
             () = self.stop.cancelled() => None,
             () = self.replies.closed() => None,
-            next = read_message(incoming, &self.in_flight) => next,
+            next = read_message(incoming, &self.in_flight, &self.link) => next,
         }
     }
 
@@ -133,10 +138,11 @@ impl Session {
         let actor = Arc::clone(actor);
         let replies = self.replies.clone();
         let departed = self.departed.clone();
+        let link = Arc::clone(&self.link);
 
         self.tasks.spawn(async move {
             let id = request.id;
-            let outcome = answer(&core, &actor, request, &departed).await;
+            let outcome = answer(&core, &actor, request, &departed, &link).await;
 
             let _ = replies.send(Response::new(Some(id), outcome).into()).await;
             drop(permit);
@@ -147,12 +153,15 @@ impl Session {
 async fn read_message(
     incoming: &mut Incoming,
     in_flight: &Arc<Semaphore>,
+    link: &Link,
 ) -> Option<(OwnedSemaphorePermit, Bytes)> {
-    let permit = Arc::clone(in_flight).acquire_owned().await.ok()?;
-
     loop {
-        if let Frame::Message(body) = incoming.next().await?.ok()? {
-            return Some((permit, body));
+        match incoming.next().await?.ok()? {
+            Frame::Message(body) => {
+                let permit = Arc::clone(in_flight).acquire_owned().await.ok()?;
+                return Some((permit, body));
+            }
+            Frame::Stream { stream, data } => link.deliver(stream, data),
         }
     }
 }
@@ -162,11 +171,12 @@ async fn answer(
     actor: &Actor,
     request: Request,
     departed: &CancellationToken,
+    link: &Arc<Link>,
 ) -> Result<Value, RpcError> {
     match request.method() {
         Some(Method::ActionCall) => {
             let call: ActionCall = request.into_params()?;
-            let outcome = core.dispatch(actor, call, departed).await?;
+            let outcome = core.dispatch(actor, call, departed, link).await?;
 
             serde_json::to_value(outcome).map_err(|error| {
                 eprintln!("synt-core: outcome: {error}");

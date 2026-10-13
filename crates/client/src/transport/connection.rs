@@ -1,29 +1,33 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use bytes::Bytes;
 use futures_util::SinkExt;
 use serde::Serialize;
 use serde_json::Value;
 use synt_proto::{
     Frame, FrameCodec, FrameError, FrameWriter, Message, Method, Notification, Request, RequestId,
-    split_framed,
+    StreamId, split_framed,
 };
 use tokio::sync::{Mutex, broadcast};
 use tokio::task::JoinHandle;
 
 use super::Duplex;
+use super::Streams;
 use super::pending::Pending;
 use super::reader;
-use crate::ClientError;
+use crate::{ClientError, StreamReceiver};
 
 type Outgoing = FrameWriter<Box<dyn Duplex>>;
 
 const NOTIFICATION_BACKLOG: usize = 64;
+const STREAM_CHUNK: usize = 32 * 1024;
 
 pub(crate) struct Connection {
     outgoing: Mutex<Outgoing>,
     pending: Arc<Pending>,
-    notifications: broadcast::Sender<Notification>,
+    notifications: broadcast::WeakSender<Notification>,
+    streams: Arc<Streams>,
     next_id: AtomicU64,
     reader: JoinHandle<()>,
 }
@@ -36,13 +40,22 @@ impl Connection {
         let pending = Arc::new(Pending::new());
         let (notifications, _) = broadcast::channel(NOTIFICATION_BACKLOG);
 
-        let routed = reader::route(incoming, Arc::clone(&pending), notifications.clone());
+        let streams = Arc::new(Streams::new());
+
+        let routed = reader::route(
+            incoming,
+            Arc::clone(&pending),
+            notifications.clone(),
+            Arc::clone(&streams),
+        );
+        let notifications = notifications.downgrade();
         let reader = tokio::spawn(routed);
 
         Self {
             outgoing: Mutex::new(outgoing),
             pending,
             notifications,
+            streams,
             next_id: AtomicU64::new(1),
             reader,
         }
@@ -65,7 +78,33 @@ impl Connection {
     }
 
     pub(crate) fn subscribe(&self) -> broadcast::Receiver<Notification> {
-        self.notifications.subscribe()
+        match self.notifications.upgrade() {
+            Some(notifications) => notifications.subscribe(),
+            None => broadcast::channel(1).1,
+        }
+    }
+
+    pub(crate) fn claim(&self, stream: StreamId) -> StreamReceiver {
+        self.streams.claim(stream)
+    }
+
+    pub(crate) async fn send_stream(
+        &self,
+        stream: StreamId,
+        data: Bytes,
+    ) -> Result<(), ClientError> {
+        for start in (0..data.len()).step_by(STREAM_CHUNK) {
+            let end = (start + STREAM_CHUNK).min(data.len());
+            let chunk = data.slice(start..end);
+
+            self.send(Frame::Stream {
+                stream,
+                data: chunk,
+            })
+            .await?;
+        }
+
+        Ok(())
     }
 
     fn next_id(&self) -> RequestId {
