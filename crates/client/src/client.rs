@@ -75,7 +75,7 @@ mod tests {
     use serde_json::{Value, json};
     use synt_proto::{
         ActionCall, ClientKind, ErrorCode, Frame, FrameCodec, Hello, Message, Method,
-        ProtocolVersion, Request, RequestId, Response, RpcError, Welcome,
+        ProtocolVersion, Request, RequestId, Requester, Response, RpcError, Welcome,
     };
     use tokio::io::DuplexStream;
     use tokio::time;
@@ -124,6 +124,7 @@ mod tests {
             let welcome = Welcome {
                 protocol: ProtocolVersion::CURRENT,
                 core: "test".to_owned(),
+                actor: Requester::Person,
             };
             self.reply(hello.id, Ok(serde_json::to_value(welcome).unwrap()))
                 .await;

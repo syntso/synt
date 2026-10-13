@@ -1,4 +1,6 @@
-use std::path::Path;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OpenFlags};
 
@@ -6,25 +8,17 @@ use super::schema;
 use crate::chain::JournalId;
 use crate::error::JournalError;
 
+const PENDING_SUFFIX: &str = ".pending";
+const ROLLBACK_SUFFIX: &str = "-journal";
+
 pub(super) fn create(path: &Path, journal: JournalId) -> Result<Connection, JournalError> {
-    let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
-        | OpenFlags::SQLITE_OPEN_CREATE
-        | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-    let mut connection = Connection::open_with_flags(path, flags)?;
+    let pending = sibling(path, PENDING_SUFFIX);
+    remove_stale(&pending)?;
 
-    connection.pragma_update(None, "auto_vacuum", "INCREMENTAL")?;
-    durable(&connection)?;
+    build(&pending, journal)?;
+    fs::rename(&pending, path)?;
 
-    let transaction = connection.transaction()?;
-    transaction.execute_batch(schema::CREATE)?;
-    transaction.execute(
-        "INSERT INTO meta (key, value) VALUES (?1, ?2)",
-        (schema::ID_KEY, journal.as_bytes().as_slice()),
-    )?;
-    transaction.pragma_update(None, "user_version", schema::VERSION)?;
-    transaction.commit()?;
-
-    Ok(connection)
+    open_writable(path)
 }
 
 pub(super) fn open_writable(path: &Path) -> Result<Connection, JournalError> {
@@ -56,6 +50,48 @@ pub(super) fn journal_id(connection: &Connection) -> Result<JournalId, JournalEr
         .try_into()
         .map_err(|_| JournalError::NotAJournal("journal id has the wrong length"))?;
     Ok(JournalId::from_bytes(bytes))
+}
+
+fn build(path: &Path, journal: JournalId) -> Result<(), JournalError> {
+    let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
+        | OpenFlags::SQLITE_OPEN_CREATE
+        | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+    let mut connection = Connection::open_with_flags(path, flags)?;
+
+    connection.pragma_update(None, "auto_vacuum", "INCREMENTAL")?;
+    connection.pragma_update(None, "synchronous", "FULL")?;
+    connection.pragma_update(None, "fullfsync", true)?;
+
+    let transaction = connection.transaction()?;
+    transaction.execute_batch(schema::CREATE)?;
+    transaction.execute(
+        "INSERT INTO meta (key, value) VALUES (?1, ?2)",
+        (schema::ID_KEY, journal.as_bytes().as_slice()),
+    )?;
+    transaction.pragma_update(None, "user_version", schema::VERSION)?;
+    transaction.commit()?;
+
+    connection.close().map_err(|(_, error)| error)?;
+    Ok(())
+}
+
+fn remove_stale(pending: &Path) -> Result<(), JournalError> {
+    for path in [pending.to_owned(), sibling(pending, ROLLBACK_SUFFIX)] {
+        match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    Ok(())
+}
+
+fn sibling(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(suffix);
+
+    PathBuf::from(name)
 }
 
 fn durable(connection: &Connection) -> Result<(), JournalError> {

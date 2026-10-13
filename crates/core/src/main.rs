@@ -1,13 +1,16 @@
 use std::env;
 use std::error::Error;
+use std::path::{self, Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::Arc;
 
 use synt_actions::Registry;
-use synt_core::{Broker, Core, JournalPage, JournalVerify, Ping, Server, SshExec, VERSION};
-use synt_journal::{Journal, JournalWriter, MemoryKeyStore};
-use synt_platform::{Endpoint, shutdown_signal};
-use tempfile::TempDir;
+use synt_core::{
+    Broker, Core, JournalPage, JournalVerify, Ping, Server, SshExec, Storage, VERSION,
+};
+use synt_journal::{Journal, JournalWriter};
+use synt_platform::{
+    AppCheck, Endpoint, WEAK_VAULT_FLAG, WeakVault, data_directory, open_vault, shutdown_signal,
+};
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -21,15 +24,28 @@ async fn main() -> ExitCode {
 }
 
 const ENDPOINT_FLAG: &str = "--endpoint";
-const TRUST_FLAG: &str = "--trust-local-app";
+const DATA_FLAG: &str = "--data";
+
+struct Arguments {
+    endpoint: Option<Endpoint>,
+    data: Option<PathBuf>,
+    weak_vault: WeakVault,
+}
 
 async fn run() -> Result<(), Box<dyn Error>> {
-    let (endpoint, trust_local_app) = arguments()?;
-    let scratch = scratch_directory()?;
+    let arguments = arguments()?;
 
-    let keys = Arc::new(MemoryKeyStore::new()?);
-    let journal = Journal::create(scratch.path().join("journal.sqlite"), keys)?;
-    let journal = JournalWriter::spawn(journal)?;
+    let endpoint = match arguments.endpoint {
+        Some(endpoint) => endpoint,
+        None => Endpoint::for_user()?,
+    };
+
+    let data = match arguments.data {
+        Some(data) => path::absolute(data)?,
+        None => data_directory()?,
+    };
+
+    let journal = JournalWriter::spawn(journal(&data, arguments.weak_vault)?)?;
 
     let mut registry = Registry::new();
     registry.register(Ping)?;
@@ -38,66 +54,89 @@ async fn run() -> Result<(), Box<dyn Error>> {
     registry.register(JournalVerify::new(journal.clone()))?;
 
     let core = Core::new(registry, journal, Broker::new());
-    let server = trusting(Server::bind(&endpoint, core)?, trust_local_app);
+    let server = Server::bind(&endpoint, core, apps()?)?;
 
     eprintln!(
         "synt-core {VERSION} listening on {}",
         endpoint.address().to_string_lossy()
     );
-    eprintln!(
-        "journal is temporary until platform key storage lands: {}",
-        scratch.path().display()
-    );
 
     server.run(shutdown_signal()).await;
 
-    scratch.close()?;
     Ok(())
 }
 
-fn arguments() -> Result<(Endpoint, bool), Box<dyn Error>> {
-    let mut endpoint = None;
-    let mut trust_local_app = false;
+fn journal(data: &Path, weak_vault: WeakVault) -> Result<Journal, Box<dyn Error>> {
+    let vault = open_vault(data, weak_vault)?;
+    let place = vault.place();
+    eprintln!("journal keys are kept in {place}");
+
+    if let Some(weakness) = place.weakness() {
+        eprintln!("warning: {weakness}");
+        eprintln!("warning: {}", weak_vault_reason(weak_vault));
+    }
+
+    let journal = Storage::prepare(data, vault)?.journal()?;
+
+    eprintln!(
+        "journal {} at {}, last event {}",
+        journal.id(),
+        journal.path().display(),
+        journal.anchors().head.seq
+    );
+
+    Ok(journal)
+}
+
+fn apps() -> Result<AppCheck, Box<dyn Error>> {
+    let apps = AppCheck::for_this_core()?;
+    eprintln!("a client that says it is the app acts for the person only if {apps}");
+
+    if let Some(weakness) = apps.weakness() {
+        eprintln!("warning: {weakness}");
+    }
+
+    Ok(apps)
+}
+
+fn arguments() -> Result<Arguments, Box<dyn Error>> {
+    let mut parsed = Arguments {
+        endpoint: None,
+        data: None,
+        weak_vault: WeakVault::Refuse,
+    };
     let mut arguments = env::args_os().skip(1);
 
     while let Some(argument) = arguments.next() {
-        if argument == TRUST_FLAG {
-            trust_local_app = true;
+        if argument == WEAK_VAULT_FLAG {
+            parsed.weak_vault = WeakVault::Allow;
             continue;
         }
 
-        if argument != ENDPOINT_FLAG {
+        if argument != ENDPOINT_FLAG && argument != DATA_FLAG {
             return Err(format!("unknown argument {}", argument.to_string_lossy()).into());
         }
 
-        let address = arguments
+        let value = arguments
             .next()
-            .ok_or_else(|| format!("{ENDPOINT_FLAG} needs an address"))?;
-        endpoint = Some(Endpoint::new(address));
+            .ok_or_else(|| format!("{} needs a value", argument.to_string_lossy()))?;
+
+        if argument == ENDPOINT_FLAG {
+            parsed.endpoint = Some(Endpoint::new(value));
+        } else {
+            parsed.data = Some(PathBuf::from(value));
+        }
     }
 
-    let endpoint = match endpoint {
-        Some(endpoint) => endpoint,
-        None => Endpoint::for_user()?,
-    };
-
-    Ok((endpoint, trust_local_app))
+    Ok(parsed)
 }
 
-fn trusting(server: Server, trust_local_app: bool) -> Server {
-    if !trust_local_app {
-        eprintln!(
-            "apps are not verified yet, so a local app acts as the agent \"app\" and cannot \
-             approve; pass {TRUST_FLAG} to let it act for the person during development"
-        );
-        return server;
+fn weak_vault_reason(weak_vault: WeakVault) -> String {
+    match weak_vault {
+        WeakVault::Allow => format!("allowed by {WEAK_VAULT_FLAG}, which is for development only"),
+        WeakVault::Refuse => format!(
+            "allowed only because this is a debug build; a release build refuses this \
+             without {WEAK_VAULT_FLAG}"
+        ),
     }
-
-    eprintln!("{TRUST_FLAG}: any local process that says it is the app acts for the person");
-    server.trusting_local_apps()
-}
-
-fn scratch_directory() -> Result<TempDir, Box<dyn Error>> {
-    let directory = tempfile::Builder::new().prefix("synt-core-").tempdir()?;
-    Ok(directory)
 }

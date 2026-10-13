@@ -26,6 +26,10 @@ impl KeyStore for FlakyKeyStore {
         self.inner.device_key()
     }
 
+    fn ensure_device_key(&self) -> Result<DeviceKey, KeyStoreError> {
+        self.inner.ensure_device_key()
+    }
+
     fn anchors(&self, journal: JournalId) -> Result<Option<Anchors>, KeyStoreError> {
         self.inner.anchors(journal)
     }

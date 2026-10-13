@@ -53,7 +53,7 @@ pub enum JournalError {
     #[error("event {seq} cannot be read: {reason}")]
     Corrupt { seq: Seq, reason: &'static str },
 
-    #[error("journal was tampered with: {0:?}")]
+    #[error("journal was tampered with: {0}")]
     Tampered(Verification),
 
     #[error("the journal writer has stopped")]

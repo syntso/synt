@@ -1,18 +1,35 @@
+use std::io;
+
 use serde_json::Value;
 use synt_journal::{Actor, Name};
+use synt_platform::{AppCheck, Peer};
 use synt_proto::{
-    ClientKind, ErrorCode, Hello, Message, Method, ProtocolVersion, Request, RequestId, RpcError,
-    Welcome,
+    ClientKind, ErrorCode, Hello, Message, Method, ProtocolVersion, RequestId, RpcError, Welcome,
 };
 
-use super::AppTrust;
 use crate::VERSION;
+use crate::broker::requester;
 
-const UNVERIFIED_APP: &str = "app";
+const UNVERIFIED_APP: &str = "unverified-app";
 
 pub(super) type Greeted = Result<(Actor, Value), RpcError>;
 
-pub(super) fn answer_first(body: &[u8], trust: AppTrust) -> (Option<RequestId>, Greeted) {
+pub(super) async fn answer_first(
+    body: &[u8],
+    peer: io::Result<Peer>,
+    apps: &AppCheck,
+) -> (Option<RequestId>, Greeted) {
+    let (id, hello) = read_hello(body);
+
+    let greeted = match hello {
+        Ok(hello) => greet(hello, peer, apps).await,
+        Err(error) => Err(error),
+    };
+
+    (id, greeted)
+}
+
+fn read_hello(body: &[u8]) -> (Option<RequestId>, Result<Hello, RpcError>) {
     let request = match Message::decode(body) {
         Ok(Message::Request(request)) => request,
         Ok(Message::Response(_) | Message::Notification(_)) => {
@@ -25,62 +42,75 @@ pub(super) fn answer_first(body: &[u8], trust: AppTrust) -> (Option<RequestId>, 
         Err(error) => return (None, Err(error)),
     };
 
-    let greeted = greet(&request, trust).and_then(|(actor, welcome)| {
-        let welcome = serde_json::to_value(welcome)
-            .map_err(|_| RpcError::internal("the welcome cannot be encoded"))?;
-
-        Ok((actor, welcome))
-    });
-
-    (Some(request.id), greeted)
-}
-
-fn greet(request: &Request, trust: AppTrust) -> Result<(Actor, Welcome), RpcError> {
     if request.method() != Some(Method::Hello) {
-        return Err(RpcError::new(
+        let refused = RpcError::new(
             ErrorCode::HANDSHAKE_REQUIRED,
             "the first request must be hello",
-        ));
+        );
+        return (Some(request.id), Err(refused));
     }
 
-    let hello: Hello = request.params()?;
+    let hello = request.params().and_then(speaks_our_protocol);
+    (Some(request.id), hello)
+}
 
-    if !ProtocolVersion::CURRENT.speaks_with(hello.protocol) {
-        return Err(RpcError::new(
-            ErrorCode::PROTOCOL_MISMATCH,
-            format!(
-                "core speaks protocol {}, the client speaks {}",
-                ProtocolVersion::CURRENT,
-                hello.protocol
-            ),
-        ));
+fn speaks_our_protocol(hello: Hello) -> Result<Hello, RpcError> {
+    if ProtocolVersion::CURRENT.speaks_with(hello.protocol) {
+        return Ok(hello);
     }
 
-    let actor = actor_for(hello.client, trust)?;
+    Err(RpcError::new(
+        ErrorCode::PROTOCOL_MISMATCH,
+        format!(
+            "core speaks protocol {}, the client speaks {}",
+            ProtocolVersion::CURRENT,
+            hello.protocol
+        ),
+    ))
+}
+
+async fn greet(hello: Hello, peer: io::Result<Peer>, apps: &AppCheck) -> Greeted {
+    let actor = match hello.client {
+        ClientKind::App => app(peer, apps).await?,
+        ClientKind::Agent { name } => agent(name)?,
+    };
+
     let welcome = Welcome {
         protocol: ProtocolVersion::CURRENT,
         core: VERSION.to_owned(),
+        actor: requester(&actor),
     };
+    let welcome = serde_json::to_value(welcome)
+        .map_err(|_| RpcError::internal("the welcome cannot be encoded"))?;
 
     Ok((actor, welcome))
 }
 
-fn actor_for(client: ClientKind, trust: AppTrust) -> Result<Actor, RpcError> {
-    match (client, trust) {
-        (ClientKind::App, AppTrust::TrustedLocally) => Ok(Actor::Person),
-        (ClientKind::App, AppTrust::Unverified) => {
-            let name = Name::new(UNVERIFIED_APP)
-                .map_err(|_| RpcError::internal("the unverified app name is invalid"))?;
+async fn app(peer: io::Result<Peer>, apps: &AppCheck) -> Result<Actor, RpcError> {
+    let verdict = match peer {
+        Ok(peer) => apps.verify(peer).await.map_err(|error| error.to_string()),
+        Err(error) => Err(format!(
+            "the system cannot say which process says it is the app: {error}"
+        )),
+    };
 
-            Ok(Actor::Agent(name))
-        }
-        (ClientKind::Agent { name }, _) => {
-            let name = Name::new(name)
-                .map_err(|error| RpcError::invalid_params(format!("agent name: {error}")))?;
+    let Err(reason) = verdict else {
+        return Ok(Actor::Person);
+    };
 
-            Ok(Actor::Agent(name))
-        }
-    }
+    eprintln!(
+        "synt-core: {reason}; it acts as the agent {UNVERIFIED_APP} and cannot answer approvals"
+    );
+
+    Name::new(UNVERIFIED_APP)
+        .map(Actor::Agent)
+        .map_err(|_| RpcError::internal("the unverified app name is invalid"))
+}
+
+fn agent(name: String) -> Result<Actor, RpcError> {
+    Name::new(name)
+        .map(Actor::Agent)
+        .map_err(|error| RpcError::invalid_params(format!("agent name: {error}")))
 }
 
 #[cfg(test)]
@@ -92,41 +122,23 @@ mod tests {
         Response,
     };
 
-    use super::{answer_first, greet};
-    use crate::server::AppTrust;
+    use super::{agent, read_hello};
 
-    fn hello(hello: &Hello) -> Request {
-        Request::new(RequestId(1), Method::Hello, hello).unwrap()
-    }
-
-    #[test]
-    fn the_app_acts_for_the_person() {
-        let (actor, welcome) = greet(
-            &hello(&Hello::new(ClientKind::App, "test")),
-            AppTrust::TrustedLocally,
-        )
-        .unwrap();
-
-        assert_eq!(actor, Actor::Person);
-        assert_eq!(welcome.protocol, ProtocolVersion::CURRENT);
+    fn encoded(hello: &Hello) -> Vec<u8> {
+        let request = Request::new(RequestId(1), Method::Hello, hello).unwrap();
+        Message::from(request).encode().unwrap().to_vec()
     }
 
     #[test]
     fn agents_act_under_their_own_name() {
-        let kind = ClientKind::Agent {
-            name: "agent-1".to_owned(),
-        };
-        let (actor, _) = greet(&hello(&Hello::new(kind, "test")), AppTrust::Unverified).unwrap();
+        let actor = agent("agent-1".to_owned()).unwrap();
 
         assert!(matches!(actor, Actor::Agent(name) if name.as_str() == "agent-1"));
     }
 
     #[test]
     fn agent_names_are_validated() {
-        let kind = ClientKind::Agent {
-            name: "evil\nname".to_owned(),
-        };
-        let error = greet(&hello(&Hello::new(kind, "test")), AppTrust::Unverified).unwrap_err();
+        let error = agent("evil\nname".to_owned()).unwrap_err();
 
         assert_eq!(error.code, ErrorCode::INVALID_PARAMS);
     }
@@ -136,21 +148,19 @@ mod tests {
         let mut future = Hello::new(ClientKind::App, "test");
         future.protocol = ProtocolVersion { major: 2, minor: 0 };
 
-        assert_eq!(
-            greet(&hello(&future), AppTrust::TrustedLocally)
-                .unwrap_err()
-                .code,
-            ErrorCode::PROTOCOL_MISMATCH
-        );
+        let (_, hello) = read_hello(&encoded(&future));
+
+        assert_eq!(hello.unwrap_err().code, ErrorCode::PROTOCOL_MISMATCH);
     }
 
     #[test]
     fn anything_else_first_is_refused() {
         let call = Request::new(RequestId(1), Method::ActionCall, &json!({})).unwrap();
-        assert_eq!(
-            greet(&call, AppTrust::TrustedLocally).unwrap_err().code,
-            ErrorCode::HANDSHAKE_REQUIRED
-        );
+        let body = Message::from(call).encode().unwrap();
+
+        let (_, hello) = read_hello(&body);
+
+        assert_eq!(hello.unwrap_err().code, ErrorCode::HANDSHAKE_REQUIRED);
     }
 
     #[test]
@@ -158,20 +168,17 @@ mod tests {
         let response = Response::new(Some(RequestId(9)), Ok(json!(null)));
         let body = Message::from(response).encode().unwrap();
 
-        let (id, greeted) = answer_first(&body, AppTrust::TrustedLocally);
+        let (id, hello) = read_hello(&body);
 
         assert_eq!(id, None);
-        assert_eq!(greeted.unwrap_err().code, ErrorCode::HANDSHAKE_REQUIRED);
+        assert_eq!(hello.unwrap_err().code, ErrorCode::HANDSHAKE_REQUIRED);
     }
 
     #[test]
     fn a_hello_is_answered_under_its_own_id() {
-        let request = hello(&Hello::new(ClientKind::App, "test"));
-        let body = Message::from(request).encode().unwrap();
-
-        let (id, greeted) = answer_first(&body, AppTrust::TrustedLocally);
+        let (id, hello) = read_hello(&encoded(&Hello::new(ClientKind::App, "test")));
 
         assert_eq!(id, Some(RequestId(1)));
-        assert_eq!(greeted.unwrap().0, Actor::Person);
+        assert_eq!(hello.unwrap().client, ClientKind::App);
     }
 }

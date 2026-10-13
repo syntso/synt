@@ -3,7 +3,7 @@ use std::fs::{self, DirBuilder, File, OpenOptions, Permissions, TryLockError};
 use std::io;
 use std::os::unix::fs::{DirBuilderExt, FileTypeExt, MetadataExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
-use std::path::{Path, PathBuf};
+use std::path::{self, Path, PathBuf};
 
 use tokio::net::UnixListener;
 
@@ -21,12 +21,12 @@ pub(crate) struct Listener {
 
 impl Listener {
     pub(crate) fn bind(address: &OsStr) -> io::Result<Self> {
-        let path = PathBuf::from(address);
+        let path = path::absolute(address)?;
         let lock = lock_beside(&path)?;
 
         clear_stale_socket(&path)?;
 
-        let socket = UnixListener::bind(&path)?;
+        let socket = UnixListener::bind(address)?;
         fs::set_permissions(&path, Permissions::from_mode(PRIVATE_SOCKET))?;
 
         Ok(Self {

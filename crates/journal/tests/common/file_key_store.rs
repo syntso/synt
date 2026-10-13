@@ -33,17 +33,21 @@ impl FileKeyStore {
 
 impl KeyStore for FileKeyStore {
     fn device_key(&self) -> Result<DeviceKey, KeyStoreError> {
-        let path = self.key_path();
+        let bytes = fs::read(self.key_path()).map_err(KeyStoreError::new)?;
+        let bytes: [u8; 32] = bytes
+            .try_into()
+            .map_err(|_| KeyStoreError::new("bad key file"))?;
 
-        if let Ok(bytes) = fs::read(&path) {
-            let bytes: [u8; 32] = bytes
-                .try_into()
-                .map_err(|_| KeyStoreError::new("bad key file"))?;
-            return Ok(DeviceKey::from_bytes(bytes));
+        Ok(DeviceKey::from_bytes(bytes))
+    }
+
+    fn ensure_device_key(&self) -> Result<DeviceKey, KeyStoreError> {
+        if self.key_path().exists() {
+            return self.device_key();
         }
 
         let key = DeviceKey::generate().map_err(KeyStoreError::new)?;
-        Self::write_atomically(&path, key.expose()).map_err(KeyStoreError::new)?;
+        Self::write_atomically(&self.key_path(), key.expose()).map_err(KeyStoreError::new)?;
 
         Ok(key)
     }

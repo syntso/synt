@@ -2,7 +2,7 @@ use std::io;
 use std::time::Duration;
 
 use synt_core::{Core, Server};
-use synt_platform::Endpoint;
+use synt_platform::{AppCheck, Endpoint};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time;
@@ -16,7 +16,7 @@ pub struct RunningServer {
 
 impl RunningServer {
     pub fn spawn(endpoint: &Endpoint, core: Core) -> io::Result<Self> {
-        let server = Server::bind(endpoint, core)?.trusting_local_apps();
+        let server = Server::bind(endpoint, core, AppCheck::for_this_core().unwrap())?;
         let (shutdown, signal) = oneshot::channel::<()>();
 
         let task = tokio::spawn(server.run(async move {

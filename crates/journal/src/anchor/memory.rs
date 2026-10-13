@@ -36,6 +36,10 @@ impl KeyStore for MemoryKeyStore {
         Ok(self.device_key.clone())
     }
 
+    fn ensure_device_key(&self) -> Result<DeviceKey, KeyStoreError> {
+        self.device_key()
+    }
+
     fn anchors(&self, journal: JournalId) -> Result<Option<Anchors>, KeyStoreError> {
         Ok(self.lock().get(&journal).copied())
     }

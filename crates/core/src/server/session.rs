@@ -1,3 +1,4 @@
+use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -5,7 +6,7 @@ use bytes::Bytes;
 use futures_util::StreamExt;
 use serde_json::{Value, json};
 use synt_journal::Actor;
-use synt_platform::LocalStream;
+use synt_platform::{AppCheck, LocalStream, Peer};
 use synt_proto::{
     ActionCall, ApprovalAnswer, ErrorCode, Frame, FrameReader, Message, Method, Request, Response,
     RpcError, split_framed,
@@ -15,7 +16,6 @@ use tokio::time;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use super::AppTrust;
 use super::greeting;
 use super::outgoing;
 use crate::broker::Registration;
@@ -33,7 +33,7 @@ pub(super) struct Session {
     tasks: TaskTracker,
     stop: CancellationToken,
     departed: CancellationToken,
-    trust: AppTrust,
+    apps: Arc<AppCheck>,
     replies: mpsc::Sender<Message>,
     in_flight: Arc<Semaphore>,
 }
@@ -44,8 +44,10 @@ impl Session {
         core: Arc<Core>,
         tasks: TaskTracker,
         stop: CancellationToken,
-        trust: AppTrust,
+        apps: Arc<AppCheck>,
     ) {
+        let peer = stream.peer().await;
+
         let (mut incoming, outgoing) = split_framed(stream, REQUEST_FRAME_LIMIT);
         let (replies, queue) = mpsc::channel(OUTGOING_BACKLOG);
         let writer = tokio::spawn(outgoing::write_all(outgoing, queue));
@@ -55,19 +57,19 @@ impl Session {
             tasks,
             stop,
             departed: CancellationToken::new(),
-            trust,
+            apps,
             replies,
             in_flight: Arc::new(Semaphore::new(IN_FLIGHT_LIMIT)),
         };
-        session.run(&mut incoming).await;
+        session.run(&mut incoming, peer).await;
 
         let _ = writer.await;
     }
 
-    async fn run(self, incoming: &mut Incoming) {
+    async fn run(self, incoming: &mut Incoming, peer: io::Result<Peer>) {
         let _departure = self.departed.clone().drop_guard();
 
-        let Some(actor) = self.greet(incoming).await else {
+        let Some(actor) = self.greet(incoming, peer).await else {
             return;
         };
         let _registration = self.attend(&actor);
@@ -78,7 +80,7 @@ impl Session {
         }
     }
 
-    async fn greet(&self, incoming: &mut Incoming) -> Option<Actor> {
+    async fn greet(&self, incoming: &mut Incoming, peer: io::Result<Peer>) -> Option<Actor> {
         let first = tokio::select! {
             () = self.stop.cancelled() => return None,
             first = time::timeout(HANDSHAKE_LIMIT, incoming.next()) => first,
@@ -87,7 +89,7 @@ impl Session {
             return None;
         };
 
-        let (id, greeted) = greeting::answer_first(&body, self.trust);
+        let (id, greeted) = greeting::answer_first(&body, peer, &self.apps).await;
         let (actor, reply) = match greeted {
             Ok((actor, welcome)) => (Some(actor), Ok(welcome)),
             Err(error) => (None, Err(error)),

@@ -46,6 +46,7 @@ impl Journal {
 
     pub(crate) fn create_with(
         path: &Path,
+        id: JournalId,
         keys: Arc<dyn KeyStore>,
         clock: Arc<dyn Clock>,
     ) -> Result<Self, JournalError> {
@@ -55,8 +56,8 @@ impl Journal {
             return Err(JournalError::AlreadyExists(path.to_owned()));
         }
 
-        let id = JournalId::generate()?;
-        let linker = linker(keys.as_ref(), id)?;
+        let device = keys.ensure_device_key()?;
+        let linker = Linker::new(&JournalKey::derive(&device, id));
         let anchors = Anchors::genesis(linker.genesis());
 
         let db = WriteDb::create(path, id)?;
@@ -252,50 +253,56 @@ fn linker(keys: &dyn KeyStore, id: JournalId) -> Result<Linker, JournalError> {
 }
 
 fn recover(db: &WriteDb, linker: &Linker, anchors: Anchors) -> Result<Mark, JournalError> {
-    let head = anchors.head;
+    let start = before_head(db, anchors)?;
+    let mut walk = Walk::new(linker, start, anchors.head);
 
-    if head.seq > anchors.floor.seq {
-        check_head(db, head)?;
-    }
-
-    let mut walk = Walk::new(linker, head, head);
-
-    let broken = db.scan(head.seq, |row| match walk.step(row) {
+    let broken = db.scan(start.seq, |row| match walk.step(row) {
         Ok(()) => ControlFlow::Continue(()),
         Err(broken) => ControlFlow::Break(broken),
     })?;
 
-    match broken {
-        Some(broken) => Err(JournalError::Tampered(broken)),
-        None => Ok(walk.last()),
+    if let Some(broken) = broken {
+        return Err(JournalError::Tampered(broken));
+    }
+
+    if walk.last().seq < anchors.head.seq {
+        return Err(JournalError::Tampered(walk.finish()));
+    }
+
+    Ok(walk.last())
+}
+
+fn before_head(db: &WriteDb, anchors: Anchors) -> Result<Mark, JournalError> {
+    let head = anchors.head;
+
+    if head.seq <= anchors.floor.seq {
+        return Ok(head);
+    }
+
+    let previous = Seq::new(head.seq.get() - 1);
+
+    if previous == anchors.floor.seq {
+        return Ok(anchors.floor);
+    }
+
+    match db.link_at(previous)? {
+        Some(link) => Ok(Mark::new(previous, link)),
+        None => Err(JournalError::Tampered(missing_before_head(db, previous)?)),
     }
 }
 
-fn check_head(db: &WriteDb, head: Mark) -> Result<(), JournalError> {
-    let altered = Verification::Broken {
-        at: head.seq,
-        damage: Damage::Altered,
-    };
+fn missing_before_head(db: &WriteDb, previous: Seq) -> Result<Verification, JournalError> {
+    let last = db.tail()?.map_or(Seq::ORIGIN, |(seq, _)| seq);
 
-    match db.link_at(head.seq)? {
-        Some(link) if link == head.link => Ok(()),
-        Some(_) => Err(JournalError::Tampered(altered)),
-        None => {
-            let last = db.tail()?.map_or(Seq::ORIGIN, |(seq, _)| seq);
-
-            let damage = if last > head.seq {
-                Verification::Broken {
-                    at: head.seq,
-                    damage: Damage::Missing,
-                }
-            } else {
-                Verification::Truncated {
-                    last,
-                    head: head.seq,
-                }
-            };
-
-            Err(JournalError::Tampered(damage))
-        }
+    if last < previous {
+        return Ok(Verification::Truncated {
+            last,
+            head: previous.next(),
+        });
     }
+
+    Ok(Verification::Broken {
+        at: previous,
+        damage: Damage::Missing,
+    })
 }

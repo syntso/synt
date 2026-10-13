@@ -10,6 +10,7 @@ use crate::model::{Clock, SystemClock};
 pub struct JournalBuilder {
     keys: Arc<dyn KeyStore>,
     clock: Arc<dyn Clock>,
+    id: Option<JournalId>,
 }
 
 impl JournalBuilder {
@@ -17,6 +18,7 @@ impl JournalBuilder {
         Self {
             keys,
             clock: Arc::new(SystemClock),
+            id: None,
         }
     }
 
@@ -26,8 +28,19 @@ impl JournalBuilder {
         self
     }
 
+    #[must_use]
+    pub fn id(mut self, id: JournalId) -> Self {
+        self.id = Some(id);
+        self
+    }
+
     pub fn create(self, path: impl AsRef<Path>) -> Result<Journal, JournalError> {
-        Journal::create_with(path.as_ref(), self.keys, self.clock)
+        let id = match self.id {
+            Some(id) => id,
+            None => JournalId::generate()?,
+        };
+
+        Journal::create_with(path.as_ref(), id, self.keys, self.clock)
     }
 
     pub fn open(self, path: impl AsRef<Path>, id: JournalId) -> Result<Journal, JournalError> {
