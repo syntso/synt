@@ -15,6 +15,7 @@ use crate::access::{AccessRequest, Decision, Gate, Scope};
 use crate::broker::{Broker, risk_level};
 use crate::grants::{GrantId, Hold};
 use crate::link::Link;
+use crate::on_behalf::OnBehalf;
 use crate::parsed_call::ParsedCall;
 use crate::recorder::{Call, Recorder};
 
@@ -45,6 +46,30 @@ impl Core {
         departed: &CancellationToken,
         link: &Arc<Link>,
     ) -> Result<ActionOutcome, RpcError> {
+        self.dispatch_for(actor, None, call, departed, link).await
+    }
+
+    pub(crate) async fn dispatch_on_behalf(
+        &self,
+        actor: &Actor,
+        origin: OnBehalf<'_>,
+        call: ActionCall,
+        departed: &CancellationToken,
+        link: &Arc<Link>,
+    ) -> Result<ActionOutcome, RpcError> {
+        self.dispatch_for(actor, Some(origin), call, departed, link)
+            .await
+    }
+
+    async fn dispatch_for(
+        &self,
+        actor: &Actor,
+        origin: Option<OnBehalf<'_>>,
+        call: ActionCall,
+        departed: &CancellationToken,
+        link: &Arc<Link>,
+    ) -> Result<ActionOutcome, RpcError> {
+        let parent = origin.map(|origin| origin.request);
         let ParsedCall {
             action,
             handle,
@@ -52,7 +77,7 @@ impl Core {
             details,
             params,
             shown_params,
-        } = ParsedCall::from_call(call, &self.registry)?;
+        } = ParsedCall::from_call(call, &self.registry, parent)?;
 
         let call = Call {
             actor,
@@ -76,7 +101,7 @@ impl Core {
 
         let takes_target = handle.takes_target();
 
-        let prepared = match prepare_blocking(handle, call.target, params).await {
+        let prepared = match prepare_blocking(&handle, call.target, params).await {
             Ok(prepared) => prepared,
             Err(error) => return Err(self.reject(request, failed(&call, failure(&error))).await),
         };
@@ -94,11 +119,12 @@ impl Core {
 
         let access = AccessRequest {
             actor,
+            origin: origin.map(|origin| origin.actor),
             action: &action,
             risk: prepared.risk(),
             target: call.target,
             destination: prepared.destination(),
-            params: &shown_params,
+            params: prepared.shown().unwrap_or(&shown_params),
             departed,
         };
         let (request, grant) = self.admit(&call, request, &access).await?;
@@ -354,7 +380,7 @@ fn failure(error: &ActionError) -> RpcError {
 fn action_description(description: Description) -> ActionDescription {
     ActionDescription {
         id: description.id.as_str().to_owned(),
-        title: description.title.to_owned(),
+        title: description.title,
         risk: risk_level(description.risk),
         person_only: description.person_only,
         takes_target: description.takes_target,

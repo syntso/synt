@@ -1,6 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use serde_json::Value;
+
 use crate::{ActionError, Completed, Context, Risk};
 
 pub(crate) type Running<'a> =
@@ -14,6 +16,7 @@ pub struct Prepared {
     risk: Risk,
     destination: Option<String>,
     finishes_later: bool,
+    shown: Option<Value>,
     runnable: Box<dyn Runnable>,
 }
 
@@ -28,8 +31,15 @@ impl Prepared {
             risk,
             destination,
             finishes_later,
+            shown: None,
             runnable,
         }
+    }
+
+    #[must_use]
+    pub(crate) fn with_shown(mut self, shown: Option<Value>) -> Self {
+        self.shown = shown;
+        self
     }
 
     pub fn risk(&self) -> Risk {
@@ -42,6 +52,10 @@ impl Prepared {
 
     pub fn finishes_later(&self) -> bool {
         self.finishes_later
+    }
+
+    pub fn shown(&self) -> Option<&Value> {
+        self.shown.as_ref()
     }
 
     pub async fn run(self, context: &Context) -> Result<Completed, ActionError> {

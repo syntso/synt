@@ -7,7 +7,7 @@ use crate::Risk;
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Description {
     pub id: ActionId,
-    pub title: &'static str,
+    pub title: String,
     pub risk: Risk,
     pub person_only: bool,
     pub takes_target: bool,

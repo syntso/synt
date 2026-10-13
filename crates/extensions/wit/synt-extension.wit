@@ -1,0 +1,42 @@
+package synt:extension@0.1.0;
+
+interface types {
+    enum risk {
+        read,
+        write,
+        privileged,
+    }
+
+    record action {
+        id: string,
+        title: string,
+        risk: risk,
+        takes-target: bool,
+        params-schema: string,
+    }
+
+    record error {
+        code: string,
+        message: string,
+    }
+
+    enum level {
+        trace,
+        debug,
+        info,
+        warn,
+        error,
+    }
+}
+
+world extension {
+    use types.{action, error, level};
+
+    import call: func(action: string, target: option<string>, params: string) -> result<string, error>;
+    import storage-get: func(key: string) -> option<list<u8>>;
+    import storage-set: func(key: string, value: list<u8>) -> result<_, error>;
+    import log: func(level: level, message: string);
+
+    export describe: func() -> list<action>;
+    export run: func(action: string, target: option<string>, params: string) -> result<string, error>;
+}

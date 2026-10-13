@@ -8,6 +8,7 @@ pub(super) fn approval_request(id: ApprovalId, request: &AccessRequest<'_>) -> A
     ApprovalRequest {
         id,
         actor: requester(request.actor),
+        on_behalf_of: request.origin.map(requester),
         action: request.action.as_str().to_owned(),
         target: request.target.map(|target| target.as_str().to_owned()),
         destination: request.destination.map(str::to_owned),

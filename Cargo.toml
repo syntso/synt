@@ -13,6 +13,7 @@ publish = false
 [workspace.dependencies]
 synt-actions = { path = "crates/actions" }
 synt-client = { path = "crates/client" }
+synt-extensions = { path = "crates/extensions" }
 synt-journal = { path = "crates/journal" }
 synt-platform = { path = "crates/platform" }
 synt-proto = { path = "crates/proto" }
@@ -29,13 +30,18 @@ hkdf = "0.13.0"
 hmac = "0.13.0"
 interprocess = { version = "2.4.5", features = ["tokio"] }
 keyring-core = "1.0.1"
+minisign = "0.10.0"
+minisign-verify = "0.3.0"
 nix = { version = "0.31.3", default-features = false, features = ["socket", "user"] }
 notify = "8.2.0"
 proptest = "1.12.0"
 russh = { version = "0.64.1", default-features = false, features = ["ring"] }
 russh-sftp = "3.0.1"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std"] }
+rustls-native-certs = "0.8.5"
 schemars = "1.2.3"
+semver = "1.0.28"
 security-framework = { version = "3.7.0", features = ["OSX_10_15"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
@@ -48,6 +54,10 @@ thiserror = "2.0.21"
 tokio = "1.53.2"
 tokio-util = { version = "0.7.20", features = ["codec"] }
 toml = "1.1.8"
+ureq = { version = "3.4.2", default-features = false, features = ["rustls-no-provider"] }
+wasmtime = { version = "49.0.2", default-features = false, features = ["component-model", "cranelift", "runtime", "std"] }
+wasmtime-wasi = { version = "49.0.2", default-features = false, features = ["p2"] }
+wat = "1.262.0"
 windows-native-keyring-store = { version = "1.1.0", default-features = false }
 zeroize = { version = "1.9.1", features = ["derive"] }
 
