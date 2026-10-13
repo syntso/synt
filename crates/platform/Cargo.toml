@@ -12,7 +12,22 @@ workspace = true
 
 [dependencies]
 directories.workspace = true
-tokio = { workspace = true, features = ["macros", "net", "signal", "time"] }
+thiserror.workspace = true
+zeroize.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "rt", "signal", "time"] }
+
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation.workspace = true
+security-framework.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+interprocess.workspace = true
+keyring-core.workspace = true
+sysinfo.workspace = true
+windows-native-keyring-store.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

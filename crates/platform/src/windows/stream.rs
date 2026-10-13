@@ -4,8 +4,10 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
+use interprocess::os::windows::named_pipe::pipe_mode::Bytes;
+use interprocess::os::windows::named_pipe::tokio::PipeStream;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient, NamedPipeServer};
+use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use tokio::time;
 
 const ERROR_PIPE_BUSY: i32 = 231;
@@ -13,7 +15,7 @@ const BUSY_RETRIES: u32 = 50;
 const BUSY_PAUSE: Duration = Duration::from_millis(20);
 
 pub(crate) enum Stream {
-    Server(NamedPipeServer),
+    Server(PipeStream<Bytes, Bytes>),
     Client(NamedPipeClient),
 }
 

@@ -8,7 +8,7 @@ use common::{Harness, RunningServer, app_hello, ping};
 use synt_actions::Registry;
 use synt_client::{Client, ClientError};
 use synt_core::{Broker, Core, Ping, Server};
-use synt_platform::LocalStream;
+use synt_platform::{AppCheck, LocalStream};
 use synt_proto::RequestSeq;
 use tokio::time;
 
@@ -42,7 +42,11 @@ async fn stopping_disconnects_the_clients_still_connected() {
 async fn a_running_endpoint_cannot_be_bound_twice() {
     let harness = Harness::start();
 
-    let second = Server::bind(harness.endpoint(), core(&harness));
+    let second = Server::bind(
+        harness.endpoint(),
+        core(&harness),
+        AppCheck::for_this_core().unwrap(),
+    );
 
     assert!(second.is_err());
 }

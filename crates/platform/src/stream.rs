@@ -4,7 +4,7 @@ use std::task::{Context, Poll};
 
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-use crate::{Endpoint, native};
+use crate::{Endpoint, Peer, native};
 
 pub struct LocalStream {
     inner: native::Stream,
@@ -14,6 +14,10 @@ impl LocalStream {
     pub async fn connect(endpoint: &Endpoint) -> io::Result<Self> {
         let inner = native::connect(endpoint.address()).await?;
         Ok(Self { inner })
+    }
+
+    pub async fn peer(&self) -> io::Result<Peer> {
+        native::peer_of(&self.inner).await
     }
 
     pub(crate) fn from_inner(inner: native::Stream) -> Self {

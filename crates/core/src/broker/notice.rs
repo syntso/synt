@@ -15,7 +15,7 @@ pub(super) fn approval_request(id: ApprovalId, request: &AccessRequest<'_>) -> A
     }
 }
 
-fn requester(actor: &Actor) -> Requester {
+pub(crate) fn requester(actor: &Actor) -> Requester {
     match actor {
         Actor::Person => Requester::Person,
         Actor::Core => Requester::Core,
