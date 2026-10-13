@@ -1,7 +1,9 @@
+mod access_request;
 mod decision;
 mod gate;
-mod read_only_gate;
+mod scope;
 
+pub use access_request::AccessRequest;
 pub use decision::Decision;
 pub use gate::Gate;
-pub use read_only_gate::ReadOnlyGate;
+pub use scope::Scope;

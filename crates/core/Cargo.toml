@@ -19,6 +19,7 @@ synt-actions.workspace = true
 synt-journal.workspace = true
 synt-platform.workspace = true
 synt-proto.workspace = true
+synt-ssh.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "sync", "time"] }
 tokio-util = { workspace = true, features = ["rt"] }

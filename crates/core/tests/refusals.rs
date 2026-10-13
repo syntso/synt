@@ -25,7 +25,7 @@ async fn an_unknown_action_is_requested_then_failed() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_write_action_is_denied_without_running() {
     let harness = Harness::start();
-    let client = harness.app().await;
+    let client = harness.agent("deploy-bot").await;
 
     let error = rejection(client.call(ActionCall::new(Touch::ID)).await);
     let trail = harness.events();
@@ -36,7 +36,7 @@ async fn a_write_action_is_denied_without_running() {
     assert_eq!(trail[1].call(), Some(trail[0].seq()));
     assert_eq!(
         trail[1].details().value(),
-        &json!({ "error": error.message })
+        &json!({ "reason": error.message })
     );
 }
 
@@ -90,7 +90,7 @@ async fn a_panicking_action_is_failed_and_the_connection_survives() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn params_the_action_cannot_read_fail_after_starting() {
+async fn params_the_action_cannot_read_fail_before_starting() {
     let harness = Harness::start();
     let client = harness.app().await;
 
@@ -100,7 +100,7 @@ async fn params_the_action_cannot_read_fail_after_starting() {
     assert_eq!(error.code, ErrorCode::INVALID_PARAMS);
     assert_eq!(
         kinds(&harness.events()),
-        [EventKind::Requested, EventKind::Started, EventKind::Failed]
+        [EventKind::Requested, EventKind::Failed]
     );
 }
 
@@ -130,7 +130,7 @@ async fn an_invalid_action_name_leaves_no_trace() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_refusal_leaves_the_connection_usable() {
     let harness = Harness::start();
-    let client = harness.app().await;
+    let client = harness.agent("deploy-bot").await;
 
     let refused = rejection(client.call(ActionCall::new(Touch::ID)).await);
     let outcome = client.call(ping()).await.unwrap();

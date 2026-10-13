@@ -9,24 +9,25 @@ use tokio::{task, time};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
+use super::AppTrust;
 use super::session::Session;
-use crate::access::Gate;
 use crate::core::Core;
 
 const ACCEPT_BACKOFF: Duration = Duration::from_millis(50);
 const CONNECTION_LIMIT: usize = 64;
 const DRAIN_LIMIT: Duration = Duration::from_secs(3);
 
-pub struct Server<G> {
+pub struct Server {
     listener: LocalListener,
-    core: Arc<Core<G>>,
+    core: Arc<Core>,
     sessions: TaskTracker,
     stop: CancellationToken,
     connections: Arc<Semaphore>,
+    trust: AppTrust,
 }
 
-impl<G: Gate> Server<G> {
-    pub fn bind(endpoint: &Endpoint, core: Core<G>) -> io::Result<Self> {
+impl Server {
+    pub fn bind(endpoint: &Endpoint, core: Core) -> io::Result<Self> {
         let listener = LocalListener::bind(endpoint)?;
 
         Ok(Self {
@@ -35,7 +36,14 @@ impl<G: Gate> Server<G> {
             sessions: TaskTracker::new(),
             stop: CancellationToken::new(),
             connections: Arc::new(Semaphore::new(CONNECTION_LIMIT)),
+            trust: AppTrust::default(),
         })
+    }
+
+    #[must_use]
+    pub fn trusting_local_apps(mut self) -> Self {
+        self.trust = AppTrust::TrustedLocally;
+        self
     }
 
     pub async fn run(mut self, shutdown: impl Future<Output = ()>) {
@@ -64,9 +72,10 @@ impl<G: Gate> Server<G> {
         let core = Arc::clone(&self.core);
         let tasks = self.sessions.clone();
         let stop = self.stop.child_token();
+        let trust = self.trust;
 
         self.sessions.spawn(async move {
-            Session::serve(stream, core, tasks, stop).await;
+            Session::serve(stream, core, tasks, stop, trust).await;
             drop(permit);
         });
     }

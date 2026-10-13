@@ -99,20 +99,24 @@ mod tests {
         let registry = registry();
         let echo = registry.get(&ActionId::new("test.echo").unwrap()).unwrap();
 
-        let output = echo.call(&context(), json!({ "text": "hi" })).await;
+        let prepared = echo.prepare(None, json!({ "text": "hi" })).unwrap();
+        let output = prepared.run(&context()).await;
 
-        assert_eq!(output, Ok(json!({ "text": "HI" })));
+        assert_eq!(
+            output.map(|completed| completed.value),
+            Ok(json!({ "text": "HI" }))
+        );
         assert_eq!(echo.risk(), Risk::Read);
     }
 
-    #[tokio::test]
-    async fn malformed_params_never_reach_the_action() {
+    #[test]
+    fn malformed_params_never_reach_the_action() {
         let registry = registry();
         let echo = registry.get(&ActionId::new("test.echo").unwrap()).unwrap();
 
-        let output = echo.call(&context(), json!({ "wrong": 1 })).await;
+        let prepared = echo.prepare(None, json!({ "wrong": 1 }));
 
-        assert!(matches!(output, Err(ActionError::InvalidParams(_))));
+        assert!(matches!(prepared, Err(ActionError::InvalidParams(_))));
     }
 
     #[test]

@@ -17,18 +17,6 @@ A macOS app for SSH, terminals and files, with a way in for AI agents over [MCP]
 - **Everything is recorded.** A journal that can be read but never rewritten.
 - **Keys never leave.** They stay in Keychain or ssh-agent. Nothing else ever sees them.
 
-## Status
-
-Early, nothing to install yet. macOS first.
-
-- [x] Journal
-- [ ] Core and protocol
-- [ ] SSH with jump hosts
-- [ ] Terminal
-- [ ] Approvals
-- [ ] macOS app
-- [ ] MCP
-
 ## Build
 
 ```bash

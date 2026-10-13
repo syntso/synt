@@ -1,11 +1,16 @@
 use std::sync::Arc;
 
-use crate::ClientError;
-use crate::transport::{Connection, Duplex};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use synt_platform::{Endpoint, LocalStream};
-use synt_proto::{ActionCall, ActionOutcome, Hello, Method, Welcome};
+use synt_proto::{
+    ActionCall, ActionOutcome, ApprovalAnswer, ApprovalDecision, ApprovalId, Hello, Method,
+    Notification, Welcome,
+};
+use tokio::sync::broadcast;
+
+use crate::ClientError;
+use crate::transport::{Connection, Duplex};
 
 #[derive(Clone)]
 pub struct Client {
@@ -26,6 +31,23 @@ impl Client {
     pub async fn call(&self, call: ActionCall) -> Result<ActionOutcome, ClientError> {
         let reply = self.connection.request(Method::ActionCall, &call).await?;
         expect_shape(reply)
+    }
+
+    pub fn notifications(&self) -> broadcast::Receiver<Notification> {
+        self.connection.subscribe()
+    }
+
+    pub async fn respond(
+        &self,
+        id: ApprovalId,
+        decision: ApprovalDecision,
+    ) -> Result<(), ClientError> {
+        let answer = ApprovalAnswer { id, decision };
+        self.connection
+            .request(Method::ApprovalRespond, &answer)
+            .await?;
+
+        Ok(())
     }
 
     async fn start(stream: impl Duplex + 'static, hello: Hello) -> Result<Self, ClientError> {
