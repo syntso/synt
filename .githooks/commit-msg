@@ -1,0 +1,17 @@
+#!/bin/sh
+# Accepts a single Conventional Commits line and nothing else.
+
+message=$(grep -v '^#' "$1" | sed '/^[[:space:]]*$/d')
+lines=$(printf '%s\n' "$message" | wc -l | tr -d ' ')
+types='feat|fix|refactor|perf|test|docs|build|ci|chore|style|revert'
+
+fail() {
+    printf 'commit-msg: %s\n  got: %s\n' "$1" "$message" >&2
+    printf '  expected: type(scope): subject, e.g. feat(journal): chain events with hmac\n' >&2
+    exit 1
+}
+
+[ "$lines" -eq 1 ] || fail "one line only, no body"
+[ "${#message}" -le 72 ] || fail "at most 72 characters"
+printf '%s' "$message" | grep -Eq "^($types)(\([a-z0-9-]+\))?!?: [a-z0-9]" || fail "not a conventional commit"
+case "$message" in *.) fail "no period at the end" ;; esac
