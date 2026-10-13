@@ -13,17 +13,37 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  rust:
-    runs-on: macos-15
+  lint:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-nextest,cargo-deny
+          tool: cargo-deny
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo nextest run --workspace --no-tests=pass
-      - run: cargo test --workspace --doc
       - run: cargo deny check
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - run: cargo nextest run --workspace --no-tests=pass
+
+  rust:
+    if: always()
+    needs: [lint, test]
+    runs-on: ubuntu-24.04
+    steps:
+      - run: test "${{ needs.lint.result }}" = success && test "${{ needs.test.result }}" = success
