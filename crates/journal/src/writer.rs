@@ -1,8 +1,10 @@
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
+
+use tokio::sync::oneshot;
 
 use crate::anchor::KeyStore;
 use crate::chain::JournalId;
@@ -28,7 +30,7 @@ struct Inner {
 
 struct Request {
     event: NewEvent,
-    reply: SyncSender<Result<Seq, JournalError>>,
+    reply: oneshot::Sender<Result<Seq, JournalError>>,
 }
 
 impl JournalWriter {
@@ -59,17 +61,17 @@ impl JournalWriter {
     }
 
     pub fn append(&self, event: NewEvent) -> Result<Seq, JournalError> {
-        let requests = self
-            .inner
-            .requests
-            .as_ref()
-            .ok_or(JournalError::WriterClosed)?;
-        let (reply, answer) = mpsc::sync_channel(1);
+        let answer = self.submit(event)?;
 
-        requests
-            .send(Request { event, reply })
-            .map_err(|_| JournalError::WriterClosed)?;
-        answer.recv().map_err(|_| JournalError::WriterClosed)?
+        answer
+            .blocking_recv()
+            .map_err(|_| JournalError::WriterClosed)?
+    }
+
+    pub async fn append_async(&self, event: NewEvent) -> Result<Seq, JournalError> {
+        let answer = self.submit(event)?;
+
+        answer.await.map_err(|_| JournalError::WriterClosed)?
     }
 
     pub fn reader(&self) -> Result<JournalReader, JournalError> {
@@ -78,6 +80,24 @@ impl JournalWriter {
             self.inner.id,
             Arc::clone(&self.inner.keys),
         )
+    }
+
+    fn submit(
+        &self,
+        event: NewEvent,
+    ) -> Result<oneshot::Receiver<Result<Seq, JournalError>>, JournalError> {
+        let requests = self
+            .inner
+            .requests
+            .as_ref()
+            .ok_or(JournalError::WriterClosed)?;
+        let (reply, answer) = oneshot::channel();
+
+        requests
+            .send(Request { event, reply })
+            .map_err(|_| JournalError::WriterClosed)?;
+
+        Ok(answer)
     }
 }
 

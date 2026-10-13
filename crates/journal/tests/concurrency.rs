@@ -53,6 +53,18 @@ fn each_caller_sees_its_own_events_in_order() {
     assert!(seqs.windows(2).all(|pair| pair[0] < pair[1]));
 }
 
+#[tokio::test]
+async fn async_appends_share_the_chain_with_blocking_ones() {
+    let fixture = Fixture::new();
+    let writer = JournalWriter::spawn(fixture.create()).unwrap();
+
+    let first = writer.append_async(exec("first")).await.unwrap();
+    let second = writer.append_async(exec("second")).await.unwrap();
+
+    assert_eq!((first, second), (Seq::new(1), Seq::new(2)));
+    assert!(writer.reader().unwrap().verify().unwrap().is_intact());
+}
+
 #[test]
 fn a_second_writer_is_refused() {
     let fixture = Fixture::new();

@@ -10,6 +10,30 @@ license-file = "LICENSE.md"
 repository = "https://github.com/syntso/synt"
 publish = false
 
+[workspace.dependencies]
+synt-actions = { path = "crates/actions" }
+synt-client = { path = "crates/client" }
+synt-journal = { path = "crates/journal" }
+synt-platform = { path = "crates/platform" }
+synt-proto = { path = "crates/proto" }
+
+bytes = "1.12.1"
+directories = "6.0.0"
+futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
+getrandom = "0.4.3"
+hkdf = "0.13.0"
+hmac = "0.13.0"
+proptest = "1.12.0"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+tokio = "1.53.2"
+tokio-util = { version = "0.7.20", features = ["codec"] }
+zeroize = { version = "1.9.1", features = ["derive"] }
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
@@ -21,3 +45,4 @@ todo = "warn"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 must_use_candidate = "allow"
+unused_async_trait_impl = "allow"
