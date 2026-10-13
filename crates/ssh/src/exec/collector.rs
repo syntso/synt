@@ -2,7 +2,7 @@ use russh::client::Msg;
 use russh::{Channel, ChannelMsg};
 
 use super::{ExecOutput, StreamBuffer, signal_name};
-use crate::SshError;
+use crate::{Algorithms, SshError};
 
 const STDERR: u32 = 1;
 
@@ -52,7 +52,7 @@ impl Collector {
         Ok(self)
     }
 
-    pub(super) fn finish(self, duration_ms: u64) -> ExecOutput {
+    pub(super) fn finish(self, duration_ms: u64, algorithms: Option<Algorithms>) -> ExecOutput {
         let truncated = self.stdout.truncated() || self.stderr.truncated();
 
         ExecOutput {
@@ -62,6 +62,7 @@ impl Collector {
             stderr: self.stderr.into_text(),
             truncated,
             duration_ms,
+            algorithms,
         }
     }
 }

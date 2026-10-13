@@ -1,9 +1,10 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
-use russh::client::Handler;
+use russh::Names;
+use russh::client::{Handler, Session};
 use russh::keys::{HashAlg, PublicKey, PublicKeyOrCertificate};
 
-use super::HandshakeError;
+use super::{Algorithms, HandshakeError};
 use crate::known_hosts::{KnownHosts, Verdict};
 use crate::{SshError, Target};
 
@@ -12,15 +13,21 @@ pub(crate) struct ClientHandler {
     port: u16,
     address: String,
     known_hosts: Arc<KnownHosts>,
+    negotiated: Arc<OnceLock<Algorithms>>,
 }
 
 impl ClientHandler {
-    pub(crate) fn new(hop: &Target, known_hosts: Arc<KnownHosts>) -> Self {
+    pub(crate) fn new(
+        hop: &Target,
+        known_hosts: Arc<KnownHosts>,
+        negotiated: Arc<OnceLock<Algorithms>>,
+    ) -> Self {
         Self {
             host: hop.host().to_owned(),
             port: hop.port(),
             address: hop.address(),
             known_hosts,
+            negotiated,
         }
     }
 
@@ -51,6 +58,17 @@ impl Handler for ClientHandler {
             Some(error) => Err(HandshakeError::Rejected(error)),
             None => Ok(true),
         }
+    }
+
+    async fn kex_done(
+        &mut self,
+        _shared_secret: Option<&[u8]>,
+        names: &Names,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        let _ = self.negotiated.set(Algorithms::negotiated(names));
+
+        Ok(())
     }
 }
 

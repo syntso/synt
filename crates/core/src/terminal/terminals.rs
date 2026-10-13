@@ -87,9 +87,10 @@ impl Terminals {
             target: Some(&origin.target),
         };
 
+        let finished = Recorder::step(&call, EventKind::Finished, ending);
         let recorded = self
             .recorder
-            .follow_up(&call, origin.request, EventKind::Finished, ending)
+            .follow_up(origin.request, vec![finished])
             .await;
 
         if let Err(error) = recorded {

@@ -124,6 +124,16 @@ impl Default for Broker {
 }
 
 impl Gate for Broker {
+    fn settled(&self, request: &AccessRequest<'_>) -> Option<Decision> {
+        match Rule::for_call(request.actor, request.risk) {
+            Rule::Allow => Some(Decision::Allow),
+            Rule::Ask { grantable: true } if self.grants.covers(&Grant::covering(request)) => {
+                Some(Decision::Approved(Scope::UntilRestart))
+            }
+            Rule::Ask { .. } => None,
+        }
+    }
+
     async fn decide(&self, request: &AccessRequest<'_>) -> Decision {
         match Rule::for_call(request.actor, request.risk) {
             Rule::Allow => Decision::Allow,

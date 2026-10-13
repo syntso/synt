@@ -32,6 +32,10 @@ impl KeyFile {
         Ok(key)
     }
 
+    pub(super) async fn exists(path: &Path) -> bool {
+        tokio::fs::try_exists(path).await.unwrap_or(false)
+    }
+
     pub(super) async fn public_key(path: &Path) -> Option<PublicKey> {
         if let Some(key) = read_public(&public_path(path)).await {
             return Some(key);

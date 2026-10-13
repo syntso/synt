@@ -20,6 +20,9 @@ pub enum ClientError {
     #[error("the connection to the core is closed")]
     Disconnected,
 
+    #[error("transfer: {0}")]
+    Transfer(String),
+
     #[error("the core replied with something unexpected: {0}")]
     UnexpectedReply(String),
 }

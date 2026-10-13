@@ -6,8 +6,8 @@ use std::process::ExitCode;
 use synt_actions::Registry;
 use synt_core::Files;
 use synt_core::{
-    Broker, Core, JournalPage, JournalVerify, Ping, Server, SshConnections, SshExec, Storage,
-    VERSION,
+    Broker, Core, JournalPage, JournalVerify, Ping, Server, SshConnections, SshExec, SshWarm,
+    Storage, VERSION,
 };
 use synt_core::{
     SessionAttach, SessionClose, SessionList, SessionResize, SshSessionOpen, Terminals,
@@ -75,6 +75,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     registry.register(SessionClose::new(terminals.clone()))?;
     registry.register(SessionList::new(terminals.clone()))?;
 
+    registry.register(SshWarm::new(pool.clone()))?;
     registry.register(SshConnections::new(pool))?;
     registry.register(JournalPage::new(journal.clone()))?;
     registry.register(JournalVerify::new(journal.clone()))?;

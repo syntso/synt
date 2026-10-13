@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
@@ -7,7 +8,9 @@ use synt_proto::{Frame, StreamId};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 
-type Routes = HashMap<StreamId, mpsc::Sender<Bytes>>;
+use super::{Delivery, Route};
+
+type Routes = HashMap<StreamId, Route>;
 
 pub(crate) struct Link {
     frames: mpsc::Sender<Frame>,
@@ -30,13 +33,36 @@ impl Link {
 
     pub(crate) fn open_stream(&self, input: mpsc::Sender<Bytes>) -> StreamId {
         let stream = StreamId(self.next_stream.fetch_add(1, Ordering::Relaxed));
-        self.lock().insert(stream, input);
+        let route = Route {
+            input,
+            delivery: Delivery::Lossy,
+        };
+        self.lock().insert(stream, route);
 
         stream
     }
 
+    pub(crate) fn claim(&self, stream: StreamId, route: Route) -> bool {
+        if !stream.is_opened_by_client() {
+            return false;
+        }
+
+        match self.lock().entry(stream) {
+            Entry::Occupied(_) => false,
+            Entry::Vacant(free) => {
+                free.insert(route);
+                true
+            }
+        }
+    }
+
     pub(crate) fn forget(&self, stream: StreamId) {
         self.lock().remove(&stream);
+    }
+
+    pub(crate) fn close(&self) {
+        let closed: Vec<Route> = self.lock().drain().map(|(_, route)| route).collect();
+        drop(closed);
     }
 
     pub(crate) fn deliver(&self, stream: StreamId, data: Bytes) {
@@ -44,12 +70,25 @@ impl Link {
             return;
         }
 
-        let Some(input) = self.lock().get(&stream).cloned() else {
+        let mut routes = self.lock();
+
+        let Some(route) = routes.get_mut(&stream) else {
             return;
         };
 
-        if let Err(TrySendError::Closed(_)) = input.try_send(data) {
-            self.forget(stream);
+        if !route.delivery.admits(data.len()) {
+            routes.remove(&stream);
+            return;
+        }
+
+        let broken = match route.input.try_send(data) {
+            Ok(()) => false,
+            Err(TrySendError::Closed(_)) => true,
+            Err(TrySendError::Full(_)) => !route.delivery.drops_when_full(),
+        };
+
+        if broken {
+            routes.remove(&stream);
         }
     }
 

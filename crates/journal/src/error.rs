@@ -59,6 +59,9 @@ pub enum JournalError {
     #[error("the journal writer has stopped")]
     WriterClosed,
 
+    #[error("there are no events to append")]
+    NothingToAppend,
+
     #[error("commit failed: {0}")]
     Commit(Arc<JournalError>),
 }

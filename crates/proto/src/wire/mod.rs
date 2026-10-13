@@ -1,10 +1,12 @@
 mod codec;
+mod credit;
 mod error;
 mod frame;
 mod framed;
 mod stream_id;
 
 pub use codec::FrameCodec;
+pub use credit::Credit;
 pub use error::FrameError;
 pub use frame::Frame;
 pub use framed::{FrameReader, FrameWriter, split_framed};

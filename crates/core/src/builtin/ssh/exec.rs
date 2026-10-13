@@ -36,6 +36,8 @@ pub struct ExecResult {
     pub stderr: String,
     pub truncated: bool,
     pub duration_ms: u64,
+    pub kex: Option<String>,
+    pub cipher: Option<String>,
 }
 
 impl SshExec {
@@ -70,6 +72,8 @@ impl Action for SshExec {
             "stdout_bytes": output.stdout.len(),
             "stderr_bytes": output.stderr.len(),
             "truncated": output.truncated,
+            "kex": output.kex,
+            "cipher": output.cipher,
         })
     }
 
@@ -105,6 +109,11 @@ impl Action for SshExec {
 
 impl From<ExecOutput> for ExecResult {
     fn from(output: ExecOutput) -> Self {
+        let (kex, cipher) = output
+            .algorithms
+            .map(|algorithms| (algorithms.kex, algorithms.cipher))
+            .unzip();
+
         Self {
             exit: output.exit,
             signal: output.signal,
@@ -112,6 +121,8 @@ impl From<ExecOutput> for ExecResult {
             stderr: output.stderr,
             truncated: output.truncated,
             duration_ms: output.duration_ms,
+            kex,
+            cipher,
         }
     }
 }

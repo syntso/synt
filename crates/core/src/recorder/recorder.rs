@@ -12,26 +12,32 @@ impl Recorder {
         Self { journal }
     }
 
-    pub(crate) async fn requested(
+    pub(crate) fn request(call: &Call<'_>, details: Details) -> NewEvent {
+        Self::event(call, EventKind::Requested).details(details)
+    }
+
+    pub(crate) fn step(call: &Call<'_>, kind: EventKind, details: &impl Serialize) -> NewEvent {
+        let details = Details::from_serialize(details).unwrap_or_default();
+
+        Self::event(call, kind).details(details)
+    }
+
+    pub(crate) async fn open(
         &self,
-        call: &Call<'_>,
-        details: Details,
+        request: NewEvent,
+        follow_ups: Vec<NewEvent>,
     ) -> Result<Seq, JournalError> {
-        let event = Self::event(call, EventKind::Requested).details(details);
-        self.journal.append_async(event).await
+        self.journal.open_call(request, follow_ups).await
     }
 
     pub(crate) async fn follow_up(
         &self,
-        call: &Call<'_>,
         request: Seq,
-        kind: EventKind,
-        details: &impl Serialize,
-    ) -> Result<Seq, JournalError> {
-        let details = Details::from_serialize(details).unwrap_or_default();
-        let event = Self::event(call, kind).call(request).details(details);
+        steps: Vec<NewEvent>,
+    ) -> Result<(), JournalError> {
+        let steps = steps.into_iter().map(|step| step.call(request)).collect();
 
-        self.journal.append_async(event).await
+        self.journal.append_together(steps).await.map(|_| ())
     }
 
     fn event(call: &Call<'_>, kind: EventKind) -> NewEvent {

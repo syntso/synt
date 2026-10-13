@@ -5,11 +5,12 @@ use russh::client::Msg;
 use russh::{ChannelWriteHalf, Sig};
 
 use super::{ShellOutput, TerminalSize, await_reply};
-use crate::{Lease, SshError, Target};
+use crate::{Algorithms, Lease, SshError, Target};
 
 pub struct Shell {
     lease: Lease,
     writer: ChannelWriteHalf<Msg>,
+    algorithms: Option<Algorithms>,
 }
 
 impl Shell {
@@ -43,12 +44,23 @@ impl Shell {
         await_reply(&mut reader, &mut early, "a shell").await?;
 
         let output = ShellOutput::new(reader, early);
+        let algorithms = lease.algorithms();
 
-        Ok((Self { lease, writer }, output))
+        let shell = Self {
+            lease,
+            writer,
+            algorithms,
+        };
+
+        Ok((shell, output))
     }
 
     pub fn target(&self) -> &Target {
         self.lease.target()
+    }
+
+    pub fn algorithms(&self) -> Option<&Algorithms> {
+        self.algorithms.as_ref()
     }
 
     pub async fn write(&self, data: Bytes) -> Result<(), SshError> {

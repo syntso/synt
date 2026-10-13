@@ -8,10 +8,11 @@ use synt_proto::{
     ActionCall, ActionOutcome, ApprovalAnswer, ApprovalDecision, ApprovalId, Hello, Method,
     Notification, StreamId, Welcome,
 };
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::broadcast;
 
 use crate::transport::{Connection, Duplex};
-use crate::{ClientError, StreamReceiver};
+use crate::{ClientError, StreamReceiver, Transferred, transfer};
 
 #[derive(Clone)]
 pub struct Client {
@@ -57,6 +58,27 @@ impl Client {
 
     pub async fn send_stream(&self, stream: StreamId, data: Bytes) -> Result<(), ClientError> {
         self.connection.send_stream(stream, data).await
+    }
+
+    pub fn open_stream(&self) -> StreamReceiver {
+        self.connection.open_stream()
+    }
+
+    pub async fn send_credited<R: AsyncRead + Unpin>(
+        &self,
+        stream: &mut StreamReceiver,
+        source: R,
+        size: u64,
+    ) -> Result<Transferred, ClientError> {
+        transfer::send(&self.connection, stream, source, size).await
+    }
+
+    pub async fn receive_credited<W: AsyncWrite + Unpin>(
+        &self,
+        stream: &mut StreamReceiver,
+        sink: W,
+    ) -> Result<Transferred, ClientError> {
+        transfer::receive(&self.connection, stream, sink).await
     }
 
     async fn start(stream: impl Duplex + 'static, hello: Hello) -> Result<Self, ClientError> {

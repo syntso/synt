@@ -1,17 +1,24 @@
 mod directory;
+mod download;
 mod failure;
 mod file_entry;
 mod file_kind;
 mod file_sessions;
+mod in_flight;
+mod remote_file;
 mod session_slot;
 mod sftp;
+mod upload;
 mod write_mode;
 
 pub use directory::Directory;
-use failure::{failure, io_failure};
+pub use download::Download;
+use failure::{failure, is_eof};
 pub use file_entry::FileEntry;
 pub use file_kind::FileKind;
 pub use file_sessions::FileSessions;
+use remote_file::RemoteFile;
 use session_slot::SessionSlot;
 pub use sftp::Sftp;
+pub use upload::Upload;
 pub use write_mode::WriteMode;

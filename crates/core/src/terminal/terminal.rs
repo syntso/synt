@@ -144,6 +144,7 @@ impl Terminal {
 
     pub(super) async fn end(&self, end: ShellEnd) -> Ending {
         let mut screen = self.screen.lock().await;
+        let algorithms = self.shell.algorithms();
 
         let ending = Ending {
             session: self.id,
@@ -152,6 +153,8 @@ impl Terminal {
             signal: end.signal,
             duration_ms: milliseconds(self.started.elapsed()),
             output_bytes: screen.output_bytes(),
+            kex: algorithms.map(|negotiated| negotiated.kex.clone()),
+            cipher: algorithms.map(|negotiated| negotiated.cipher.clone()),
         };
 
         screen.end(ending.clone()).await;
