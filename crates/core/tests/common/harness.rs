@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use synt_actions::Registry;
-use synt_client::Client;
+use synt_client::{Autostart, Client};
 use synt_core::{Broker, Core, Ping};
 use synt_journal::{Event, Filter, Journal, JournalWriter, MemoryKeyStore, Seq};
 use synt_platform::Endpoint;
@@ -53,7 +53,9 @@ impl Harness {
     }
 
     pub async fn app(&self) -> Client {
-        Client::connect(&self.endpoint, app_hello()).await.unwrap()
+        Client::connect(&self.endpoint, app_hello(), &Autostart::off())
+            .await
+            .unwrap()
     }
 
     pub async fn agent(&self, name: &str) -> Client {
@@ -61,9 +63,13 @@ impl Harness {
             name: name.to_owned(),
         };
 
-        Client::connect(&self.endpoint, Hello::new(kind, "synt-tests"))
-            .await
-            .unwrap()
+        Client::connect(
+            &self.endpoint,
+            Hello::new(kind, "synt-tests"),
+            &Autostart::off(),
+        )
+        .await
+        .unwrap()
     }
 
     pub fn events(&self) -> Vec<Event> {

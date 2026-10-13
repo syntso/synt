@@ -117,6 +117,10 @@ impl Terminal {
         self.ending()
     }
 
+    pub(crate) async fn finished(&self) {
+        self.finished.cancelled().await;
+    }
+
     pub(super) async fn type_in(self: Arc<Self>, mut typed: mpsc::Receiver<Bytes>) {
         loop {
             let data = tokio::select! {

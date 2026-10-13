@@ -1,4 +1,5 @@
 use data_encoding::HEXLOWER;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -7,7 +8,7 @@ use synt_journal::ResourceRef;
 use synt_proto::StreamId;
 use synt_ssh::Download;
 
-use super::files::{failed, link, per_call_risk};
+use super::files::{failed, link};
 use super::{Files, RemotePath};
 use crate::link::Outbound;
 
@@ -16,9 +17,10 @@ pub struct SftpDownload {
     files: Files,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct DownloadParams {
     pub path: RemotePath,
+    #[schemars(with = "u32")]
     pub stream: StreamId,
 
     #[serde(default)]
@@ -87,13 +89,23 @@ impl SftpDownload {
 
 impl Action for SftpDownload {
     const ID: &'static str = "sftp.download";
+    const TITLE: &'static str = "Download a file from a host";
     const RISK: Risk = Risk::Read;
+    const TAKES_TARGET: bool = true;
 
     type Params = DownloadParams;
     type Output = Downloaded;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &DownloadParams) -> Risk {
-        per_call_risk(target, Self::RISK)
+        self.files.per_call_risk(target, Self::RISK)
+    }
+
+    fn destination(
+        &self,
+        target: Option<&ResourceRef>,
+        _params: &DownloadParams,
+    ) -> Option<String> {
+        self.files.destination(target)
     }
 
     fn summary(&self, output: &Downloaded) -> Value {

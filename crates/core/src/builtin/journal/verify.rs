@@ -16,6 +16,7 @@ impl JournalVerify {
 
 impl Action for JournalVerify {
     const ID: &'static str = "journal.verify";
+    const TITLE: &'static str = "Check the journal's hash chain";
     const RISK: Risk = Risk::Read;
 
     type Params = ();

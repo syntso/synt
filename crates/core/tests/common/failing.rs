@@ -8,6 +8,7 @@ impl Failing {
 
 impl Action for Failing {
     const ID: &'static str = "test.fail";
+    const TITLE: &'static str = "Always fail";
     const RISK: Risk = Risk::Read;
 
     type Params = ();

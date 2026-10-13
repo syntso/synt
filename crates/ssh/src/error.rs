@@ -50,6 +50,12 @@ pub enum SshError {
     )]
     CommandTimeout { limit: Duration, ended: bool },
 
+    #[error("the command was stopped before it finished; {}", remote_state(*ended))]
+    Stopped { ended: bool },
+
+    #[error("the call was stopped before the command started")]
+    Cancelled,
+
     #[error("the connection was lost before the command finished")]
     ConnectionLost,
 

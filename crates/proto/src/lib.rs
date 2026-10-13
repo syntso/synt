@@ -6,7 +6,7 @@ mod rpc;
 mod session;
 mod wire;
 
-pub use action::{ActionCall, ActionOutcome, RequestSeq};
+pub use action::{ActionCall, ActionDescription, ActionOutcome, RequestSeq};
 pub use approval::{
     ApprovalAnswer, ApprovalDecision, ApprovalId, ApprovalRequest, Requester, RiskLevel,
 };

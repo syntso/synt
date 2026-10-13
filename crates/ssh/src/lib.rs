@@ -12,8 +12,10 @@ mod shell;
 mod target;
 mod tunnel;
 
+pub use config::config_aliases;
 pub use error::SshError;
 pub use exec::{ExecLimits, ExecOutput, exec};
+pub use home::local_user;
 pub use pool::{ConnectionState, ConnectionStatus, Lease, Pool};
 pub use session::Algorithms;
 pub use sftp::{Directory, Download, FileEntry, FileKind, FileSessions, Sftp, Upload, WriteMode};

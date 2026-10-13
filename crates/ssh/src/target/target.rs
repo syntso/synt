@@ -19,10 +19,32 @@ pub struct Target {
 }
 
 impl Target {
+    pub fn new(host: impl Into<String>, port: u16, user: impl Into<String>) -> Self {
+        Self {
+            host: host.into(),
+            port,
+            user: user.into(),
+            identity_files: Vec::new(),
+            jumps: Vec::new(),
+        }
+    }
+
     pub fn resolve(spec: &str) -> Result<Self, SshError> {
         let config = UserConfig::load()?;
 
         Self::resolve_with(spec, &config, 0, true)
+    }
+
+    #[must_use]
+    pub fn with_identity_files(mut self, identity_files: Vec<PathBuf>) -> Self {
+        self.identity_files = identity_files;
+        self
+    }
+
+    #[must_use]
+    pub fn through(mut self, jumps: Vec<Target>) -> Self {
+        self.jumps = jumps;
+        self
     }
 
     pub fn host(&self) -> &str {

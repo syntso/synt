@@ -17,6 +17,7 @@ impl TunnelList {
 
 impl Action for TunnelList {
     const ID: &'static str = "tunnel.list";
+    const TITLE: &'static str = "List the open tunnels";
     const RISK: Risk = Risk::Read;
 
     type Params = ();

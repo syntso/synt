@@ -6,7 +6,7 @@ mod weak_vault;
 #[cfg(target_os = "macos")]
 mod keychain;
 
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(unix)]
 mod files;
 
 #[cfg(windows)]

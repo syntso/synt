@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
@@ -12,7 +13,7 @@ pub struct SessionAttach {
     terminals: Terminals,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct SessionAttachParams {
     pub session: SessionId,
 }
@@ -25,6 +26,7 @@ impl SessionAttach {
 
 impl Action for SessionAttach {
     const ID: &'static str = "session.attach";
+    const TITLE: &'static str = "Attach to an open terminal session";
     const RISK: Risk = Risk::Write;
     const PERSON_ONLY: bool = true;
 

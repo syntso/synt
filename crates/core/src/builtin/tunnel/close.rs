@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
@@ -12,7 +13,7 @@ pub struct TunnelClose {
     tunnels: Tunnels,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct CloseParams {
     pub id: u64,
 }
@@ -25,6 +26,7 @@ impl TunnelClose {
 
 impl Action for TunnelClose {
     const ID: &'static str = "tunnel.close";
+    const TITLE: &'static str = "Close a tunnel";
     const RISK: Risk = Risk::Write;
 
     type Params = CloseParams;

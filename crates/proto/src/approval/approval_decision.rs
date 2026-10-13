@@ -5,5 +5,6 @@ use serde::{Deserialize, Serialize};
 pub enum ApprovalDecision {
     AllowOnce,
     AllowUntilRestart,
+    AllowAlways,
     Deny,
 }

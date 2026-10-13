@@ -12,14 +12,21 @@ pub(crate) trait Runnable: Send {
 
 pub struct Prepared {
     risk: Risk,
+    destination: Option<String>,
     finishes_later: bool,
     runnable: Box<dyn Runnable>,
 }
 
 impl Prepared {
-    pub(crate) fn new(risk: Risk, finishes_later: bool, runnable: Box<dyn Runnable>) -> Self {
+    pub(crate) fn new(
+        risk: Risk,
+        destination: Option<String>,
+        finishes_later: bool,
+        runnable: Box<dyn Runnable>,
+    ) -> Self {
         Self {
             risk,
+            destination,
             finishes_later,
             runnable,
         }
@@ -27,6 +34,10 @@ impl Prepared {
 
     pub fn risk(&self) -> Risk {
         self.risk
+    }
+
+    pub fn destination(&self) -> Option<&str> {
+        self.destination.as_deref()
     }
 
     pub fn finishes_later(&self) -> bool {

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use common::{Harness, RunningServer, app_hello, ping};
 use synt_actions::Registry;
-use synt_client::{Client, ClientError};
+use synt_client::{Autostart, Client, ClientError};
 use synt_core::{Broker, Core, Ping, Server};
 use synt_platform::{AppCheck, LocalStream};
 use synt_proto::RequestSeq;
@@ -57,7 +57,7 @@ async fn the_endpoint_can_be_bound_again_after_shutdown() {
     harness.stop().await;
 
     let restarted = RunningServer::spawn(harness.endpoint(), core(&harness)).unwrap();
-    let client = Client::connect(harness.endpoint(), app_hello())
+    let client = Client::connect(harness.endpoint(), app_hello(), &Autostart::off())
         .await
         .unwrap();
     let outcome = client.call(ping()).await.unwrap();
@@ -73,7 +73,7 @@ async fn the_journal_stays_intact_across_a_restart() {
     harness.stop().await;
 
     let restarted = RunningServer::spawn(harness.endpoint(), core(&harness)).unwrap();
-    let client = Client::connect(harness.endpoint(), app_hello())
+    let client = Client::connect(harness.endpoint(), app_hello(), &Autostart::off())
         .await
         .unwrap();
     let outcome = client.call(ping()).await.unwrap();

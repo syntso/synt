@@ -15,6 +15,7 @@ pub struct Pong {
 
 impl Action for Ping {
     const ID: &'static str = "core.ping";
+    const TITLE: &'static str = "Check that the core answers";
     const RISK: Risk = Risk::Read;
 
     type Params = ();

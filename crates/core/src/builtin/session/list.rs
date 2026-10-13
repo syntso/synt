@@ -20,6 +20,7 @@ impl SessionList {
 
 impl Action for SessionList {
     const ID: &'static str = "session.list";
+    const TITLE: &'static str = "List the open terminal sessions";
     const RISK: Risk = Risk::Read;
 
     type Params = ();

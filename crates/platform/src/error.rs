@@ -24,6 +24,9 @@ pub enum PlatformError {
     )]
     WeakVault { place: KeyPlace, flag: &'static str },
 
+    #[error("{tool}: {reason}")]
+    Tool { tool: String, reason: String },
+
     #[error("{peer} says it is the app, but it is not verified: {reason}")]
     UnverifiedApp { peer: String, reason: String },
 }

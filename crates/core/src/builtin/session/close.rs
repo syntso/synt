@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
@@ -11,7 +12,7 @@ pub struct SessionClose {
     terminals: Terminals,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct SessionCloseParams {
     pub session: SessionId,
 }
@@ -24,6 +25,7 @@ impl SessionClose {
 
 impl Action for SessionClose {
     const ID: &'static str = "session.close";
+    const TITLE: &'static str = "Close a terminal session";
     const RISK: Risk = Risk::Write;
     const PERSON_ONLY: bool = true;
 

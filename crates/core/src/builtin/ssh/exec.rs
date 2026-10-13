@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
@@ -8,8 +9,9 @@ use synt_journal::ResourceRef;
 use synt_ssh::{ExecLimits, ExecOutput, Pool};
 use tokio::sync::Semaphore;
 
-use super::privilege::{escalates, is_root};
-use super::{failure, hidden_root, logs_in_as_root, resolve};
+use super::privilege::escalates;
+use super::{destination, failure, logs_in_as_root, reach_host};
+use crate::projects::Projects;
 
 const LONGEST_TIMEOUT: Duration = Duration::from_hours(24);
 const CONCURRENT_RUNS: usize = 8;
@@ -17,10 +19,11 @@ const CONCURRENT_RUNS: usize = 8;
 #[derive(Debug, Clone)]
 pub struct SshExec {
     pool: Pool,
+    projects: Projects,
     runs: Arc<Semaphore>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct ExecParams {
     pub command: String,
 
@@ -41,9 +44,10 @@ pub struct ExecResult {
 }
 
 impl SshExec {
-    pub fn new(pool: Pool) -> Self {
+    pub fn new(pool: Pool, projects: Projects) -> Self {
         Self {
             pool,
+            projects,
             runs: Arc::new(Semaphore::new(CONCURRENT_RUNS)),
         }
     }
@@ -51,17 +55,23 @@ impl SshExec {
 
 impl Action for SshExec {
     const ID: &'static str = "ssh.exec";
+    const TITLE: &'static str = "Run a command on a host over SSH";
     const RISK: Risk = Risk::Write;
+    const TAKES_TARGET: bool = true;
 
     type Params = ExecParams;
     type Output = ExecResult;
 
     fn risk(&self, target: Option<&ResourceRef>, params: &ExecParams) -> Risk {
-        if escalates(&params.command) || logs_in_as_root(target) {
+        if escalates(&params.command) || logs_in_as_root(&self.projects, target) {
             return Risk::Privileged;
         }
 
         Risk::Write
+    }
+
+    fn destination(&self, target: Option<&ResourceRef>, _params: &ExecParams) -> Option<String> {
+        destination(&self.projects, target)
     }
 
     fn summary(&self, output: &ExecResult) -> Value {
@@ -78,8 +88,6 @@ impl Action for SshExec {
     }
 
     async fn run(&self, context: &Context, params: ExecParams) -> Result<ExecResult, ActionError> {
-        let host = context.target().ok_or(ActionError::TargetRequired)?;
-
         if params.command.trim().is_empty() {
             return Err(ActionError::InvalidParams(
                 "the command is empty".to_owned(),
@@ -87,11 +95,7 @@ impl Action for SshExec {
         }
 
         let limits = limits(params.timeout_seconds)?;
-        let target = resolve(host.as_str()).await?;
-
-        if is_root(target.user()) && context.risk() != Risk::Privileged {
-            return Err(hidden_root(host));
-        }
+        let target = reach_host(&self.projects, context).await?;
 
         let _slot = self
             .runs
@@ -99,7 +103,8 @@ impl Action for SshExec {
             .await
             .map_err(|_| ActionError::failed("ssh.exec is shutting down"))?;
 
-        let output = synt_ssh::exec(&self.pool, &target, &params.command, limits)
+        let stop = context.stop().cancelled();
+        let output = synt_ssh::exec(&self.pool, &target, &params.command, limits, stop)
             .await
             .map_err(|error| failure(&error))?;
 

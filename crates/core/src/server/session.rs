@@ -185,6 +185,14 @@ async fn answer(
                 RpcError::internal("the outcome cannot be encoded")
             })
         }
+        Some(Method::ActionsDescribe) => {
+            let descriptions = core.describe(actor);
+
+            serde_json::to_value(descriptions).map_err(|error| {
+                eprintln!("synt-core: descriptions: {error}");
+                RpcError::internal("the action descriptions cannot be encoded")
+            })
+        }
         Some(Method::ApprovalRespond) => {
             let answer: ApprovalAnswer = request.into_params()?;
             core.respond(actor, answer)?;

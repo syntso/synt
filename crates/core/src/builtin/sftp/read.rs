@@ -1,10 +1,11 @@
 use data_encoding::BASE64;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::files::{LARGEST_READ, per_call_risk};
+use super::files::LARGEST_READ;
 use super::{Files, RemotePath};
 
 #[derive(Debug, Clone)]
@@ -12,7 +13,7 @@ pub struct SftpRead {
     files: Files,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct ReadParams {
     pub path: RemotePath,
 
@@ -40,13 +41,19 @@ impl SftpRead {
 
 impl Action for SftpRead {
     const ID: &'static str = "sftp.read";
+    const TITLE: &'static str = "Read part of a file on a host";
     const RISK: Risk = Risk::Read;
+    const TAKES_TARGET: bool = true;
 
     type Params = ReadParams;
     type Output = ReadResult;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &ReadParams) -> Risk {
-        per_call_risk(target, Self::RISK)
+        self.files.per_call_risk(target, Self::RISK)
+    }
+
+    fn destination(&self, target: Option<&ResourceRef>, _params: &ReadParams) -> Option<String> {
+        self.files.destination(target)
     }
 
     fn summary(&self, output: &ReadResult) -> Value {

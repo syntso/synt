@@ -1,5 +1,5 @@
 use std::env;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io;
 use std::path::Path;
 
@@ -12,4 +12,8 @@ pub(crate) fn default_address(name: &str) -> io::Result<OsString> {
         .map_err(|_| io::Error::new(io::ErrorKind::NotFound, "USERNAME is not set"))?;
 
     Ok(OsString::from(format!(r"\\.\pipe\{name}-{user}")))
+}
+
+pub(crate) fn absolute_address(address: &OsStr) -> OsString {
+    address.to_owned()
 }

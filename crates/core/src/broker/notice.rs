@@ -10,6 +10,7 @@ pub(super) fn approval_request(id: ApprovalId, request: &AccessRequest<'_>) -> A
         actor: requester(request.actor),
         action: request.action.as_str().to_owned(),
         target: request.target.map(|target| target.as_str().to_owned()),
+        destination: request.destination.map(str::to_owned),
         risk: risk_level(request.risk),
         params: request.params.clone(),
     }
@@ -25,7 +26,7 @@ pub(crate) fn requester(actor: &Actor) -> Requester {
     }
 }
 
-fn risk_level(risk: Risk) -> RiskLevel {
+pub(crate) fn risk_level(risk: Risk) -> RiskLevel {
     match risk {
         Risk::Read => RiskLevel::Read,
         Risk::Write => RiskLevel::Write,

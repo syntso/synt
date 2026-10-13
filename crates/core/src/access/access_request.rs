@@ -9,6 +9,7 @@ pub struct AccessRequest<'a> {
     pub action: &'a ActionId,
     pub risk: Risk,
     pub target: Option<&'a ResourceRef>,
+    pub destination: Option<&'a str>,
     pub params: &'a Value,
     pub departed: &'a CancellationToken,
 }

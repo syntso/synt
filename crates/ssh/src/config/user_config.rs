@@ -56,6 +56,16 @@ impl UserConfig {
         }
     }
 
+    pub(crate) fn aliases(&self) -> Vec<String> {
+        self.parsed
+            .get_hosts()
+            .iter()
+            .flat_map(|host| &host.pattern)
+            .filter(|clause| !clause.negated && !is_pattern(&clause.pattern))
+            .map(|clause| clause.pattern.clone())
+            .collect()
+    }
+
     fn empty() -> Self {
         Self {
             parsed: Arc::new(SshConfig::default()),
@@ -82,6 +92,10 @@ fn remember(path: PathBuf, text: Vec<u8>, parsed: Arc<SshConfig>) {
     let mut remembered = REMEMBERED.lock().unwrap_or_else(PoisonError::into_inner);
 
     *remembered = Some((path, text, parsed));
+}
+
+fn is_pattern(alias: &str) -> bool {
+    alias.contains(['*', '?', '!'])
 }
 
 fn includes_other_files(text: &[u8]) -> bool {

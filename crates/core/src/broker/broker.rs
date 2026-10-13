@@ -6,6 +6,7 @@ use synt_journal::Actor;
 use synt_proto::{ApprovalAnswer, ApprovalDecision, ApprovalId, ErrorCode, Message, RpcError};
 use tokio::sync::mpsc;
 use tokio::time;
+use tokio_util::sync::CancellationToken;
 
 use super::apps::Apps;
 use super::grant::Grant;
@@ -15,6 +16,7 @@ use super::registration::Registration;
 use super::rule::Rule;
 use super::waiting::Waiting;
 use crate::access::{AccessRequest, Decision, Gate, Scope};
+use crate::grants::{AlwaysGrants, GrantId, Hold};
 
 const PATIENCE: Duration = Duration::from_secs(120);
 
@@ -27,6 +29,7 @@ const REQUESTER_GONE: &str = "the requester disconnected";
 #[derive(Debug)]
 pub struct Broker {
     grants: Grants,
+    always: Option<AlwaysGrants>,
     apps: Arc<Apps>,
     waiting: Arc<Waiting>,
     next_id: AtomicU64,
@@ -36,10 +39,24 @@ impl Broker {
     pub fn new() -> Self {
         Self {
             grants: Grants::default(),
+            always: None,
             apps: Arc::new(Apps::default()),
             waiting: Arc::new(Waiting::default()),
             next_id: AtomicU64::new(1),
         }
+    }
+
+    pub fn with_always(always: AlwaysGrants) -> Self {
+        Self {
+            always: Some(always),
+            ..Self::new()
+        }
+    }
+
+    pub(crate) fn hold(&self, grant: GrantId, stop: &CancellationToken) -> Option<Hold> {
+        let always = self.always.as_ref()?;
+
+        Some(always.hold(grant, stop))
     }
 
     pub(crate) fn register(&self, outgoing: mpsc::Sender<Message>) -> Registration {
@@ -65,16 +82,25 @@ impl Broker {
     }
 
     async fn ask(&self, request: &AccessRequest<'_>, grantable: bool) -> Decision {
-        let grant = Grant::covering(request);
-
-        if grantable && self.grants.covers(&grant) {
-            return Decision::Approved(Scope::UntilRestart);
+        if grantable && let Some(standing) = self.standing(request) {
+            return standing;
         }
 
         match self.consult(request).await {
-            Ok(decision) => self.settle(decision, grant, grantable),
+            Ok(decision) => self.settle(decision, request, grantable).await,
             Err(reason) => Decision::deny(reason),
         }
+    }
+
+    fn standing(&self, request: &AccessRequest<'_>) -> Option<Decision> {
+        if self.grants.covers(&Grant::covering(request)) {
+            return Some(Decision::Approved(Scope::UntilRestart));
+        }
+
+        let always = self.always.as_ref()?;
+        let grant = always.covering(request)?;
+
+        Some(Decision::Granted(grant))
     }
 
     async fn consult(&self, request: &AccessRequest<'_>) -> Result<ApprovalDecision, &'static str> {
@@ -99,14 +125,37 @@ impl Broker {
         answered.ok().flatten().ok_or(TIMED_OUT)
     }
 
-    fn settle(&self, decision: ApprovalDecision, grant: Grant, grantable: bool) -> Decision {
+    async fn settle(
+        &self,
+        decision: ApprovalDecision,
+        request: &AccessRequest<'_>,
+        grantable: bool,
+    ) -> Decision {
         match decision {
             ApprovalDecision::Deny => Decision::deny(REFUSED_BY_PERSON),
             ApprovalDecision::AllowUntilRestart if grantable => {
-                self.grants.give(grant);
+                self.grants.give(Grant::covering(request));
                 Decision::Approved(Scope::UntilRestart)
             }
-            ApprovalDecision::AllowOnce | ApprovalDecision::AllowUntilRestart => {
+            ApprovalDecision::AllowAlways if grantable => self.keep(request).await,
+            ApprovalDecision::AllowOnce
+            | ApprovalDecision::AllowUntilRestart
+            | ApprovalDecision::AllowAlways => Decision::Approved(Scope::Once),
+        }
+    }
+
+    async fn keep(&self, request: &AccessRequest<'_>) -> Decision {
+        let Some(always) = &self.always else {
+            self.grants.give(Grant::covering(request));
+            return Decision::Approved(Scope::UntilRestart);
+        };
+
+        match always.give(request).await {
+            Ok(grant) => Decision::Granted(grant),
+            Err(error) => {
+                eprintln!(
+                    "synt-core: the grant could not be kept, so the call is approved once: {error}"
+                );
                 Decision::Approved(Scope::Once)
             }
         }
@@ -127,10 +176,8 @@ impl Gate for Broker {
     fn settled(&self, request: &AccessRequest<'_>) -> Option<Decision> {
         match Rule::for_call(request.actor, request.risk) {
             Rule::Allow => Some(Decision::Allow),
-            Rule::Ask { grantable: true } if self.grants.covers(&Grant::covering(request)) => {
-                Some(Decision::Approved(Scope::UntilRestart))
-            }
-            Rule::Ask { .. } => None,
+            Rule::Ask { grantable: true } => self.standing(request),
+            Rule::Ask { grantable: false } => None,
         }
     }
 

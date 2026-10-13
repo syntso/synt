@@ -16,6 +16,27 @@ pub enum CoreError {
     #[error(transparent)]
     Journal(#[from] JournalError),
 
+    #[error("{0}")]
+    Usage(String),
+
+    #[error("login start: {0}")]
+    LoginStart(PlatformError),
+
+    #[error("state database: {0}")]
+    State(#[from] rusqlite::Error),
+
+    #[error("the work stopped unexpectedly")]
+    Stopped,
+
+    #[error("ssh: {0}")]
+    Ssh(#[from] synt_ssh::SshError),
+
+    #[error("{0}")]
+    Project(String),
+
+    #[error("{0}")]
+    Grant(String),
+
     #[error("system random source: {0}")]
     Random(String),
 

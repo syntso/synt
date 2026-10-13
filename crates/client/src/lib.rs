@@ -1,3 +1,4 @@
+mod autostart;
 mod client;
 mod error;
 mod stream_event;
@@ -5,6 +6,7 @@ mod stream_receiver;
 mod transfer;
 mod transport;
 
+pub use autostart::Autostart;
 pub use client::Client;
 pub use error::ClientError;
 pub use stream_event::StreamEvent;

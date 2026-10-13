@@ -5,6 +5,8 @@ use synt_actions::{Handle, Registry};
 use synt_journal::{ActionId, Details, ResourceRef};
 use synt_proto::{ActionCall, RpcError};
 
+const WILDCARDS: [char; 2] = ['*', '?'];
+
 pub(crate) struct ParsedCall<'r> {
     pub(crate) action: ActionId,
     pub(crate) handle: Option<&'r Handle>,
@@ -24,6 +26,14 @@ impl<'r> ParsedCall<'r> {
             .map(ResourceRef::new)
             .transpose()
             .map_err(|error| RpcError::invalid_params(error.to_string()))?;
+
+        if let Some(target) = &target
+            && target.as_str().contains(WILDCARDS)
+        {
+            return Err(RpcError::invalid_params(format!(
+                "the target {target} holds * or ?; a target names one thing"
+            )));
+        }
 
         let handle = registry.get(&action);
         let shown_params = handle.map_or_else(

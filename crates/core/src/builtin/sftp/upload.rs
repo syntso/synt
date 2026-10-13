@@ -1,4 +1,5 @@
 use data_encoding::HEXLOWER;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -7,7 +8,7 @@ use synt_journal::ResourceRef;
 use synt_proto::StreamId;
 use synt_ssh::{Upload, WriteMode};
 
-use super::files::{failed, link, per_call_risk};
+use super::files::{failed, link};
 use super::{Files, RemotePath};
 use crate::link::Inbound;
 
@@ -16,9 +17,10 @@ pub struct SftpUpload {
     files: Files,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct UploadParams {
     pub path: RemotePath,
+    #[schemars(with = "u32")]
     pub stream: StreamId,
     pub size: u64,
 
@@ -86,13 +88,19 @@ impl SftpUpload {
 
 impl Action for SftpUpload {
     const ID: &'static str = "sftp.upload";
+    const TITLE: &'static str = "Upload a file to a host";
     const RISK: Risk = Risk::Write;
+    const TAKES_TARGET: bool = true;
 
     type Params = UploadParams;
     type Output = Uploaded;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &UploadParams) -> Risk {
-        per_call_risk(target, Self::RISK)
+        self.files.per_call_risk(target, Self::RISK)
+    }
+
+    fn destination(&self, target: Option<&ResourceRef>, _params: &UploadParams) -> Option<String> {
+        self.files.destination(target)
     }
 
     fn summary(&self, output: &Uploaded) -> Value {
