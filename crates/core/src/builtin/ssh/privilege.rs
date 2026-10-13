@@ -33,7 +33,7 @@ pub(super) fn escalates(command: &str) -> bool {
         .any(word_escalates)
 }
 
-pub(super) fn is_root(user: &str) -> bool {
+pub(crate) fn is_root(user: &str) -> bool {
     user == "root"
 }
 

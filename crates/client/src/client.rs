@@ -1,16 +1,17 @@
 use std::sync::Arc;
 
+use bytes::Bytes;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use synt_platform::{Endpoint, LocalStream};
 use synt_proto::{
     ActionCall, ActionOutcome, ApprovalAnswer, ApprovalDecision, ApprovalId, Hello, Method,
-    Notification, Welcome,
+    Notification, StreamId, Welcome,
 };
 use tokio::sync::broadcast;
 
-use crate::ClientError;
 use crate::transport::{Connection, Duplex};
+use crate::{ClientError, StreamReceiver};
 
 #[derive(Clone)]
 pub struct Client {
@@ -48,6 +49,14 @@ impl Client {
             .await?;
 
         Ok(())
+    }
+
+    pub fn stream(&self, stream: StreamId) -> StreamReceiver {
+        self.connection.claim(stream)
+    }
+
+    pub async fn send_stream(&self, stream: StreamId, data: Bytes) -> Result<(), ClientError> {
+        self.connection.send_stream(stream, data).await
     }
 
     async fn start(stream: impl Duplex + 'static, hello: Hello) -> Result<Self, ClientError> {

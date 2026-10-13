@@ -40,9 +40,13 @@ impl Collector {
                         "the server refused to run the command".to_owned(),
                     ));
                 }
-                ChannelMsg::Close => break,
+                ChannelMsg::Close => return Ok(self),
                 _ => {}
             }
+        }
+
+        if self.exit.is_none() && self.signal.is_none() {
+            return Err(SshError::ConnectionLost);
         }
 
         Ok(self)

@@ -4,13 +4,21 @@ use std::path::{self, Path, PathBuf};
 use std::process::ExitCode;
 
 use synt_actions::Registry;
+use synt_core::Files;
 use synt_core::{
-    Broker, Core, JournalPage, JournalVerify, Ping, Server, SshExec, Storage, VERSION,
+    Broker, Core, JournalPage, JournalVerify, Ping, Server, SshConnections, SshExec, Storage,
+    VERSION,
 };
+use synt_core::{
+    SessionAttach, SessionClose, SessionList, SessionResize, SshSessionOpen, Terminals,
+};
+use synt_core::{TunnelClose, TunnelList, TunnelOpen};
 use synt_journal::{Journal, JournalWriter};
 use synt_platform::{
     AppCheck, Endpoint, WEAK_VAULT_FLAG, WeakVault, data_directory, open_vault, shutdown_signal,
 };
+use synt_ssh::Pool;
+use synt_ssh::Tunnels;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -47,9 +55,27 @@ async fn run() -> Result<(), Box<dyn Error>> {
 
     let journal = JournalWriter::spawn(journal(&data, arguments.weak_vault)?)?;
 
+    let pool = Pool::new();
+
     let mut registry = Registry::new();
     registry.register(Ping)?;
-    registry.register(SshExec::new())?;
+    registry.register(SshExec::new(pool.clone()))?;
+
+    let tunnels = Tunnels::new(pool.clone());
+    registry.register(TunnelOpen::new(tunnels.clone()))?;
+    registry.register(TunnelList::new(tunnels.clone()))?;
+    registry.register(TunnelClose::new(tunnels))?;
+
+    Files::new(pool.clone()).register(&mut registry)?;
+
+    let terminals = Terminals::new(journal.clone());
+    registry.register(SshSessionOpen::new(pool.clone(), terminals.clone()))?;
+    registry.register(SessionAttach::new(terminals.clone()))?;
+    registry.register(SessionResize::new(terminals.clone()))?;
+    registry.register(SessionClose::new(terminals.clone()))?;
+    registry.register(SessionList::new(terminals.clone()))?;
+
+    registry.register(SshConnections::new(pool))?;
     registry.register(JournalPage::new(journal.clone()))?;
     registry.register(JournalVerify::new(journal.clone()))?;
 
@@ -61,7 +87,11 @@ async fn run() -> Result<(), Box<dyn Error>> {
         endpoint.address().to_string_lossy()
     );
 
-    server.run(shutdown_signal()).await;
+    let stopping = async {
+        shutdown_signal().await;
+        terminals.close_all().await;
+    };
+    server.run(stopping).await;
 
     Ok(())
 }

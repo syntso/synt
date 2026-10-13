@@ -10,6 +10,8 @@ use crate::{ActionError, Context, Risk};
 pub trait Action: Send + Sync + 'static {
     const ID: &'static str;
     const RISK: Risk;
+    const PERSON_ONLY: bool = false;
+    const FINISHES_LATER: bool = false;
 
     type Params: DeserializeOwned + Send + 'static;
     type Output: Serialize;
@@ -20,6 +22,10 @@ pub trait Action: Send + Sync + 'static {
 
     fn summary(&self, _output: &Self::Output) -> Value {
         Value::Null
+    }
+
+    fn recorded_params(&self, params: &Value) -> Value {
+        params.clone()
     }
 
     fn run(

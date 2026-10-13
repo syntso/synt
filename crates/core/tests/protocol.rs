@@ -113,7 +113,7 @@ async fn a_frame_over_the_request_limit_closes_the_connection() {
     let mut connection = RawConnection::greeted(harness.endpoint()).await;
 
     connection
-        .send_bytes_until_refused(vec![b' '; 128 * 1024])
+        .send_bytes_until_refused(vec![b' '; 2 * 1024 * 1024])
         .await;
 
     assert!(connection.is_closed().await);

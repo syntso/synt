@@ -5,17 +5,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
-use synt_ssh::{ExecLimits, ExecOutput, SshError, Target};
+use synt_ssh::{ExecLimits, ExecOutput, Pool};
 use tokio::sync::Semaphore;
-use tokio::task;
 
 use super::privilege::{escalates, is_root};
+use super::{failure, hidden_root, logs_in_as_root, resolve};
 
 const LONGEST_TIMEOUT: Duration = Duration::from_hours(24);
 const CONCURRENT_RUNS: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct SshExec {
+    pool: Pool,
     runs: Arc<Semaphore>,
 }
 
@@ -38,16 +39,11 @@ pub struct ExecResult {
 }
 
 impl SshExec {
-    pub fn new() -> Self {
+    pub fn new(pool: Pool) -> Self {
         Self {
+            pool,
             runs: Arc::new(Semaphore::new(CONCURRENT_RUNS)),
         }
-    }
-}
-
-impl Default for SshExec {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -89,7 +85,7 @@ impl Action for SshExec {
         let limits = limits(params.timeout_seconds)?;
         let target = resolve(host.as_str()).await?;
 
-        if is_root(target.user()) && self.risk(Some(host), &params) != Risk::Privileged {
+        if is_root(target.user()) && context.risk() != Risk::Privileged {
             return Err(hidden_root(host));
         }
 
@@ -99,7 +95,7 @@ impl Action for SshExec {
             .await
             .map_err(|_| ActionError::failed("ssh.exec is shutting down"))?;
 
-        let output = synt_ssh::exec(&target, &params.command, limits)
+        let output = synt_ssh::exec(&self.pool, &target, &params.command, limits)
             .await
             .map_err(|error| failure(&error))?;
 
@@ -118,24 +114,6 @@ impl From<ExecOutput> for ExecResult {
             duration_ms: output.duration_ms,
         }
     }
-}
-
-fn logs_in_as_root(target: Option<&ResourceRef>) -> bool {
-    let Some(target) = target else {
-        return false;
-    };
-
-    match Target::resolve(target.as_str()) {
-        Ok(resolved) => is_root(resolved.user()),
-        Err(_) => true,
-    }
-}
-
-fn hidden_root(host: &ResourceRef) -> ActionError {
-    ActionError::Failed(format!(
-        "the ssh config for {host} changed to log in as root after the call was approved; \
-         run it again so it is asked as privileged"
-    ))
 }
 
 fn limits(timeout_seconds: Option<u64>) -> Result<ExecLimits, ActionError> {
@@ -158,41 +136,4 @@ fn limits(timeout_seconds: Option<u64>) -> Result<ExecLimits, ActionError> {
         timeout,
         ..defaults
     })
-}
-
-async fn resolve(spec: &str) -> Result<Target, ActionError> {
-    let spec = spec.to_owned();
-
-    let resolving = task::spawn_blocking(move || Target::resolve(&spec));
-
-    let resolved = resolving
-        .await
-        .map_err(|_| ActionError::failed("reading the ssh config stopped unexpectedly"))?;
-
-    resolved.map_err(|error| failure(&error))
-}
-
-fn failure(error: &SshError) -> ActionError {
-    let reason = match error {
-        SshError::HostKeyUnknown { host, fingerprint } => format!(
-            "the host key of {host} is not in known_hosts (fingerprint {fingerprint}); \
-             check the fingerprint and add the key to ~/.ssh/known_hosts before trying again"
-        ),
-        SshError::HostKeyChanged { host, fingerprint } => format!(
-            "the host key of {host} does not match known_hosts (server sent {fingerprint}); \
-             someone may be intercepting the connection, so it was refused"
-        ),
-        SshError::HostKeyOtherType { host, fingerprint } => format!(
-            "{host} presented a key of a type not pinned in known_hosts (fingerprint \
-             {fingerprint}), while a key of another type is pinned; do not replace the pinned \
-             key without checking the new one out of band"
-        ),
-        SshError::Timeout(limit) => {
-            format!("the command was not started within {} s", limit.as_secs())
-        }
-        SshError::CommandTimeout { .. } => error.to_string(),
-        other => format!("ssh: {other}"),
-    };
-
-    ActionError::Failed(reason)
 }

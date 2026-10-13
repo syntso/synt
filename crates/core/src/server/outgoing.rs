@@ -6,23 +6,35 @@ use tokio::sync::mpsc;
 
 pub(super) type Outgoing = FrameWriter<LocalStream>;
 
-pub(super) async fn write_all(mut outgoing: Outgoing, mut queue: mpsc::Receiver<Message>) {
+pub(super) async fn write_all(
+    mut outgoing: Outgoing,
+    mut queue: mpsc::Receiver<Message>,
+    mut frames: mpsc::Receiver<Frame>,
+) {
     let limit = outgoing.encoder().limit();
 
-    while let Some(first) = queue.recv().await {
-        let mut next = Some(first);
-
-        while let Some(message) = next {
-            if let Some(body) = encode(&message, limit)
-                && outgoing.feed(Frame::message(body)).await.is_err()
-            {
-                return;
+    loop {
+        let next = tokio::select! {
+            message = queue.recv() => {
+                let Some(message) = message else {
+                    return;
+                };
+                encode(&message, limit).map(Frame::message)
             }
+            Some(frame) = frames.recv() => Some(frame),
+        };
 
-            next = queue.try_recv().ok();
+        let Some(frame) = next else {
+            continue;
+        };
+
+        if outgoing.feed(frame).await.is_err() {
+            return;
         }
 
-        if outgoing.flush().await.is_err() {
+        let idle = queue.is_empty() && frames.is_empty();
+
+        if idle && outgoing.flush().await.is_err() {
             return;
         }
     }

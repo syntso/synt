@@ -12,16 +12,25 @@ pub(crate) trait Runnable: Send {
 
 pub struct Prepared {
     risk: Risk,
+    finishes_later: bool,
     runnable: Box<dyn Runnable>,
 }
 
 impl Prepared {
-    pub(crate) fn new(risk: Risk, runnable: Box<dyn Runnable>) -> Self {
-        Self { risk, runnable }
+    pub(crate) fn new(risk: Risk, finishes_later: bool, runnable: Box<dyn Runnable>) -> Self {
+        Self {
+            risk,
+            finishes_later,
+            runnable,
+        }
     }
 
     pub fn risk(&self) -> Risk {
         self.risk
+    }
+
+    pub fn finishes_later(&self) -> bool {
+        self.finishes_later
     }
 
     pub async fn run(self, context: &Context) -> Result<Completed, ActionError> {
