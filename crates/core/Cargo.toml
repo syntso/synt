@@ -1,0 +1,27 @@
+[package]
+name = "synt-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+bytes.workspace = true
+futures-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+synt-actions.workspace = true
+synt-journal.workspace = true
+synt-platform.workspace = true
+synt-proto.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "sync", "time"] }
+tokio-util = { workspace = true, features = ["rt"] }
+
+[dev-dependencies]
+synt-client.workspace = true

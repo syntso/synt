@@ -13,12 +13,17 @@ allow = [
 confidence-threshold = 0.9
 unused-allowed-license = "allow"
 
+[[licenses.exceptions]]
+crate = "option-ext"
+allow = ["MPL-2.0"]
+
 [licenses.private]
 ignore = true
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"
