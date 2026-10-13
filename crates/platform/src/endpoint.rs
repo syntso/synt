@@ -31,4 +31,8 @@ impl Endpoint {
     pub fn address(&self) -> &OsStr {
         &self.address
     }
+
+    pub fn absolute_address(&self) -> OsString {
+        native::absolute_address(&self.address)
+    }
 }

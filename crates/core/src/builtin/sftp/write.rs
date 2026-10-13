@@ -1,11 +1,12 @@
 use data_encoding::BASE64;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_ssh::WriteMode;
 
-use super::files::{LARGEST_WRITE, per_call_risk};
+use super::files::LARGEST_WRITE;
 use super::{Files, RemotePath};
 
 const DATA_FIELD: &str = "data";
@@ -17,7 +18,7 @@ pub struct SftpWrite {
     files: Files,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct WriteParams {
     pub path: RemotePath,
 
@@ -48,13 +49,19 @@ impl SftpWrite {
 
 impl Action for SftpWrite {
     const ID: &'static str = "sftp.write";
+    const TITLE: &'static str = "Write part of a file on a host";
     const RISK: Risk = Risk::Write;
+    const TAKES_TARGET: bool = true;
 
     type Params = WriteParams;
     type Output = WriteResult;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &WriteParams) -> Risk {
-        per_call_risk(target, Self::RISK)
+        self.files.per_call_risk(target, Self::RISK)
+    }
+
+    fn destination(&self, target: Option<&ResourceRef>, _params: &WriteParams) -> Option<String> {
+        self.files.destination(target)
     }
 
     fn summary(&self, output: &WriteResult) -> Value {

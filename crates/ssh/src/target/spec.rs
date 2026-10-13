@@ -1,6 +1,7 @@
 use crate::SshError;
 
 const URI_PREFIX: &str = "ssh://";
+const WILDCARDS: [char; 2] = ['*', '?'];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Spec {
@@ -25,6 +26,12 @@ impl Spec {
         }
         if user.as_deref() == Some("") {
             return Err(invalid(text, "the user is empty"));
+        }
+        if address.contains(WILDCARDS) {
+            return Err(invalid(
+                text,
+                "a target names one host, so it cannot hold * or ?",
+            ));
         }
 
         Ok(Self {

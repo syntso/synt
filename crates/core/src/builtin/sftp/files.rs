@@ -10,8 +10,9 @@ use super::{
     SftpDownload, SftpList, SftpMkdir, SftpRead, SftpRemove, SftpRename, SftpStat, SftpUpload,
     SftpWrite,
 };
-use crate::builtin::ssh::{failure, hidden_root, is_root, logs_in_as_root, resolve};
+use crate::builtin::ssh::{destination, failure, logs_in_as_root, reach_host};
 use crate::link::Link;
+use crate::projects::Projects;
 
 const CONCURRENT_CALLS: usize = 8;
 const CONCURRENT_TRANSFERS: usize = 4;
@@ -22,14 +23,16 @@ pub(super) const LARGEST_WRITE: u64 = 640 * 1024;
 #[derive(Debug, Clone)]
 pub struct Files {
     sessions: FileSessions,
+    projects: Projects,
     calls: Arc<Semaphore>,
     transfers: Arc<Semaphore>,
 }
 
 impl Files {
-    pub fn new(pool: Pool) -> Self {
+    pub fn new(pool: Pool, projects: Projects) -> Self {
         Self {
             sessions: FileSessions::new(pool),
+            projects,
             calls: Arc::new(Semaphore::new(CONCURRENT_CALLS)),
             transfers: Arc::new(Semaphore::new(CONCURRENT_TRANSFERS)),
         }
@@ -56,12 +59,7 @@ impl Files {
         Operation: Fn(Arc<Sftp>) -> Running,
         Running: Future<Output = Result<T, SshError>>,
     {
-        let host = context.target().ok_or(ActionError::TargetRequired)?;
-        let target = resolve(host.as_str()).await?;
-
-        if is_root(target.user()) && context.risk() != Risk::Privileged {
-            return Err(hidden_root(host));
-        }
+        let target = reach_host(&self.projects, context).await?;
 
         let _permit = self
             .calls
@@ -75,20 +73,24 @@ impl Files {
             .map_err(|error| failed(&error))
     }
 
+    pub(super) fn per_call_risk(&self, target: Option<&ResourceRef>, declared: Risk) -> Risk {
+        if logs_in_as_root(&self.projects, target) {
+            return Risk::Privileged;
+        }
+
+        declared
+    }
+
+    pub(super) fn destination(&self, target: Option<&ResourceRef>) -> Option<String> {
+        destination(&self.projects, target)
+    }
+
     pub(super) async fn transfer_slot(&self) -> Result<OwnedSemaphorePermit, ActionError> {
         Arc::clone(&self.transfers)
             .acquire_owned()
             .await
             .map_err(|_| ActionError::failed("sftp is shutting down"))
     }
-}
-
-pub(super) fn per_call_risk(target: Option<&ResourceRef>, declared: Risk) -> Risk {
-    if logs_in_as_root(target) {
-        return Risk::Privileged;
-    }
-
-    declared
 }
 
 pub(super) fn failed(error: &SshError) -> ActionError {

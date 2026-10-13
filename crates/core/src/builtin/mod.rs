@@ -1,12 +1,21 @@
+mod grant;
 mod journal;
 mod ping;
+mod project;
+mod resource;
 mod session;
 mod sftp;
 mod ssh;
 mod tunnel;
 
+pub use grant::{GrantInfo, GrantList, GrantRevoke, RevokeParams, Revoked};
 pub use journal::{JournalPage, JournalVerify, Page, PageQuery};
 pub use ping::{Ping, Pong};
+pub use project::{ProjectClose, ProjectIdParams, ProjectList, ProjectOpen, ProjectPathParams};
+pub use resource::{
+    ResourceGet, ResourceList, ResourceListParams, ResourceParams, ResourcePut, ResourcePutParams,
+    ResourceRemove,
+};
 pub use session::{
     AttachedSession, SessionAttach, SessionAttachParams, SessionClose, SessionCloseParams,
     SessionInfo, SessionList, SessionOpenParams, SessionResize, SessionResizeParams, SessionSize,

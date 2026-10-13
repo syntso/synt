@@ -5,14 +5,19 @@ use synt_journal::{Journal, JournalBuilder, JournalError, JournalId, KeyStore};
 use synt_platform::Vault;
 
 use crate::CoreError;
+use crate::grants::GrantSeal;
 use crate::keys::VaultKeyStore;
+use crate::state::State;
 
 const JOURNALS: &str = "journals";
 const JOURNAL_FILE: &str = "main.sqlite";
 const JOURNAL_ITEM: &str = "journal.main";
+const STATE: &str = "state";
+const STATE_FILE: &str = "main.sqlite";
 
 pub struct Storage {
     journals: PathBuf,
+    state: PathBuf,
     vault: Arc<dyn Vault>,
 }
 
@@ -21,8 +26,12 @@ impl Storage {
         let journals = data.join(JOURNALS);
         synt_platform::create_private_directory(&journals)?;
 
+        let state = data.join(STATE);
+        synt_platform::create_private_directory(&state)?;
+
         Ok(Self {
             journals,
+            state,
             vault: Arc::from(vault),
         })
     }
@@ -41,6 +50,14 @@ impl Storage {
             }),
             None => self.create(&path, keys),
         }
+    }
+
+    pub fn state(&self) -> Result<State, CoreError> {
+        State::open(&self.state.join(STATE_FILE))
+    }
+
+    pub fn grant_seal(&self) -> Result<GrantSeal, CoreError> {
+        GrantSeal::open(Arc::clone(&self.vault))
     }
 
     fn create(&self, path: &Path, keys: Arc<VaultKeyStore>) -> Result<Journal, CoreError> {

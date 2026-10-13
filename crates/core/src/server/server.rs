@@ -11,6 +11,7 @@ use tokio_util::task::TaskTracker;
 
 use super::session::Session;
 use crate::core::Core;
+use crate::idle::Activity;
 
 const ACCEPT_BACKOFF: Duration = Duration::from_millis(50);
 const CONNECTION_LIMIT: usize = 64;
@@ -37,6 +38,10 @@ impl Server {
             connections: Arc::new(Semaphore::new(CONNECTION_LIMIT)),
             apps: Arc::new(apps),
         })
+    }
+
+    pub fn activity(&self) -> impl Activity + use<> {
+        self.sessions.clone()
     }
 
     pub async fn run(mut self, shutdown: impl Future<Output = ()>) {

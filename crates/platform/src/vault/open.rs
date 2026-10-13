@@ -23,6 +23,11 @@ pub fn open_vault(data: &Path, weak: WeakVault) -> Result<Box<dyn Vault>, Platfo
 
 #[cfg(target_os = "macos")]
 fn native_vault(data: &Path, weak: WeakVault) -> Result<Box<dyn Vault>, PlatformError> {
+    if cfg!(debug_assertions) {
+        let files = super::files::Files::open(data.join("keys"))?;
+        return Ok(Box::new(files));
+    }
+
     let keychain = super::keychain::Keychain::open(scope(data), weak)?;
     Ok(Box::new(keychain))
 }

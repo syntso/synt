@@ -18,6 +18,8 @@ russh.workspace = true
 russh-sftp.workspace = true
 sha1.workspace = true
 ssh2-config.workspace = true
+synt-platform.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["fs", "io-util", "macros", "net", "rt", "sync", "time"] }
+tokio-util.workspace = true
 zeroize.workspace = true

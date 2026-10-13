@@ -3,7 +3,6 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::files::per_call_risk;
 use super::{Files, PathParams};
 
 #[derive(Debug, Clone)]
@@ -24,13 +23,19 @@ impl SftpMkdir {
 
 impl Action for SftpMkdir {
     const ID: &'static str = "sftp.mkdir";
+    const TITLE: &'static str = "Make a directory on a host";
     const RISK: Risk = Risk::Write;
+    const TAKES_TARGET: bool = true;
 
     type Params = PathParams;
     type Output = Made;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &PathParams) -> Risk {
-        per_call_risk(target, Self::RISK)
+        self.files.per_call_risk(target, Self::RISK)
+    }
+
+    fn destination(&self, target: Option<&ResourceRef>, _params: &PathParams) -> Option<String> {
+        self.files.destination(target)
     }
 
     fn summary(&self, output: &Made) -> Value {

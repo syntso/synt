@@ -5,6 +5,7 @@ use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tokio::time;
+use tokio_util::sync::CancellationToken;
 
 use super::forward::serve;
 use super::{Destination, Traffic, TunnelId, TunnelStatus};
@@ -19,6 +20,7 @@ pub(crate) struct Tunnel {
     destination: Destination,
     traffic: Arc<Traffic>,
     serving: JoinHandle<()>,
+    stop: CancellationToken,
 }
 
 impl Tunnel {
@@ -28,6 +30,7 @@ impl Tunnel {
         target: &Target,
         destination: Destination,
         local_port: Option<u16>,
+        stop: CancellationToken,
     ) -> Result<Self, SshError> {
         let listener = listen(local_port.unwrap_or(0)).await?;
         let local_port = listener.local_addr()?.port();
@@ -52,6 +55,7 @@ impl Tunnel {
             destination,
             traffic,
             serving,
+            stop,
         })
     }
 
@@ -85,6 +89,7 @@ impl Tunnel {
 impl Drop for Tunnel {
     fn drop(&mut self) {
         self.serving.abort();
+        self.stop.cancel();
     }
 }
 

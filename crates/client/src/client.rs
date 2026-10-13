@@ -2,17 +2,17 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use serde::de::DeserializeOwned;
-use serde_json::Value;
+use serde_json::{Value, json};
 use synt_platform::{Endpoint, LocalStream};
 use synt_proto::{
-    ActionCall, ActionOutcome, ApprovalAnswer, ApprovalDecision, ApprovalId, Hello, Method,
-    Notification, StreamId, Welcome,
+    ActionCall, ActionDescription, ActionOutcome, ApprovalAnswer, ApprovalDecision, ApprovalId,
+    Hello, Method, Notification, StreamId, Welcome,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::broadcast;
 
 use crate::transport::{Connection, Duplex};
-use crate::{ClientError, StreamReceiver, Transferred, transfer};
+use crate::{Autostart, ClientError, StreamReceiver, Transferred, transfer};
 
 #[derive(Clone)]
 pub struct Client {
@@ -21,8 +21,17 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn connect(endpoint: &Endpoint, hello: Hello) -> Result<Self, ClientError> {
-        let stream = LocalStream::connect(endpoint).await?;
+    pub async fn connect(
+        endpoint: &Endpoint,
+        hello: Hello,
+        autostart: &Autostart,
+    ) -> Result<Self, ClientError> {
+        let stream = match LocalStream::connect(endpoint).await {
+            Ok(stream) => stream,
+            Err(error) if autostart.applies_to(&error) => autostart.start(endpoint).await?,
+            Err(error) => return Err(error.into()),
+        };
+
         Self::start(stream, hello).await
     }
 
@@ -32,6 +41,15 @@ impl Client {
 
     pub async fn call(&self, call: ActionCall) -> Result<ActionOutcome, ClientError> {
         let reply = self.connection.request(Method::ActionCall, &call).await?;
+        expect_shape(reply)
+    }
+
+    pub async fn describe(&self) -> Result<Vec<ActionDescription>, ClientError> {
+        let reply = self
+            .connection
+            .request(Method::ActionsDescribe, &json!({}))
+            .await?;
+
         expect_shape(reply)
     }
 

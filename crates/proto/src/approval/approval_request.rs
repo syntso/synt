@@ -13,6 +13,9 @@ pub struct ApprovalRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
 
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destination: Option<String>,
+
     pub risk: RiskLevel,
 
     #[serde(default)]

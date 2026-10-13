@@ -25,6 +25,7 @@ impl SshConnections {
 
 impl Action for SshConnections {
     const ID: &'static str = "ssh.connections";
+    const TITLE: &'static str = "List the shared SSH connections";
     const RISK: Risk = Risk::Read;
 
     type Params = ();

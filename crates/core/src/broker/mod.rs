@@ -9,5 +9,5 @@ mod rule;
 mod waiting;
 
 pub use broker::Broker;
-pub(crate) use notice::requester;
+pub(crate) use notice::{requester, risk_level};
 pub(crate) use registration::Registration;

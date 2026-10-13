@@ -7,6 +7,7 @@ pub(super) struct Grant {
     actor: Actor,
     action: ActionId,
     target: Option<ResourceRef>,
+    destination: Option<String>,
 }
 
 impl Grant {
@@ -15,6 +16,7 @@ impl Grant {
             actor: request.actor.clone(),
             action: request.action.clone(),
             target: request.target.cloned(),
+            destination: request.destination.map(str::to_owned),
         }
     }
 }

@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
@@ -11,7 +12,7 @@ pub struct SessionResize {
     terminals: Terminals,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct SessionResizeParams {
     pub session: SessionId,
     #[serde(rename = "cols")]
@@ -27,6 +28,7 @@ impl SessionResize {
 
 impl Action for SessionResize {
     const ID: &'static str = "session.resize";
+    const TITLE: &'static str = "Resize a terminal session";
     const RISK: Risk = Risk::Write;
     const PERSON_ONLY: bool = true;
 

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use synt_journal::ActionId;
 
-use crate::{Action, ActionError, Handle};
+use crate::{Action, ActionError, Description, Handle};
 
 #[derive(Clone, Default)]
 pub struct Registry {
@@ -33,10 +33,19 @@ impl Registry {
     pub fn ids(&self) -> impl Iterator<Item = &ActionId> {
         self.actions.keys()
     }
+
+    pub fn describe(&self) -> Vec<Description> {
+        let mut descriptions: Vec<Description> =
+            self.actions.values().map(Handle::describe).collect();
+
+        descriptions.sort_by(|left, right| left.id.as_str().cmp(right.id.as_str()));
+        descriptions
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
     use synt_journal::{ActionId, Actor, Seq};
@@ -46,7 +55,7 @@ mod tests {
 
     struct Echo;
 
-    #[derive(Deserialize)]
+    #[derive(Deserialize, JsonSchema)]
     struct Shout {
         text: String,
     }
@@ -58,6 +67,7 @@ mod tests {
 
     impl Action for Echo {
         const ID: &'static str = "test.echo";
+        const TITLE: &'static str = "Echo text in capitals";
         const RISK: Risk = Risk::Read;
 
         type Params = Shout;
@@ -74,6 +84,7 @@ mod tests {
 
     impl Action for Broken {
         const ID: &'static str = "bad id\n";
+        const TITLE: &'static str = "Never registered";
         const RISK: Risk = Risk::Write;
 
         type Params = ();

@@ -3,7 +3,6 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::files::per_call_risk;
 use super::{FileInfo, Files, PathParams};
 
 #[derive(Debug, Clone)]
@@ -26,13 +25,19 @@ impl SftpList {
 
 impl Action for SftpList {
     const ID: &'static str = "sftp.list";
+    const TITLE: &'static str = "List a directory on a host";
     const RISK: Risk = Risk::Read;
+    const TAKES_TARGET: bool = true;
 
     type Params = PathParams;
     type Output = Listing;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &PathParams) -> Risk {
-        per_call_risk(target, Self::RISK)
+        self.files.per_call_risk(target, Self::RISK)
+    }
+
+    fn destination(&self, target: Option<&ResourceRef>, _params: &PathParams) -> Option<String> {
+        self.files.destination(target)
     }
 
     fn summary(&self, output: &Listing) -> Value {

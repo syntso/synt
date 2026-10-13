@@ -15,6 +15,7 @@ impl Touch {
 
 impl Action for Touch {
     const ID: &'static str = "test.touch";
+    const TITLE: &'static str = "Count a touch";
     const RISK: Risk = Risk::Write;
 
     type Params = ();

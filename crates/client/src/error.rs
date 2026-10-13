@@ -17,6 +17,15 @@ pub enum ClientError {
     #[error("core refused: {0}")]
     Rpc(#[from] RpcError),
 
+    #[error("cannot find synt-core to start it: {0}")]
+    CoreNotFound(io::Error),
+
+    #[error("cannot start the core {program}: {reason}")]
+    CoreStart { program: String, reason: String },
+
+    #[error("started the core {program}, but it did not answer within {seconds} seconds")]
+    CoreSilent { program: String, seconds: u64 },
+
     #[error("the connection to the core is closed")]
     Disconnected,
 

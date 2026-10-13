@@ -5,4 +5,5 @@ use serde::Serialize;
 pub enum Scope {
     Once,
     UntilRestart,
+    Always,
 }

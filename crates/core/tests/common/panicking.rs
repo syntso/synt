@@ -4,6 +4,7 @@ pub struct Panicking;
 
 impl Action for Panicking {
     const ID: &'static str = "test.panic";
+    const TITLE: &'static str = "Always panic";
     const RISK: Risk = Risk::Read;
 
     type Params = ();

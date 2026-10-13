@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::{Event, Filter, JournalWriter, Seq};
@@ -12,12 +13,10 @@ pub struct JournalPage {
     journal: JournalWriter,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(default)]
 pub struct PageQuery {
-    #[serde(default)]
     pub after: Option<u64>,
-
-    #[serde(default)]
     pub limit: Option<u32>,
 }
 
@@ -34,13 +33,13 @@ impl JournalPage {
 
 impl Action for JournalPage {
     const ID: &'static str = "journal.page";
+    const TITLE: &'static str = "Read a page of journal events";
     const RISK: Risk = Risk::Read;
 
-    type Params = Option<PageQuery>;
+    type Params = PageQuery;
     type Output = Page;
 
-    async fn run(&self, _context: &Context, query: Option<PageQuery>) -> Result<Page, ActionError> {
-        let query = query.unwrap_or_default();
+    async fn run(&self, _context: &Context, query: PageQuery) -> Result<Page, ActionError> {
         let limit = checked_limit(query.limit)?;
         let after = query.after.map(Seq::new);
 

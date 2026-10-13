@@ -1,20 +1,27 @@
 use std::any::Any;
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::{Value, json};
-use synt_actions::{ActionError, Completed, Context, Handle, Prepared, Registry};
+use synt_actions::{ActionError, Completed, Context, Description, Handle, Prepared, Registry};
 use synt_journal::{Actor, EventKind, JournalError, JournalWriter, NewEvent, ResourceRef, Seq};
-use synt_proto::{ActionCall, ActionOutcome, ApprovalAnswer, ErrorCode, RequestSeq, RpcError};
-use tokio::task;
+use synt_proto::{
+    ActionCall, ActionDescription, ActionOutcome, ApprovalAnswer, ErrorCode, RequestSeq, RpcError,
+};
+use tokio::{task, time};
 use tokio_util::sync::CancellationToken;
 
 use crate::access::{AccessRequest, Decision, Gate, Scope};
-use crate::broker::Broker;
+use crate::broker::{Broker, risk_level};
+use crate::grants::{GrantId, Hold};
 use crate::link::Link;
 use crate::parsed_call::ParsedCall;
 use crate::recorder::{Call, Recorder};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+const STOP_GRACE: Duration = Duration::from_secs(10);
+const REVOKED: &str = "stopped: the standing grant this call used was revoked";
 
 pub struct Core {
     registry: Registry,
@@ -67,22 +74,47 @@ impl Core {
             return Err(self.reject(request, denied(&call, reason)).await);
         }
 
+        let takes_target = handle.takes_target();
+
         let prepared = match prepare_blocking(handle, call.target, params).await {
             Ok(prepared) => prepared,
             Err(error) => return Err(self.reject(request, failed(&call, failure(&error))).await),
         };
+
+        if let Some(target) = call
+            .target
+            .filter(|_| takes_target && prepared.destination().is_none())
+        {
+            let error = RpcError::new(
+                ErrorCode::INVALID_PARAMS,
+                format!("{target} does not name a host this core can reach"),
+            );
+            return Err(self.reject(request, failed(&call, error)).await);
+        }
 
         let access = AccessRequest {
             actor,
             action: &action,
             risk: prepared.risk(),
             target: call.target,
+            destination: prepared.destination(),
             params: &shown_params,
             departed,
         };
-        let request = self.admit(&call, request, &access).await?;
+        let (request, grant) = self.admit(&call, request, &access).await?;
 
-        self.perform(&call, request, prepared, link).await
+        self.perform(&call, (request, grant), prepared, link).await
+    }
+
+    pub(crate) fn describe(&self, actor: &Actor) -> Vec<ActionDescription> {
+        let for_person = acts_for_person(actor);
+
+        self.registry
+            .describe()
+            .into_iter()
+            .filter(|description| for_person || !description.person_only)
+            .map(action_description)
+            .collect()
     }
 
     pub(crate) fn respond(
@@ -102,7 +134,7 @@ impl Core {
         call: &Call<'_>,
         request: NewEvent,
         access: &AccessRequest<'_>,
-    ) -> Result<Seq, RpcError> {
+    ) -> Result<(Seq, Option<GrantId>), RpcError> {
         if let Some(decision) = self.broker.settled(access) {
             return self.admit_at_once(call, request, decision).await;
         }
@@ -123,18 +155,19 @@ impl Core {
         call: &Call<'_>,
         request: NewEvent,
         decision: Decision,
-    ) -> Result<Seq, RpcError> {
+    ) -> Result<(Seq, Option<GrantId>), RpcError> {
+        let grant = decision.grant();
         let steps = match decision {
             Decision::Deny { reason } => {
                 return Err(self.reject(request, denied(call, reason)).await);
             }
-            Decision::Allow => admission(call, None),
-            Decision::Approved(scope) => admission(call, Some(scope)),
+            admitted => admission(call, &admitted),
         };
 
         self.recorder
             .open(request, steps)
             .await
+            .map(|request| (request, grant))
             .map_err(|error| unavailable(&error))
     }
 
@@ -143,36 +176,41 @@ impl Core {
         call: &Call<'_>,
         request: Seq,
         decision: Decision,
-    ) -> Result<Seq, RpcError> {
+    ) -> Result<(Seq, Option<GrantId>), RpcError> {
+        let grant = decision.grant();
         let steps = match decision {
             Decision::Deny { reason } => {
                 return Err(self.conclude(request, denied(call, reason)).await);
             }
-            Decision::Allow => admission(call, None),
-            Decision::Approved(scope) => admission(call, Some(scope)),
+            admitted => admission(call, &admitted),
         };
 
         self.recorder
             .follow_up(request, steps)
             .await
-            .map(|()| request)
+            .map(|()| (request, grant))
             .map_err(|error| unavailable(&error))
     }
 
     async fn perform(
         &self,
         call: &Call<'_>,
-        request: Seq,
+        (request, grant): (Seq, Option<GrantId>),
         prepared: Prepared,
         link: &Arc<Link>,
     ) -> Result<ActionOutcome, RpcError> {
         let finishes_later = prepared.finishes_later();
-        let connection: Arc<dyn Any + Send + Sync> = Arc::clone(link) as _;
-        let context = Context::new(call.actor.clone(), request, call.target.cloned())
-            .with_risk(prepared.risk())
-            .with_connection(connection);
+        let stop = CancellationToken::new();
+        let hold = grant.and_then(|grant| self.broker.hold(grant, &stop));
 
-        let completed = match run_isolated(prepared, context).await {
+        if stop.is_cancelled() {
+            let error = ActionError::failed(REVOKED);
+            return Err(self.conclude(request, failed(call, failure(&error))).await);
+        }
+
+        let context = context(call, request, &prepared, link, &stop, hold);
+
+        let completed = match run_isolated(prepared, context, &stop).await {
             Ok(completed) => completed,
             Err(error) => return Err(self.conclude(request, failed(call, failure(&error))).await),
         };
@@ -206,14 +244,17 @@ impl Core {
     }
 }
 
-fn admission(call: &Call<'_>, approval: Option<Scope>) -> Vec<NewEvent> {
+fn admission(call: &Call<'_>, decision: &Decision) -> Vec<NewEvent> {
     let started = Recorder::step(call, EventKind::Started, &Value::Null);
 
-    let Some(scope) = approval else {
-        return vec![started];
+    let details = match decision {
+        Decision::Approved(scope) => json!({ "scope": scope, "by": "person" }),
+        Decision::Granted(grant) => {
+            json!({ "scope": Scope::Always, "grant": grant, "by": "person" })
+        }
+        Decision::Allow | Decision::Deny { .. } => return vec![started],
     };
 
-    let details = json!({ "scope": scope, "by": "person" });
     let approved = Recorder::step(call, EventKind::Approved, &details);
 
     vec![approved, started]
@@ -233,6 +274,29 @@ fn failed(call: &Call<'_>, error: RpcError) -> (NewEvent, RpcError) {
     (step, error)
 }
 
+fn context(
+    call: &Call<'_>,
+    request: Seq,
+    prepared: &Prepared,
+    link: &Arc<Link>,
+    stop: &CancellationToken,
+    hold: Option<Hold>,
+) -> Context {
+    let connection: Arc<dyn Any + Send + Sync> = Arc::clone(link) as _;
+    let destination = prepared.destination().map(str::to_owned);
+
+    let context = Context::new(call.actor.clone(), request, call.target.cloned())
+        .with_risk(prepared.risk())
+        .with_destination(destination)
+        .with_connection(connection)
+        .with_stop(stop.clone());
+
+    match hold {
+        Some(hold) => context.with_hold(Arc::new(hold)),
+        None => context,
+    }
+}
+
 async fn prepare_blocking(
     handle: &Handle,
     target: Option<&ResourceRef>,
@@ -250,12 +314,26 @@ async fn prepare_blocking(
     })
 }
 
-async fn run_isolated(prepared: Prepared, context: Context) -> Result<Completed, ActionError> {
-    let running = tokio::spawn(async move { prepared.run(&context).await });
+async fn run_isolated(
+    prepared: Prepared,
+    context: Context,
+    stop: &CancellationToken,
+) -> Result<Completed, ActionError> {
+    let mut running = tokio::spawn(async move { prepared.run(&context).await });
 
-    running
-        .await
-        .unwrap_or_else(|_| Err(ActionError::failed("the action stopped unexpectedly")))
+    tokio::select! {
+        finished = &mut running => {
+            return finished
+                .unwrap_or_else(|_| Err(ActionError::failed("the action stopped unexpectedly")));
+        }
+        () = stop.cancelled() => {}
+    }
+
+    if time::timeout(STOP_GRACE, &mut running).await.is_err() {
+        running.abort();
+    }
+
+    Err(ActionError::failed(REVOKED))
 }
 
 fn unavailable(error: &JournalError) -> RpcError {
@@ -271,6 +349,17 @@ fn failure(error: &ActionError) -> RpcError {
     };
 
     RpcError::new(code, error.to_string())
+}
+
+fn action_description(description: Description) -> ActionDescription {
+    ActionDescription {
+        id: description.id.as_str().to_owned(),
+        title: description.title.to_owned(),
+        risk: risk_level(description.risk),
+        person_only: description.person_only,
+        takes_target: description.takes_target,
+        params: description.params,
+    }
 }
 
 fn acts_for_person(actor: &Actor) -> bool {

@@ -3,6 +3,8 @@ use std::fmt::{self, Debug, Formatter};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use tokio_util::sync::CancellationToken;
+
 use super::{Destination, Tunnel, TunnelId, TunnelStatus};
 use crate::pool::locked;
 use crate::{Pool, SshError, Target};
@@ -28,13 +30,23 @@ impl Tunnels {
         target: &Target,
         destination: Destination,
         local_port: Option<u16>,
+        stop: CancellationToken,
     ) -> Result<TunnelStatus, SshError> {
         let id = TunnelId::from(self.issued.fetch_add(1, Ordering::Relaxed) + 1);
 
-        let tunnel = Tunnel::open(id, &self.pool, target, destination, local_port).await?;
+        let tunnel = Tunnel::open(
+            id,
+            &self.pool,
+            target,
+            destination,
+            local_port,
+            stop.clone(),
+        )
+        .await?;
         let status = tunnel.status();
 
         locked(&self.open).insert(id, tunnel);
+        self.close_when(id, stop);
 
         Ok(status)
     }
@@ -53,6 +65,15 @@ impl Tunnels {
         let tunnel = locked(&self.open).remove(&id)?;
 
         Some(tunnel.close().await)
+    }
+
+    fn close_when(&self, id: TunnelId, stop: CancellationToken) {
+        let tunnels = self.clone();
+
+        tokio::spawn(async move {
+            stop.cancelled().await;
+            tunnels.close(id).await;
+        });
     }
 }
 
