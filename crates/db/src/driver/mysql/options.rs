@@ -7,11 +7,11 @@ impl TryFrom<&Server> for Opts {
     type Error = DbError;
 
     fn try_from(server: &Server) -> Result<Self, DbError> {
-        let (host, port) = server.dial()?;
+        let endpoint = server.dial()?;
 
         let builder = OptsBuilder::default()
-            .ip_or_hostname(host)
-            .tcp_port(port)
+            .ip_or_hostname(endpoint.host())
+            .tcp_port(endpoint.port())
             .prefer_socket(false)
             .user(server.user())
             .pass(server.password())
@@ -40,9 +40,11 @@ fn verified(server: &Server) -> SslOpts {
         .with_disable_built_in_roots(true)
         .with_root_certs(roots);
 
-    if !server.is_tunneled() {
+    let place = server.place();
+
+    if !place.is_tunneled() {
         return options;
     }
 
-    options.with_danger_tls_hostname_override(server.host().map(str::to_owned))
+    options.with_danger_tls_hostname_override(place.host().map(str::to_owned))
 }

@@ -5,6 +5,7 @@ mod cells;
 mod database;
 mod driver;
 mod effect;
+mod endpoint;
 mod engine;
 mod error;
 mod paging;

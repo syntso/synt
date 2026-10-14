@@ -15,7 +15,7 @@ use self::catalog::Catalog;
 use self::cells::{from_json, to_json};
 use crate::driver::{Answer, Driver};
 use crate::paging::Collector;
-use crate::{Access, DbError, Engine, Place, Query, Rows, Schema, Server, TableName};
+use crate::{Access, DbError, Engine, Query, Rows, Schema, Server, TableName};
 
 const BUSY_LIMIT: Duration = Duration::from_secs(5);
 const VERSION: &str = "SELECT sqlite_version()";
@@ -35,14 +35,14 @@ struct Opened {
 
 impl Sqlite {
     pub(crate) fn new(server: &Server) -> Result<Self, DbError> {
-        let Place::File(path) = server.place() else {
+        let Some(path) = server.place().file() else {
             return Err(DbError::InvalidInput(
                 "sqlite needs a file, not a host".to_owned(),
             ));
         };
 
         Ok(Self {
-            path: path.clone(),
+            path: path.to_owned(),
             open: Mutex::new(None),
         })
     }

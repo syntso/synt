@@ -11,17 +11,18 @@ impl TryFrom<&Server> for Config {
     type Error = DbError;
 
     fn try_from(server: &Server) -> Result<Self, DbError> {
-        let (dial_host, port) = server.dial()?;
+        let endpoint = server.dial()?;
+        let host = server.place().host().unwrap_or(endpoint.host());
 
         let mut config = Config::new();
         config
-            .host(server.host().unwrap_or(&dial_host))
-            .port(port)
+            .host(host)
+            .port(endpoint.port())
             .application_name(APPLICATION)
             .connect_timeout(server.connect_limit())
             .ssl_mode(server.tls().into());
 
-        if let Ok(address) = dial_host.parse::<IpAddr>() {
+        if let Ok(address) = endpoint.host().parse::<IpAddr>() {
             config.hostaddr(address);
         }
         if let Some(database) = server.database() {

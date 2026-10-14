@@ -31,12 +31,12 @@ impl Redis {
     }
 
     async fn open(server: &Server) -> Result<Self, DbError> {
-        let (host, port) = server.dial()?;
+        let endpoint = server.dial()?;
         let info = RedisConnectionInfo::try_from(server)?;
 
-        let socket = TcpStream::connect((host.as_str(), port))
+        let socket = TcpStream::connect((endpoint.host(), endpoint.port()))
             .await
-            .map_err(|error| DbError::Connect(format!("{host}:{port}: {error}")))?;
+            .map_err(|error| DbError::Connect(format!("{endpoint}: {error}")))?;
         socket
             .set_nodelay(true)
             .map_err(|error| DbError::Connect(error.to_string()))?;
@@ -58,7 +58,7 @@ impl Redis {
             .tls()
             .client_config()?
             .ok_or_else(|| DbError::Tls("tls was asked for but not set up".to_owned()))?;
-        let host = server.host().unwrap_or_default().to_owned();
+        let host = server.place().host().unwrap_or_default().to_owned();
         let name = ServerName::try_from(host.clone()).map_err(|_| {
             DbError::Tls(format!("{host:?} cannot be checked against a certificate"))
         })?;
