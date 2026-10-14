@@ -12,7 +12,7 @@ use tokio_rustls::TlsConnector;
 
 use super::reply::rows;
 use crate::rows::Collector;
-use crate::tls::client_config;
+
 use crate::{DbError, Page, Rows, Server, TlsMode};
 
 const VERSION_FIELD: &str = "redis_version:";
@@ -148,7 +148,9 @@ async fn secure(
     server: &Server,
     socket: TcpStream,
 ) -> Result<tokio_rustls::client::TlsStream<TcpStream>, DbError> {
-    let config = client_config(server.tls())?
+    let config = server
+        .tls()
+        .client_config()?
         .ok_or_else(|| DbError::Tls("tls was asked for but not set up".to_owned()))?;
     let host = server.host().unwrap_or_default().to_owned();
     let name = ServerName::try_from(host.clone())

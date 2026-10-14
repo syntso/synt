@@ -16,7 +16,7 @@ use super::raw_cell::RawCell;
 use super::text_param::TextParam;
 use crate::rows::Collector;
 use crate::schema::{Column, ForeignKeyPart, IndexPart, Schema, TableName};
-use crate::tls::client_config;
+
 use crate::{DbError, Place, Query, Rows, Server, TlsMode};
 
 const APPLICATION: &str = "synt";
@@ -29,7 +29,7 @@ pub(crate) struct Postgres {
 impl Postgres {
     pub(crate) async fn connect(server: &Server) -> Result<Self, DbError> {
         let config = config(server)?;
-        let tls = client_config(server.tls())?;
+        let tls = server.tls().client_config()?;
         let limit = server.connect_limit();
 
         let connecting = async {

@@ -9,7 +9,7 @@ use super::decode::decode;
 use super::failure::{failure, lacks_tls};
 use crate::rows::Collector;
 use crate::schema::{Column, ForeignKeyPart, IndexPart, Schema, TableName};
-use crate::tls::system_roots;
+use crate::tls::SystemRoots;
 use crate::{DbError, Place, Query, Rows, Server, TlsMode};
 
 const READ_ONLY_SESSION: &str = "SET SESSION TRANSACTION READ ONLY";
@@ -154,10 +154,7 @@ fn ssl_options(tls: TlsMode, host: &str, tunneled: bool) -> Option<SslOpts> {
                 .with_danger_skip_domain_validation(true),
         ),
         TlsMode::VerifyFull => {
-            let roots = system_roots()
-                .into_iter()
-                .map(|root| root.to_vec().into())
-                .collect();
+            let roots = SystemRoots::load().into_der().map(Into::into).collect();
             let options = SslOpts::default()
                 .with_disable_built_in_roots(true)
                 .with_root_certs(roots);

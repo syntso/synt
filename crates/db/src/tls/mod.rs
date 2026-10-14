@@ -1,4 +1,6 @@
 mod any_certificate;
-mod client_config;
+mod mode;
+mod roots;
 
-pub(crate) use client_config::{client_config, system_roots};
+pub use mode::TlsMode;
+pub(crate) use roots::SystemRoots;

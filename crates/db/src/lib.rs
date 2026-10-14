@@ -14,7 +14,6 @@ mod schema;
 mod server;
 mod statement;
 mod tls;
-mod tls_mode;
 
 pub use access::Access;
 pub use database::Database;
@@ -27,4 +26,4 @@ pub use rows::{Page, Rows};
 pub use schema::{Column, ForeignKey, Index, Schema, Table, TableName};
 pub use server::Server;
 pub use statement::{Classification, masked};
-pub use tls_mode::TlsMode;
+pub use tls::TlsMode;
