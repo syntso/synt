@@ -46,7 +46,7 @@ impl Exchange {
         &self,
         request: &HttpRequest,
         capabilities: &Capabilities,
-        secrets: Option<&dyn SecretSource>,
+        secrets: Option<(&dyn SecretSource, &str)>,
     ) -> Result<HttpResponse, String> {
         let method = method(&request.method)?;
         let destination = reachable(&request.url, capabilities)?;
@@ -132,13 +132,13 @@ fn reveal(
     request: &HttpRequest,
     destination: &Destination,
     capabilities: &Capabilities,
-    secrets: Option<&dyn SecretSource>,
+    secrets: Option<(&dyn SecretSource, &str)>,
 ) -> Result<Vec<Revealed>, String> {
     if request.secrets.is_empty() {
         return Ok(Vec::new());
     }
 
-    let source = secrets.ok_or("the core keeps no secrets to attach")?;
+    let (source, extension) = secrets.ok_or("the core keeps no secrets to attach")?;
 
     if !destination.keeps_secrets_private() {
         return Err(format!(
@@ -160,7 +160,7 @@ fn reveal(
             }
 
             let value = source
-                .reveal(&attached.secret)?
+                .reveal(&attached.secret, extension)?
                 .ok_or_else(|| format!("there is no secret secret://{}", attached.secret))?;
 
             Ok(Revealed::new(attached, value))

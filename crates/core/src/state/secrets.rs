@@ -46,6 +46,34 @@ impl State {
     pub(crate) fn delete_secret(&self, name: &str) -> Result<(), CoreError> {
         self.lock()
             .execute("DELETE FROM secrets WHERE name = ?1", [name])?;
+        self.forget_secret_use(name)
+    }
+
+    pub(crate) fn secret_use(&self, name: &str) -> Result<Option<String>, CoreError> {
+        let used_for = self
+            .lock()
+            .query_row(
+                "SELECT used_for FROM secret_uses WHERE name = ?1",
+                [name],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        Ok(used_for)
+    }
+
+    pub(crate) fn bind_secret_use(&self, name: &str, used_for: &str) -> Result<(), CoreError> {
+        self.lock().execute(
+            "INSERT OR REPLACE INTO secret_uses (name, used_for) VALUES (?1, ?2)",
+            (name, used_for),
+        )?;
+
+        Ok(())
+    }
+
+    pub(crate) fn forget_secret_use(&self, name: &str) -> Result<(), CoreError> {
+        self.lock()
+            .execute("DELETE FROM secret_uses WHERE name = ?1", [name])?;
 
         Ok(())
     }

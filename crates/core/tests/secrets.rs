@@ -275,3 +275,71 @@ async fn a_database_reads_its_password_from_a_kept_secret() {
     assert!(!error.message.contains(PASSWORD), "{}", error.message);
     assert!(!format!("{:?}", harness.events()).contains(PASSWORD));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_kept_password_goes_only_to_the_database_it_was_first_used_for() {
+    let harness = start();
+    let app = harness.app().await;
+    app.call(put("orders-db")).await.unwrap();
+    let orders = database("secret://orders-db");
+    let elsewhere = database("secret://orders-db").replace("127.0.0.1", "localhost");
+    open(
+        &app,
+        &project(
+            harness.grounds().path(),
+            &[("orders", orders), ("elsewhere", elsewhere)],
+        ),
+    )
+    .await;
+    let ping = |name: &str| ActionCall::new("db.ping").target(format!("@vaulted/{name}"));
+
+    let first = rejection(app.call(ping("orders")).await);
+    let refused = rejection(app.call(ping("elsewhere")).await);
+    let again = rejection(app.call(ping("orders")).await);
+
+    assert!(!first.message.contains("kept for"), "{}", first.message);
+    assert!(
+        refused
+            .message
+            .contains("secret://orders-db is kept for the database postgres app@127.0.0.1"),
+        "{}",
+        refused.message
+    );
+    assert!(
+        refused.message.contains("secret.put"),
+        "{}",
+        refused.message
+    );
+    assert!(!again.message.contains("kept for"), "{}", again.message);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn putting_a_password_again_lets_it_go_to_a_new_database() {
+    let harness = start();
+    let app = harness.app().await;
+    app.call(put("orders-db")).await.unwrap();
+    let orders = database("secret://orders-db");
+    let elsewhere = database("secret://orders-db").replace("127.0.0.1", "localhost");
+    open(
+        &app,
+        &project(
+            harness.grounds().path(),
+            &[("orders", orders), ("elsewhere", elsewhere)],
+        ),
+    )
+    .await;
+    let ping = |name: &str| ActionCall::new("db.ping").target(format!("@vaulted/{name}"));
+
+    rejection(app.call(ping("orders")).await);
+    app.call(put("orders-db")).await.unwrap();
+    let moved = rejection(app.call(ping("elsewhere")).await);
+    let old = rejection(app.call(ping("orders")).await);
+
+    assert!(!moved.message.contains("kept for"), "{}", moved.message);
+    assert!(
+        old.message
+            .contains("kept for the database postgres app@localhost"),
+        "{}",
+        old.message
+    );
+}

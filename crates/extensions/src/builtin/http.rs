@@ -91,7 +91,13 @@ impl Action for ExtensionHttp {
         blocking(move || {
             exchange
                 .get_or_init(Exchange::new)
-                .send(&params, &capabilities, secrets.as_deref())
+                .send(
+                    &params,
+                    &capabilities,
+                    secrets
+                        .as_deref()
+                        .map(|source| (source, extension.as_str())),
+                )
                 .map_err(ExtensionError::Refused)
         })
         .await

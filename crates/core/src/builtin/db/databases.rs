@@ -181,8 +181,11 @@ impl Databases {
         };
 
         let secrets = self.secrets.clone();
+        let used_for = format!("the database {}", resolved.describe());
 
-        blocking(move || secrets.read_text(&name)).await.map(Some)
+        blocking(move || secrets.read_text_for(&name, &used_for))
+            .await
+            .map(Some)
     }
 
     async fn tunnel(
