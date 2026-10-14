@@ -8,10 +8,8 @@ use synt_kube::{Cluster, Dialer};
 use synt_ssh::Pool;
 use tokio::time;
 
-use super::cached_cluster::CachedCluster;
-use super::failure::failed;
-use super::reach::Reach;
-use super::ssh_dialer::SshDialer;
+use super::{CachedCluster, Reach, SshDialer};
+use crate::builtin::k8s::failure::failed;
 use crate::builtin::ssh::within_connect_limit;
 use crate::locked::locked;
 

@@ -1,8 +1,8 @@
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::Kube;
-use super::forwards::ForwardInfo;
+use super::ForwardInfo;
+use crate::builtin::k8s::Kube;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sPortForwardList {
@@ -10,7 +10,7 @@ pub(crate) struct K8sPortForwardList {
 }
 
 impl K8sPortForwardList {
-    pub(super) fn new(kube: Kube) -> Self {
+    pub(crate) fn new(kube: Kube) -> Self {
         Self { kube }
     }
 }

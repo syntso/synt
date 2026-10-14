@@ -9,7 +9,7 @@ use synt_kube::{ExecLimits, ExecOutput, ExecRequest};
 
 use super::Kube;
 use super::failure::failed;
-use super::object_names::{check_namespace, check_object_name};
+use super::names::{check_namespace, check_object_name};
 use crate::builtin::ssh::escalates;
 
 const LONGEST_TIMEOUT: Duration = Duration::from_hours(24);

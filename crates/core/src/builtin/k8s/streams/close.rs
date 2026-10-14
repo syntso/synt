@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::Seq;
 
-use super::Kube;
+use crate::builtin::k8s::Kube;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sStreamClose {
@@ -22,7 +22,7 @@ pub(crate) struct StreamClosed {
 }
 
 impl K8sStreamClose {
-    pub(super) fn new(kube: Kube) -> Self {
+    pub(crate) fn new(kube: Kube) -> Self {
         Self { kube }
     }
 }

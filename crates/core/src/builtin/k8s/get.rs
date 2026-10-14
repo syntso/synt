@@ -5,7 +5,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
 use super::failure::failed;
-use super::object_names::{check_kind, check_namespace, check_object_name};
+use super::names::{check_kind, check_namespace, check_object_name};
 use super::{KindFacts, Kube};
 
 #[derive(Debug, Clone)]

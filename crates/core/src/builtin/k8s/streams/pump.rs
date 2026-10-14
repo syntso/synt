@@ -6,7 +6,7 @@ use synt_kube::{KubeError, LogStream, Watch};
 use synt_proto::StreamId;
 use tokio_util::sync::CancellationToken;
 
-use super::streams::{EndReason, StreamEnd, Tally};
+use super::{EndReason, StreamEnd, Tally};
 use crate::link::{Link, Outbound};
 
 pub(crate) fn outbound(context: &Context, stream: StreamId) -> Result<Outbound, ActionError> {

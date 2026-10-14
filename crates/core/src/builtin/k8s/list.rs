@@ -6,7 +6,7 @@ use synt_journal::ResourceRef;
 use synt_kube::{ListQuery, Listing, Namespaces};
 
 use super::failure::failed;
-use super::object_names::{check_kind, check_namespace};
+use super::names::{check_kind, check_namespace};
 use super::{KindFacts, Kube};
 
 #[derive(Debug, Clone)]

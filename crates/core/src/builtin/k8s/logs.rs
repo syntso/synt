@@ -10,9 +10,8 @@ use synt_proto::StreamId;
 
 use super::Kube;
 use super::failure::failed;
-use super::object_names::{check_namespace, check_object_name};
-use super::stream_pump::{outbound, pump_logs};
-use super::streams::StreamStarted;
+use super::names::{check_namespace, check_object_name};
+use super::streams::{StreamStarted, outbound, pump_logs};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sLogs {

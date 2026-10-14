@@ -4,8 +4,8 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::Kube;
-use super::forwards::ForwardInfo;
+use super::ForwardInfo;
+use crate::builtin::k8s::Kube;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sPortForwardClose {
@@ -18,7 +18,7 @@ pub(crate) struct ForwardCloseParams {
 }
 
 impl K8sPortForwardClose {
-    pub(super) fn new(kube: Kube) -> Self {
+    pub(crate) fn new(kube: Kube) -> Self {
         Self { kube }
     }
 }

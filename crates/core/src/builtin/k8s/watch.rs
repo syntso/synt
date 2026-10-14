@@ -6,9 +6,8 @@ use synt_journal::ResourceRef;
 use synt_kube::{Namespaces, WatchRequest};
 use synt_proto::StreamId;
 
-use super::object_names::{check_kind, check_namespace};
-use super::stream_pump::{outbound, pump_watch};
-use super::streams::StreamStarted;
+use super::names::{check_kind, check_namespace};
+use super::streams::{StreamStarted, outbound, pump_watch};
 use super::{KindFacts, Kube};
 
 #[derive(Debug, Clone)]

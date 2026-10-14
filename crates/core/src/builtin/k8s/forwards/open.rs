@@ -5,11 +5,11 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::ForwardTarget;
 
-use super::Kube;
-use super::failure::failed;
-use super::forwards::{ForwardInfo, OpenForward};
-use super::object_names::{check_namespace, check_object_name};
+use super::{ForwardInfo, OpenForward};
 use crate::builtin::hold::keep_hold_while_open;
+use crate::builtin::k8s::Kube;
+use crate::builtin::k8s::failure::failed;
+use crate::builtin::k8s::names::{check_namespace, check_object_name};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sPortForward {
@@ -46,7 +46,7 @@ impl PortForwardParams {
 }
 
 impl K8sPortForward {
-    pub(super) fn new(kube: Kube) -> Self {
+    pub(crate) fn new(kube: Kube) -> Self {
         Self { kube }
     }
 }

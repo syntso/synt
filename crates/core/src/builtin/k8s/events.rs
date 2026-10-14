@@ -7,7 +7,7 @@ use synt_kube::{EventLine, Namespaces};
 
 use super::Kube;
 use super::failure::failed;
-use super::object_names::{check_namespace, check_object_name};
+use super::names::{check_namespace, check_object_name};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sEvents {

@@ -1,13 +1,17 @@
-mod end_reason;
-mod open_stream;
-mod stream_end;
-mod stream_started;
-mod streams;
+mod close;
+mod end;
+mod entry;
+mod pump;
+mod reason;
+mod registry;
+mod started;
 mod tally;
 
-pub(crate) use end_reason::EndReason;
-use open_stream::OpenStream;
-pub(crate) use stream_end::StreamEnd;
-pub(crate) use stream_started::StreamStarted;
-pub(crate) use streams::Streams;
+pub(crate) use close::K8sStreamClose;
+pub(crate) use end::StreamEnd;
+use entry::OpenStream;
+pub(crate) use pump::{outbound, pump_logs, pump_watch};
+pub(crate) use reason::EndReason;
+pub(crate) use registry::Streams;
+pub(crate) use started::StreamStarted;
 pub(crate) use tally::Tally;
