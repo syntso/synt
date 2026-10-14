@@ -50,7 +50,9 @@ impl Action for K8sExec {
     type Params = ExecParams;
     type Output = ExecOutput;
 
-    fn check(&self, _target: Option<&ResourceRef>, params: &ExecParams) -> Result<(), ActionError> {
+    fn check(&self, target: Option<&ResourceRef>, params: &ExecParams) -> Result<(), ActionError> {
+        self.kube.reach(target)?;
+
         check_object_name("pod", &params.pod)?;
         check_namespace(params.namespace.as_deref())?;
 

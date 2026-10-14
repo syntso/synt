@@ -29,9 +29,11 @@ impl Action for K8sRolloutRestart {
 
     fn check(
         &self,
-        _target: Option<&ResourceRef>,
+        target: Option<&ResourceRef>,
         params: &ObjectParams,
     ) -> Result<(), ActionError> {
+        self.kube.reach(target)?;
+
         params.check()
     }
 

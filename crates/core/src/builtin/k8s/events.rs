@@ -43,9 +43,11 @@ impl Action for K8sEvents {
 
     fn check(
         &self,
-        _target: Option<&ResourceRef>,
+        target: Option<&ResourceRef>,
         params: &EventsParams,
     ) -> Result<(), ActionError> {
+        self.kube.reach(target)?;
+
         check_namespace(params.namespace.as_deref())?;
 
         match &params.name {

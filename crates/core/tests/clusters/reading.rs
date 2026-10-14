@@ -107,6 +107,10 @@ async fn a_cluster_behind_a_bastion_is_reached_through_an_ssh_tunnel() {
         .agent("@lab/bastion", "k8s.list", json!({ "kind": "pods" }))
         .await
         .unwrap_err();
+    let no_logs = lab
+        .agent("@lab/bastion", "k8s.logs", json!({ "pod": "api" }))
+        .await
+        .unwrap_err();
 
     assert!(listed.value["items"].as_array().unwrap().len() >= 4);
     assert_eq!(journaled["kind"], "Namespace");

@@ -62,9 +62,11 @@ impl Action for K8sPortForward {
 
     fn check(
         &self,
-        _target: Option<&ResourceRef>,
+        target: Option<&ResourceRef>,
         params: &PortForwardParams,
     ) -> Result<(), ActionError> {
+        self.kube.reach(target)?;
+
         let name = match params.target()? {
             ForwardTarget::Pod(name) | ForwardTarget::Service(name) => name,
         };

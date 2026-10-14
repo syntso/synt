@@ -36,11 +36,9 @@ impl Action for K8sScale {
     type Params = ScaleParams;
     type Output = Scaled;
 
-    fn check(
-        &self,
-        _target: Option<&ResourceRef>,
-        params: &ScaleParams,
-    ) -> Result<(), ActionError> {
+    fn check(&self, target: Option<&ResourceRef>, params: &ScaleParams) -> Result<(), ActionError> {
+        self.kube.reach(target)?;
+
         params.object.check()
     }
 

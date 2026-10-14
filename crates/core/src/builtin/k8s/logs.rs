@@ -105,7 +105,9 @@ impl Action for K8sLogs {
     type Params = LogsParams;
     type Output = Logs;
 
-    fn check(&self, _target: Option<&ResourceRef>, params: &LogsParams) -> Result<(), ActionError> {
+    fn check(&self, target: Option<&ResourceRef>, params: &LogsParams) -> Result<(), ActionError> {
+        self.kube.reach(target)?;
+
         check_object_name("pod", &params.pod)?;
         check_namespace(params.namespace.as_deref())?;
 
