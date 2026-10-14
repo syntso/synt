@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
-use synt_actions::{ActionError, Context};
+use synt_actions::Context;
 use synt_proto::StreamId;
 use tokio_util::sync::CancellationToken;
 
 use super::{EndReason, Feed, StreamEnd, Tally};
+use crate::builtin::k8s::K8sError;
 use crate::link::{Link, Outbound};
 
 pub(crate) struct Pump {
@@ -12,10 +13,8 @@ pub(crate) struct Pump {
 }
 
 impl Pump {
-    pub(crate) fn open(context: &Context, stream: StreamId) -> Result<Self, ActionError> {
-        let link: Arc<Link> = context
-            .connection::<Link>()
-            .ok_or_else(|| ActionError::failed("this call has no connection to stream over"))?;
+    pub(crate) fn open(context: &Context, stream: StreamId) -> Result<Self, K8sError> {
+        let link: Arc<Link> = context.connection::<Link>().ok_or(K8sError::NoConnection)?;
 
         let outbound = Outbound::open(&link, stream)?;
 

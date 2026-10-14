@@ -4,12 +4,12 @@ use std::time::Duration;
 use synt_kube::Cluster;
 use tokio::time::Instant;
 
-pub(crate) struct CachedCluster {
+pub(crate) struct ClusterEntry {
     cluster: Arc<Cluster>,
     used: Instant,
 }
 
-impl CachedCluster {
+impl ClusterEntry {
     pub(crate) fn new(cluster: Arc<Cluster>) -> Self {
         Self {
             cluster,

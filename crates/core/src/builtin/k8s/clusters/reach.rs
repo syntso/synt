@@ -3,7 +3,9 @@ use synt_journal::ResourceRef;
 use synt_kube::ClusterSpec;
 use synt_ssh::Target;
 
+use super::ClusterKey;
 use crate::CoreError;
+use crate::builtin::k8s::K8sError;
 use crate::builtin::ssh::is_root;
 use crate::projects::{Projects, Resolved, login_label};
 
@@ -53,32 +55,27 @@ impl Reach {
         self.via.as_ref().is_some_and(|via| is_root(via.user()))
     }
 
-    pub(crate) fn check_admitted(&self, context: &Context) -> Result<(), ActionError> {
+    pub(crate) fn check_admitted(&self, context: &Context) -> Result<(), K8sError> {
         let target = context.target().ok_or(ActionError::TargetRequired)?;
 
         if self.logs_in_as_root() && context.risk() != Risk::Privileged {
-            return Err(ActionError::Failed(format!(
-                "{target} is now reached through a root login, which the call was not admitted for; \
-                 run it again so it is asked as privileged"
-            )));
+            return Err(K8sError::RootLoginNow(target.clone()));
         }
 
         if context.destination() != Some(self.destination.as_str()) {
-            return Err(ActionError::Failed(format!(
-                "{target} now leads to {}, which is not what the call was admitted for; \
-                 run it again so it is checked for the new place",
-                self.destination
-            )));
+            return Err(K8sError::DestinationChanged {
+                target: target.clone(),
+                destination: self.destination.clone(),
+            });
         }
 
         Ok(())
     }
 
-    pub(crate) fn key(&self) -> String {
-        format!(
-            "{} @ {:?}",
-            self.destination,
-            self.spec.kubeconfig.modified()
-        )
+    pub(crate) fn key(&self) -> ClusterKey {
+        ClusterKey {
+            destination: self.destination.clone(),
+            kubeconfig_modified: self.spec.kubeconfig.modified(),
+        }
     }
 }

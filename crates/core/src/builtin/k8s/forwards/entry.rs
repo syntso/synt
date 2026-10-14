@@ -4,9 +4,9 @@ use synt_actions::{Context, Risk};
 use synt_kube::{Cluster, PortForward};
 use tokio_util::sync::CancellationToken;
 
-use super::ForwardInfo;
+use super::{ForwardId, ForwardInfo};
 
-pub(crate) struct OpenForward {
+pub(crate) struct ForwardEntry {
     forward: PortForward,
     cluster: String,
     risk: Risk,
@@ -14,7 +14,7 @@ pub(crate) struct OpenForward {
     _connection: Arc<Cluster>,
 }
 
-impl OpenForward {
+impl ForwardEntry {
     pub(crate) fn new(forward: PortForward, context: &Context, connection: Arc<Cluster>) -> Self {
         Self {
             forward,
@@ -25,7 +25,7 @@ impl OpenForward {
         }
     }
 
-    pub(crate) fn info(&self, id: u64) -> ForwardInfo {
+    pub(crate) fn info(&self, id: ForwardId) -> ForwardInfo {
         ForwardInfo {
             id,
             cluster: self.cluster.clone(),
@@ -41,7 +41,7 @@ impl OpenForward {
         &self.stop
     }
 
-    pub(crate) async fn close(self, id: u64) -> ForwardInfo {
+    pub(crate) async fn close(self, id: ForwardId) -> ForwardInfo {
         self.stop.cancel();
 
         ForwardInfo {

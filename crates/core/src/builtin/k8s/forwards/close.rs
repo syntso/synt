@@ -4,8 +4,8 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::ForwardInfo;
-use crate::builtin::k8s::Kube;
+use super::{ForwardId, ForwardInfo};
+use crate::builtin::k8s::{K8sError, Kube};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sPortForwardClose {
@@ -14,7 +14,7 @@ pub(crate) struct K8sPortForwardClose {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub(crate) struct ForwardCloseParams {
-    pub id: u64,
+    pub id: ForwardId,
 }
 
 impl K8sPortForwardClose {
@@ -54,8 +54,8 @@ impl Action for K8sPortForwardClose {
         _context: &Context,
         params: ForwardCloseParams,
     ) -> Result<ForwardInfo, ActionError> {
-        self.kube.forwards().close(params.id).await.ok_or_else(|| {
-            ActionError::Failed(format!("there is no open port forward {}", params.id))
-        })
+        let closed = self.kube.forwards().close(params.id).await;
+
+        Ok(closed.ok_or(K8sError::NoForward(params.id))?)
     }
 }
