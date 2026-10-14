@@ -6,6 +6,7 @@ use synt_journal::ActionId;
 use super::{ActionSpec, ExtensionAction, Guest};
 use crate::background::{Lane, Wake};
 use crate::events::ExtensionEvent;
+use crate::manifest::Api;
 use crate::shelf::Installed;
 
 pub(crate) struct Loaded {
@@ -44,6 +45,10 @@ impl Loaded {
     }
 
     pub(crate) fn wake_up(&self) {
+        if self.guest.manifest().api == Api::V0_1 {
+            return;
+        }
+
         let services = self.guest.services();
         let Some(handle) = services.background.get() else {
             return;
