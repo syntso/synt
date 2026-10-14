@@ -1,6 +1,7 @@
 use std::io;
 use std::time::Duration;
 
+use synt_actions::ActionError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -49,4 +50,34 @@ pub enum ExtensionError {
 
     #[error("{0}")]
     Refused(String),
+}
+
+impl From<wasmtime::Error> for ExtensionError {
+    fn from(error: wasmtime::Error) -> Self {
+        Self::Component(format!("{error:#}"))
+    }
+}
+
+impl From<toml::de::Error> for ExtensionError {
+    fn from(error: toml::de::Error) -> Self {
+        Self::Manifest(error.to_string())
+    }
+}
+
+impl From<toml::ser::Error> for ExtensionError {
+    fn from(error: toml::ser::Error) -> Self {
+        Self::Manifest(error.to_string())
+    }
+}
+
+impl From<minisign_verify::Error> for ExtensionError {
+    fn from(error: minisign_verify::Error) -> Self {
+        Self::Signature(error.to_string())
+    }
+}
+
+impl From<ExtensionError> for ActionError {
+    fn from(error: ExtensionError) -> Self {
+        Self::failed(error.to_string())
+    }
 }
