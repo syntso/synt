@@ -1,4 +1,5 @@
 #![cfg(unix)]
+#![allow(clippy::unwrap_used)]
 
 use std::ffi::OsString;
 use std::fs::{self, File};
