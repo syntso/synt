@@ -1,5 +1,5 @@
-mod journal_writer;
+mod handle;
 mod request;
 mod worker;
 
-pub use journal_writer::JournalWriter;
+pub use handle::JournalWriter;

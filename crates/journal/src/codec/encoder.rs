@@ -20,7 +20,7 @@ impl<'a> Encoder<'a> {
     }
 
     pub(crate) fn len(&mut self, len: usize) {
-        let len = u32::try_from(len).expect("encoded values are bounded far below 4 GiB");
+        let len = u32::try_from(len).unwrap_or(u32::MAX);
         self.out.extend_from_slice(&len.to_be_bytes());
     }
 

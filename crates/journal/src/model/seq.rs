@@ -24,7 +24,7 @@ impl Seq {
     }
 
     pub(crate) fn to_sql(self) -> i64 {
-        i64::try_from(self.0).expect("sequence numbers stay far below i64::MAX")
+        i64::try_from(self.0).unwrap_or(i64::MAX)
     }
 
     pub(crate) fn from_sql(value: i64) -> Option<Self> {

@@ -23,6 +23,9 @@ pub enum JournalError {
     #[error("system random source: {0}")]
     Entropy(#[from] getrandom::Error),
 
+    #[error("key derivation: {0}")]
+    KeyDerivation(#[from] hkdf::InvalidLength),
+
     #[error("a journal already exists at {0}")]
     AlreadyExists(PathBuf),
 

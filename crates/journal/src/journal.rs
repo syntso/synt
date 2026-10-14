@@ -52,7 +52,7 @@ impl Journal {
         }
 
         let device = keys.ensure_device_key()?;
-        let linker = Linker::derive(&device, id);
+        let linker = Linker::derive(&device, id)?;
         let anchors = Anchors::genesis(linker.genesis());
 
         let db = WriteDb::create(path, id)?;
@@ -86,7 +86,7 @@ impl Journal {
         }
 
         let db = WriteDb::open(path, id)?;
-        let linker = Linker::derive(&keys.device_key()?, id);
+        let linker = Linker::derive(&keys.device_key()?, id)?;
         let tail = db.tail()?;
 
         let anchors = known_anchors(stored, tail.is_none(), &linker, id)?;
