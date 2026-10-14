@@ -4,12 +4,11 @@ use tokio_postgres::{GenericClient, Statement};
 
 use super::catalog::Catalog;
 use super::cell::Cell;
-use super::row::FromRow;
 use super::text_param::TextParam;
 use crate::paging::Collector;
 use crate::{DbError, Query, Rows};
 
-const VERSION: &str = "SELECT current_setting('server_version')";
+const VERSION: &str = "SELECT current_setting('server_version') AS version";
 
 pub(super) struct Session<'a, C> {
     client: &'a C,
@@ -22,9 +21,9 @@ impl<'a, C: GenericClient + Sync> Session<'a, C> {
 
     pub(super) async fn version(&self) -> Result<String, DbError> {
         let row = self.client.query_one(VERSION, &[]).await?;
-        let (version,) = FromRow::from_row(&row).map_err(|_| DbError::unexpected_catalog_row())?;
 
-        Ok(version)
+        row.try_get("version")
+            .map_err(|_| DbError::unexpected_catalog_row())
     }
 
     pub(super) async fn run(&self, query: Query<'_>) -> Result<Rows, DbError> {

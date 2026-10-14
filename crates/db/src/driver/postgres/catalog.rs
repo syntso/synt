@@ -1,8 +1,8 @@
-use tokio_postgres::GenericClient;
+use tokio_postgres::types::FromSqlOwned;
+use tokio_postgres::{GenericClient, Row};
 
-use super::row::FromRow;
 use crate::DbError;
-use crate::catalog::{Column, ForeignKeyPart, IndexPart, Schema, TableName};
+use crate::catalog::{CatalogRow, FromCatalogRow, Schema, TableName};
 
 macro_rules! outside_system {
     () => {
@@ -12,9 +12,9 @@ macro_rules! outside_system {
 }
 
 const TABLES: &str = concat!(
-    "SELECT n.nspname::text, c.relname::text, \
+    "SELECT n.nspname::text AS table_schema, c.relname::text AS table_name, \
             CASE c.relkind WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' \
-            WHEN 'f' THEN 'foreign table' ELSE 'table' END \
+            WHEN 'f' THEN 'foreign table' ELSE 'table' END AS table_kind \
      FROM pg_catalog.pg_class c \
      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
      WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f') AND ",
@@ -23,9 +23,12 @@ const TABLES: &str = concat!(
 );
 
 const COLUMNS: &str = concat!(
-    "SELECT n.nspname::text, c.relname::text, a.attname::text, \
-            pg_catalog.format_type(a.atttypid, a.atttypmod), NOT a.attnotnull, \
-            pg_catalog.pg_get_expr(d.adbin, d.adrelid) \
+    "SELECT n.nspname::text AS table_schema, c.relname::text AS table_name, \
+            a.attname::text AS column_name, \
+            pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type, \
+            NOT a.attnotnull AS nullable, \
+            pg_catalog.pg_get_expr(d.adbin, d.adrelid) AS default_value, \
+            NULL::int8 AS key_position \
      FROM pg_catalog.pg_attribute a \
      JOIN pg_catalog.pg_class c ON c.oid = a.attrelid \
      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
@@ -37,8 +40,10 @@ const COLUMNS: &str = concat!(
 );
 
 const INDEXES: &str = concat!(
-    "SELECT n.nspname::text, t.relname::text, i.relname::text, \
-            coalesce(a.attname::text, '(expression)'), x.indisunique, x.indisprimary \
+    "SELECT n.nspname::text AS table_schema, t.relname::text AS table_name, \
+            i.relname::text AS index_name, \
+            coalesce(a.attname::text, '(expression)') AS column_name, \
+            x.indisunique AS is_unique, x.indisprimary AS is_primary \
      FROM pg_catalog.pg_index x \
      JOIN pg_catalog.pg_class t ON t.oid = x.indrelid \
      JOIN pg_catalog.pg_class i ON i.oid = x.indexrelid \
@@ -51,8 +56,10 @@ const INDEXES: &str = concat!(
 );
 
 const FOREIGN_KEYS: &str = concat!(
-    "SELECT n.nspname::text, t.relname::text, c.conname::text, a.attname::text, \
-            rn.nspname::text, r.relname::text, ra.attname::text \
+    "SELECT n.nspname::text AS table_schema, t.relname::text AS table_name, \
+            c.conname::text AS constraint_key, c.conname::text AS constraint_name, \
+            a.attname::text AS column_name, rn.nspname::text AS referenced_schema, \
+            r.relname::text AS referenced_table, ra.attname::text AS referenced_column \
      FROM pg_catalog.pg_constraint c \
      JOIN pg_catalog.pg_class t ON t.oid = c.conrelid \
      JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace \
@@ -66,10 +73,6 @@ const FOREIGN_KEYS: &str = concat!(
     " ORDER BY n.nspname, t.relname, c.conname, k.position"
 );
 
-type ColumnRow = (String, String, String, String, bool, Option<String>);
-type IndexRow = (String, String, String, String, bool, bool);
-type ForeignKeyRow = (String, String, String, String, String, String, String);
-
 pub(super) struct Catalog<'a, C> {
     client: &'a C,
 }
@@ -80,87 +83,49 @@ impl<'a, C: GenericClient + Sync> Catalog<'a, C> {
     }
 
     pub(super) async fn tables(&self) -> Result<Vec<TableName>, DbError> {
-        let rows: Vec<(String, String, String)> = self.rows(TABLES).await?;
-
-        let names = rows
-            .into_iter()
-            .map(|(schema, name, kind)| TableName {
-                schema: Some(schema),
-                name,
-                kind,
-            })
-            .collect();
-
-        Ok(names)
+        self.rows(TABLES).await
     }
 
     pub(super) async fn schema(&self) -> Result<Schema, DbError> {
-        let mut schema = Schema::of(self.tables().await?);
+        let tables = self.tables().await?;
+        let columns = self.rows(COLUMNS).await?;
+        let indexes = self.rows(INDEXES).await?;
+        let foreign_keys = self.rows(FOREIGN_KEYS).await?;
 
-        self.add_columns(&mut schema).await?;
-        self.add_indexes(&mut schema).await?;
-        self.add_foreign_keys(&mut schema).await?;
+        let schema = Schema::of(tables)
+            .with_columns(columns)
+            .with_indexes(indexes)
+            .with_foreign_keys(foreign_keys);
 
         Ok(schema)
     }
 
-    async fn add_columns(&self, schema: &mut Schema) -> Result<(), DbError> {
-        let rows: Vec<ColumnRow> = self.rows(COLUMNS).await?;
-
-        for (owner, table, name, data_type, nullable, default) in rows {
-            let column = Column {
-                name,
-                data_type,
-                nullable,
-                default,
-            };
-            schema.add_column(Some(&owner), &table, column);
-        }
-
-        Ok(())
-    }
-
-    async fn add_indexes(&self, schema: &mut Schema) -> Result<(), DbError> {
-        let rows: Vec<IndexRow> = self.rows(INDEXES).await?;
-
-        for (owner, table, index, column, unique, primary) in rows {
-            let part = IndexPart {
-                index,
-                column,
-                unique,
-                primary,
-            };
-            schema.add_index_part(Some(&owner), &table, part);
-        }
-
-        Ok(())
-    }
-
-    async fn add_foreign_keys(&self, schema: &mut Schema) -> Result<(), DbError> {
-        let rows: Vec<ForeignKeyRow> = self.rows(FOREIGN_KEYS).await?;
-
-        for (owner, table, name, column, referenced_schema, referenced_table, referenced_column) in
-            rows
-        {
-            let part = ForeignKeyPart {
-                key: name.clone(),
-                name: Some(name),
-                column,
-                referenced_schema: Some(referenced_schema),
-                referenced_table,
-                referenced_column,
-            };
-            schema.add_foreign_key_part(Some(&owner), &table, part);
-        }
-
-        Ok(())
-    }
-
-    async fn rows<T: FromRow>(&self, sql: &str) -> Result<Vec<T>, DbError> {
+    async fn rows<T: FromCatalogRow>(&self, sql: &str) -> Result<Vec<T>, DbError> {
         let rows = self.client.query(sql, &[]).await?;
 
-        rows.iter()
-            .map(|row| T::from_row(row).map_err(|_| DbError::unexpected_catalog_row()))
-            .collect()
+        rows.iter().map(T::read).collect()
     }
+}
+
+impl CatalogRow for Row {
+    fn text(&self, name: &str) -> Result<String, DbError> {
+        field(self, name)
+    }
+
+    fn optional_text(&self, name: &str) -> Result<Option<String>, DbError> {
+        field(self, name)
+    }
+
+    fn flag(&self, name: &str) -> Result<bool, DbError> {
+        field(self, name)
+    }
+
+    fn optional_number(&self, name: &str) -> Result<Option<i64>, DbError> {
+        field(self, name)
+    }
+}
+
+fn field<T: FromSqlOwned>(row: &Row, name: &str) -> Result<T, DbError> {
+    row.try_get(name)
+        .map_err(|_| DbError::unexpected_catalog_row())
 }

@@ -27,7 +27,7 @@ impl StatementKind {
         matches!(self, Self::Named(_))
     }
 
-    pub fn as_str(&self) -> &str {
+    pub fn name(&self) -> &str {
         match self {
             Self::Named(name) => name,
             Self::Unparsable => UNPARSABLE,
@@ -39,13 +39,13 @@ impl StatementKind {
 
 impl Display for StatementKind {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
+        formatter.write_str(self.name())
     }
 }
 
 impl Serialize for StatementKind {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(self.as_str())
+        serializer.serialize_str(self.name())
     }
 }
 

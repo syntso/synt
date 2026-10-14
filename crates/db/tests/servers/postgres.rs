@@ -1,6 +1,7 @@
 use serde_json::json;
 use synt_db::{
-    Access, Classification, Database, DbError, Effect, Engine, Page, Query, Server, TlsMode,
+    Access, Classification, Database, DbError, Effect, Engine, Page, Query, Server, TableKind,
+    TlsMode,
 };
 use synt_test_servers::DbServers;
 use zeroize::Zeroizing;
@@ -192,7 +193,7 @@ async fn the_schema_holds_keys_indexes_and_references() {
     assert!(
         tables
             .iter()
-            .any(|table| table.name == "lines" && table.kind == "table")
+            .any(|table| table.name == "lines" && table.kind == TableKind::Table)
     );
 }
 

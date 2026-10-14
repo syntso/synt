@@ -1,6 +1,7 @@
 use serde::Serialize;
 
-use super::{Column, ForeignKeyPart, IndexPart, Table, TableName};
+use super::row::{ColumnRow, ForeignKeyRow, IndexRow};
+use super::{Table, TableName};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Schema {
@@ -10,42 +11,53 @@ pub struct Schema {
 impl Schema {
     pub(crate) fn of(names: Vec<TableName>) -> Self {
         Self {
-            tables: names.into_iter().map(Table::named).collect(),
+            tables: names.into_iter().map(Table::from).collect(),
         }
     }
 
-    pub(crate) fn add_column(&mut self, schema: Option<&str>, table: &str, column: Column) {
-        if let Some(table) = self.table_mut(schema, table) {
-            table.columns.push(column);
+    #[must_use]
+    pub(crate) fn with_columns(mut self, rows: Vec<ColumnRow>) -> Self {
+        let mut keys: Vec<&ColumnRow> = rows
+            .iter()
+            .filter(|row| row.key_position.is_some())
+            .collect();
+        keys.sort_by_key(|row| row.key_position);
+
+        for key in keys {
+            if let Some(table) = self.table_mut(key.schema.as_deref(), &key.table) {
+                table.add_primary_key_column(key.column.name.clone());
+            }
         }
+
+        for row in rows {
+            if let Some(table) = self.table_mut(row.schema.as_deref(), &row.table) {
+                table.add_column(row.column);
+            }
+        }
+
+        self
     }
 
-    pub(crate) fn add_primary_key_column(
-        &mut self,
-        schema: Option<&str>,
-        table: &str,
-        column: String,
-    ) {
-        if let Some(table) = self.table_mut(schema, table) {
-            table.add_primary_key_column(column);
+    #[must_use]
+    pub(crate) fn with_indexes(mut self, rows: Vec<IndexRow>) -> Self {
+        for row in rows {
+            if let Some(table) = self.table_mut(row.schema.as_deref(), &row.table) {
+                table.add_index_column(row);
+            }
         }
+
+        self
     }
 
-    pub(crate) fn add_index_part(&mut self, schema: Option<&str>, table: &str, part: IndexPart) {
-        if let Some(table) = self.table_mut(schema, table) {
-            table.add_index_part(part);
+    #[must_use]
+    pub(crate) fn with_foreign_keys(mut self, rows: Vec<ForeignKeyRow>) -> Self {
+        for row in rows {
+            if let Some(table) = self.table_mut(row.schema.as_deref(), &row.table) {
+                table.add_foreign_key_column(row);
+            }
         }
-    }
 
-    pub(crate) fn add_foreign_key_part(
-        &mut self,
-        schema: Option<&str>,
-        table: &str,
-        part: ForeignKeyPart,
-    ) {
-        if let Some(table) = self.table_mut(schema, table) {
-            table.add_foreign_key_part(part);
-        }
+        self
     }
 
     fn table_mut(&mut self, schema: Option<&str>, name: &str) -> Option<&mut Table> {
@@ -56,18 +68,21 @@ impl Schema {
 #[cfg(test)]
 mod tests {
     use super::Schema;
-    use crate::catalog::{ForeignKeyPart, IndexPart, TableName};
+    use crate::catalog::row::{ColumnRow, ForeignKeyRow, IndexRow};
+    use crate::catalog::{Column, TableKind, TableName};
 
-    fn table(name: &str) -> TableName {
-        TableName {
+    fn lines() -> Schema {
+        Schema::of(vec![TableName {
             schema: Some("public".to_owned()),
-            name: name.to_owned(),
-            kind: "table".to_owned(),
-        }
+            name: "lines".to_owned(),
+            kind: TableKind::Table,
+        }])
     }
 
-    fn index_part(index: &str, column: &str, primary: bool) -> IndexPart {
-        IndexPart {
+    fn index_row(table: &str, index: &str, column: &str, primary: bool) -> IndexRow {
+        IndexRow {
+            schema: Some("public".to_owned()),
+            table: table.to_owned(),
             index: index.to_owned(),
             column: column.to_owned(),
             unique: primary,
@@ -75,21 +90,27 @@ mod tests {
         }
     }
 
-    #[test]
-    fn index_parts_join_into_one_index_and_the_primary_one_names_the_key() {
-        let mut schema = Schema::of(vec![table("lines")]);
+    fn column_row(name: &str, key_position: Option<i64>) -> ColumnRow {
+        ColumnRow {
+            schema: Some("public".to_owned()),
+            table: "lines".to_owned(),
+            column: Column {
+                name: name.to_owned(),
+                data_type: "int".to_owned(),
+                nullable: false,
+                default: None,
+            },
+            key_position,
+        }
+    }
 
-        schema.add_index_part(
-            Some("public"),
-            "lines",
-            index_part("lines_pkey", "order_id", true),
-        );
-        schema.add_index_part(
-            Some("public"),
-            "lines",
-            index_part("lines_pkey", "line", true),
-        );
-        schema.add_index_part(Some("public"), "lines", index_part("by_sku", "sku", false));
+    #[test]
+    fn index_rows_join_into_one_index_and_the_primary_one_names_the_key() {
+        let schema = lines().with_indexes(vec![
+            index_row("lines", "lines_pkey", "order_id", true),
+            index_row("lines", "lines_pkey", "line", true),
+            index_row("lines", "by_sku", "sku", false),
+        ]);
 
         let lines = &schema.tables[0];
         assert_eq!(lines.primary_key, ["order_id", "line"]);
@@ -98,9 +119,10 @@ mod tests {
     }
 
     #[test]
-    fn foreign_key_parts_with_the_same_key_pair_up_their_columns() {
-        let mut schema = Schema::of(vec![table("lines")]);
-        let part = |column: &str, referenced: &str| ForeignKeyPart {
+    fn foreign_key_rows_with_the_same_key_pair_up_their_columns() {
+        let row = |column: &str, referenced: &str| ForeignKeyRow {
+            schema: Some("public".to_owned()),
+            table: "lines".to_owned(),
             key: "lines_order_fkey".to_owned(),
             name: Some("lines_order_fkey".to_owned()),
             column: column.to_owned(),
@@ -109,8 +131,8 @@ mod tests {
             referenced_column: referenced.to_owned(),
         };
 
-        schema.add_foreign_key_part(Some("public"), "lines", part("order_id", "id"));
-        schema.add_foreign_key_part(Some("public"), "lines", part("region", "region"));
+        let schema =
+            lines().with_foreign_keys(vec![row("order_id", "id"), row("region", "region")]);
 
         let key = &schema.tables[0].foreign_keys[0];
         assert_eq!(key.columns, ["order_id", "region"]);
@@ -118,10 +140,21 @@ mod tests {
     }
 
     #[test]
-    fn parts_of_unknown_tables_are_ignored() {
-        let mut schema = Schema::of(vec![table("lines")]);
+    fn key_positions_order_the_primary_key_and_columns_keep_their_order() {
+        let schema = lines().with_columns(vec![
+            column_row("line", Some(2)),
+            column_row("note", None),
+            column_row("order_id", Some(1)),
+        ]);
 
-        schema.add_index_part(Some("public"), "ghost", index_part("x", "y", false));
+        let lines = &schema.tables[0];
+        assert_eq!(lines.primary_key, ["order_id", "line"]);
+        assert_eq!(lines.columns[1].name, "note");
+    }
+
+    #[test]
+    fn rows_of_unknown_tables_are_ignored() {
+        let schema = lines().with_indexes(vec![index_row("ghost", "x", "y", false)]);
 
         assert!(schema.tables[0].indexes.is_empty());
     }

@@ -1,7 +1,8 @@
+use rusqlite::types::FromSql;
 use rusqlite::{Connection, Row};
 
 use crate::DbError;
-use crate::catalog::{Column, ForeignKeyPart, IndexPart, Schema, TableName};
+use crate::catalog::{CatalogRow, FromCatalogRow, Schema, TableName};
 
 macro_rules! user_tables {
     () => {
@@ -10,14 +11,17 @@ macro_rules! user_tables {
 }
 
 const TABLES: &str = concat!(
-    "SELECT m.name, m.type FROM sqlite_schema m \
+    "SELECT NULL AS table_schema, m.name AS table_name, m.type AS table_kind \
+     FROM sqlite_schema m \
      WHERE m.type IN ('table', 'view') AND ",
     user_tables!(),
     " ORDER BY m.name"
 );
 
 const COLUMNS: &str = concat!(
-    "SELECT m.name, p.name, p.type, p.\"notnull\", p.dflt_value, p.pk \
+    "SELECT NULL AS table_schema, m.name AS table_name, p.name AS column_name, \
+            p.type AS data_type, NOT p.\"notnull\" AS nullable, \
+            p.dflt_value AS default_value, nullif(p.pk, 0) AS key_position \
      FROM sqlite_schema m JOIN pragma_table_info(m.name) p \
      WHERE m.type IN ('table', 'view') AND ",
     user_tables!(),
@@ -25,7 +29,9 @@ const COLUMNS: &str = concat!(
 );
 
 const INDEXES: &str = concat!(
-    "SELECT m.name, l.name, coalesce(i.name, '(expression)'), l.\"unique\", l.origin = 'pk' \
+    "SELECT NULL AS table_schema, m.name AS table_name, l.name AS index_name, \
+            coalesce(i.name, '(expression)') AS column_name, l.\"unique\" AS is_unique, \
+            l.origin = 'pk' AS is_primary \
      FROM sqlite_schema m JOIN pragma_index_list(m.name) l JOIN pragma_index_info(l.name) i \
      WHERE m.type = 'table' AND ",
     user_tables!(),
@@ -33,16 +39,15 @@ const INDEXES: &str = concat!(
 );
 
 const FOREIGN_KEYS: &str = concat!(
-    "SELECT m.name, f.id, f.\"from\", f.\"table\", coalesce(f.\"to\", '') \
+    "SELECT NULL AS table_schema, m.name AS table_name, \
+            CAST(f.id AS TEXT) AS constraint_key, NULL AS constraint_name, \
+            f.\"from\" AS column_name, NULL AS referenced_schema, \
+            f.\"table\" AS referenced_table, coalesce(f.\"to\", '') AS referenced_column \
      FROM sqlite_schema m JOIN pragma_foreign_key_list(m.name) f \
      WHERE m.type = 'table' AND ",
     user_tables!(),
     " ORDER BY m.name, f.id, f.seq"
 );
-
-type ColumnRow = (String, String, String, i64, Option<String>, i64);
-type IndexRow = (String, String, String, bool, bool);
-type ForeignKeyRow = (String, i64, String, String, String);
 
 pub(super) struct Catalog<'a> {
     connection: &'a Connection,
@@ -54,101 +59,54 @@ impl<'a> Catalog<'a> {
     }
 
     pub(super) fn tables(&self) -> Result<Vec<TableName>, DbError> {
-        let rows: Vec<(String, String)> = self.rows(TABLES)?;
-
-        let names = rows
-            .into_iter()
-            .map(|(name, kind)| TableName {
-                schema: None,
-                name,
-                kind,
-            })
-            .collect();
-
-        Ok(names)
+        self.rows(TABLES)
     }
 
     pub(super) fn schema(&self) -> Result<Schema, DbError> {
-        let mut schema = Schema::of(self.tables()?);
+        let tables = self.tables()?;
+        let columns = self.rows(COLUMNS)?;
+        let indexes = self.rows(INDEXES)?;
+        let foreign_keys = self.rows(FOREIGN_KEYS)?;
 
-        self.add_columns(&mut schema)?;
-        self.add_indexes(&mut schema)?;
-        self.add_foreign_keys(&mut schema)?;
+        let schema = Schema::of(tables)
+            .with_columns(columns)
+            .with_indexes(indexes)
+            .with_foreign_keys(foreign_keys);
 
         Ok(schema)
     }
 
-    fn add_columns(&self, schema: &mut Schema) -> Result<(), DbError> {
-        let rows: Vec<ColumnRow> = self.rows(COLUMNS)?;
-        let mut keys = Vec::new();
-
-        for (table, name, data_type, not_null, default, key_position) in rows {
-            if key_position > 0 {
-                keys.push((table.clone(), key_position, name.clone()));
-            }
-
-            let column = Column {
-                name,
-                data_type,
-                nullable: not_null == 0,
-                default,
-            };
-            schema.add_column(None, &table, column);
-        }
-
-        keys.sort();
-
-        for (table, _, column) in keys {
-            schema.add_primary_key_column(None, &table, column);
-        }
-
-        Ok(())
-    }
-
-    fn add_indexes(&self, schema: &mut Schema) -> Result<(), DbError> {
-        let rows: Vec<IndexRow> = self.rows(INDEXES)?;
-
-        for (table, index, column, unique, primary) in rows {
-            let part = IndexPart {
-                index,
-                column,
-                unique,
-                primary,
-            };
-            schema.add_index_part(None, &table, part);
-        }
-
-        Ok(())
-    }
-
-    fn add_foreign_keys(&self, schema: &mut Schema) -> Result<(), DbError> {
-        let rows: Vec<ForeignKeyRow> = self.rows(FOREIGN_KEYS)?;
-
-        for (table, key, column, referenced_table, referenced_column) in rows {
-            let part = ForeignKeyPart {
-                key: key.to_string(),
-                name: None,
-                column,
-                referenced_schema: None,
-                referenced_table,
-                referenced_column,
-            };
-            schema.add_foreign_key_part(None, &table, part);
-        }
-
-        Ok(())
-    }
-
-    fn rows<T>(&self, sql: &str) -> Result<Vec<T>, DbError>
-    where
-        T: for<'r> TryFrom<&'r Row<'r>, Error = rusqlite::Error>,
-    {
+    fn rows<T: FromCatalogRow>(&self, sql: &str) -> Result<Vec<T>, DbError> {
         let mut statement = self.connection.prepare(sql)?;
+        let mut rows = statement.query([])?;
+        let mut read = Vec::new();
 
-        let rows = statement
-            .query_map([], |row| T::try_from(row))?
-            .collect::<Result<Vec<T>, _>>()?;
+        while let Some(row) = rows.next()? {
+            read.push(T::read(row)?);
+        }
 
-        Ok(rows)
+        Ok(read)
     }
+}
+
+impl CatalogRow for Row<'_> {
+    fn text(&self, name: &str) -> Result<String, DbError> {
+        field(self, name)
+    }
+
+    fn optional_text(&self, name: &str) -> Result<Option<String>, DbError> {
+        field(self, name)
+    }
+
+    fn flag(&self, name: &str) -> Result<bool, DbError> {
+        field(self, name)
+    }
+
+    fn optional_number(&self, name: &str) -> Result<Option<i64>, DbError> {
+        field(self, name)
+    }
+}
+
+fn field<T: FromSql>(row: &Row<'_>, name: &str) -> Result<T, DbError> {
+    row.get(name).map_err(|_| DbError::unexpected_catalog_row())
 }

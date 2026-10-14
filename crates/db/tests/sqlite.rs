@@ -201,7 +201,7 @@ async fn the_schema_names_tables_columns_keys_indexes_and_references() {
     let names: Vec<(&str, &str)> = schema
         .tables
         .iter()
-        .map(|table| (table.name.as_str(), table.kind.as_str()))
+        .map(|table| (table.name.as_str(), table.kind.name()))
         .collect();
     let orders = schema
         .tables

@@ -16,7 +16,7 @@ mod statement;
 mod tls;
 
 pub use access::Access;
-pub use catalog::{Column, ForeignKey, Index, Schema, Table, TableName};
+pub use catalog::{Column, ForeignKey, Index, Schema, Table, TableKind, TableName};
 pub use database::Database;
 pub use effect::Effect;
 pub use engine::Engine;

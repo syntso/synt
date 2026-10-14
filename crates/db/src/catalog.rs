@@ -1,15 +1,13 @@
 mod column;
 mod foreign_key;
 mod index;
-mod part;
+mod row;
 mod schema;
 mod table;
-mod table_name;
 
 pub use column::Column;
 pub use foreign_key::ForeignKey;
 pub use index::Index;
-pub(crate) use part::{ForeignKeyPart, IndexPart};
+pub(crate) use row::{CatalogRow, FromCatalogRow};
 pub use schema::Schema;
-pub use table::Table;
-pub use table_name::TableName;
+pub use table::{Table, TableKind, TableName};

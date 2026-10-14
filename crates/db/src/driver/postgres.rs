@@ -3,7 +3,6 @@ mod cell;
 mod error;
 mod numeric;
 mod options;
-mod row;
 mod session;
 mod text_param;
 
