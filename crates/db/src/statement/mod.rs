@@ -1,9 +1,9 @@
 mod classification;
 mod effects;
-mod masked;
+mod masking;
 mod redis_command;
 mod risky_functions;
 mod sql;
 
 pub use classification::Classification;
-pub use masked::masked;
+pub use masking::masked;

@@ -70,6 +70,17 @@ mod tests {
     }
 
     #[test]
+    fn a_literal_after_a_trailing_backslash_never_reaches_the_journal() {
+        let params = json!({
+            "sql": r"SELECT * FROM users WHERE path = 'C:\' AND password = 'hunter2'",
+        });
+
+        let recorded = recorded_statement(&params).to_string();
+
+        assert!(!recorded.contains("hunter2"), "{recorded}");
+    }
+
+    #[test]
     fn redis_commands_keep_only_their_name() {
         let params = json!({ "command": ["SET", "session:ann", "token-abc"] });
 
