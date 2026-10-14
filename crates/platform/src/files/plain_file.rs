@@ -1,6 +1,7 @@
-use std::io::{self, Read};
+use std::io;
 use std::path::Path;
 
+use super::limited::read_at_most;
 use crate::native;
 
 pub fn read_plain_file(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
@@ -13,15 +14,10 @@ pub fn read_plain_file(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
         ));
     }
 
-    let mut bytes = Vec::new();
-    file.take(limit + 1).read_to_end(&mut bytes)?;
-
-    if bytes.len() as u64 > limit {
-        return Err(io::Error::new(
+    read_at_most(file, limit)?.ok_or_else(|| {
+        io::Error::new(
             io::ErrorKind::InvalidData,
             format!("{} is larger than {limit} bytes", path.display()),
-        ));
-    }
-
-    Ok(bytes)
+        )
+    })
 }

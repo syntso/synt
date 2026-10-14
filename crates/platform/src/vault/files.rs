@@ -1,13 +1,12 @@
 use std::fs;
-use std::io;
 use std::path::PathBuf;
 
 use zeroize::Zeroizing;
 
 use super::place::KeyPlace;
 use super::vault::Vault;
-use crate::PlatformError;
-use crate::native;
+use crate::files::{found, remove_if_present};
+use crate::{PlatformError, native};
 
 pub(crate) struct Files {
     directory: PathBuf,
@@ -27,11 +26,9 @@ impl Vault for Files {
     }
 
     fn read(&self, name: &str) -> Result<Option<Zeroizing<Vec<u8>>>, PlatformError> {
-        match fs::read(self.directory.join(name)) {
-            Ok(bytes) => Ok(Some(Zeroizing::new(bytes))),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(error.into()),
-        }
+        let bytes = found(fs::read(self.directory.join(name)))?;
+
+        Ok(bytes.map(Zeroizing::new))
     }
 
     fn write(&self, name: &str, bytes: &[u8]) -> Result<(), PlatformError> {
@@ -42,10 +39,6 @@ impl Vault for Files {
     }
 
     fn remove(&self, name: &str) -> Result<(), PlatformError> {
-        match fs::remove_file(self.directory.join(name)) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(error.into()),
-        }
+        Ok(remove_if_present(&self.directory.join(name))?)
     }
 }

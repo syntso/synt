@@ -1,7 +1,8 @@
 use std::fs::Metadata;
-use std::io::{self, Read};
+use std::io;
 use std::path::Path;
 
+use super::limited::read_at_most;
 use crate::native;
 
 pub fn read_owned_file(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
@@ -10,14 +11,7 @@ pub fn read_owned_file(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
 
     refuse_unsafe(&metadata)?;
 
-    let mut bytes = Vec::new();
-    file.take(limit + 1).read_to_end(&mut bytes)?;
-
-    if bytes.len() as u64 > limit {
-        return Err(refused(&format!("it is larger than {limit} bytes")));
-    }
-
-    Ok(bytes)
+    read_at_most(file, limit)?.ok_or_else(|| refused(&format!("it is larger than {limit} bytes")))
 }
 
 fn refuse_unsafe(metadata: &Metadata) -> io::Result<()> {

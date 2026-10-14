@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use nix::unistd::getuid;
 
 use super::tool;
+use crate::files::found;
 use crate::{LoginStatus, PlatformError, home_directory, replace_file};
 
 const LABEL: &str = "so.synt.core";
@@ -58,12 +59,8 @@ impl LaunchAgent {
     }
 
     pub(super) fn status(&self) -> Result<LoginStatus, PlatformError> {
-        let contents = match fs::read_to_string(&self.plist) {
-            Ok(contents) => contents,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                return Ok(LoginStatus::NotRegistered);
-            }
-            Err(error) => return Err(error.into()),
+        let Some(contents) = found(fs::read_to_string(&self.plist))? else {
+            return Ok(LoginStatus::NotRegistered);
         };
 
         Ok(LoginStatus::Registered {

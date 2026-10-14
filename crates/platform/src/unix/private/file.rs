@@ -3,12 +3,14 @@ use std::io::{self, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
+use crate::files::remove_if_present;
+
 const FILE_MODE: u32 = 0o600;
 const PENDING_SUFFIX: &str = ".pending";
 
 pub(crate) fn replace_private_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let pending = pending(path);
-    remove_stale(&pending)?;
+    remove_if_present(&pending)?;
 
     write_new(&pending, bytes)?;
     fs::rename(&pending, path)?;
@@ -21,13 +23,6 @@ fn pending(path: &Path) -> PathBuf {
     name.push(PENDING_SUFFIX);
 
     PathBuf::from(name)
-}
-
-fn remove_stale(pending: &Path) -> io::Result<()> {
-    match fs::remove_file(pending) {
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        other => other,
-    }
 }
 
 fn write_new(path: &Path, bytes: &[u8]) -> io::Result<()> {

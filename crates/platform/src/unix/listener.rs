@@ -8,6 +8,7 @@ use std::path::{self, Path, PathBuf};
 use tokio::net::UnixListener;
 
 use super::Stream;
+use crate::files::found;
 
 const PRIVATE_DIRECTORY: u32 = 0o700;
 const PRIVATE_SOCKET: u32 = 0o600;
@@ -88,10 +89,8 @@ fn make_private(directory: &Path, ours: &File) -> io::Result<()> {
 }
 
 fn clear_stale_socket(path: &Path) -> io::Result<()> {
-    let metadata = match fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error),
+    let Some(metadata) = found(fs::symlink_metadata(path))? else {
+        return Ok(());
     };
 
     if !metadata.file_type().is_socket() {
