@@ -33,3 +33,6 @@ windows-native-keyring-store.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread"] }
+
+[target.'cfg(unix)'.dev-dependencies]
+nix = { workspace = true, features = ["fs"] }

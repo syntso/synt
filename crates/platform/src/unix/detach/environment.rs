@@ -1,17 +1,11 @@
 use std::env;
 use std::ffi::OsString;
 use std::io;
-use std::os::unix::process::CommandExt;
-use std::process::Command;
 
-use super::account::{home_directory, user_name};
+use crate::unix::account::{home_directory, user_name};
 
 const SYSTEM_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 const PASSED_ON: [&str; 4] = ["LANG", "LC_ALL", "LC_CTYPE", "SSH_AUTH_SOCK"];
-
-pub(crate) fn detach(command: &mut Command) {
-    command.process_group(0);
-}
 
 pub(crate) fn detached_environment() -> io::Result<Vec<(OsString, OsString)>> {
     let mut environment = vec![

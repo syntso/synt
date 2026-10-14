@@ -2,8 +2,9 @@ use std::env;
 use std::ffi::OsString;
 use std::io;
 use std::os::windows::process::CommandExt;
-use std::path::PathBuf;
-use std::process::Command;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::thread;
 
 use super::account::home_directory;
 
@@ -20,8 +21,33 @@ const PASSED_ON: [&str; 6] = [
     "windir",
 ];
 
-pub(crate) fn detach(command: &mut Command) {
-    command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+pub(crate) fn spawn_detached(
+    program: &Path,
+    arguments: &[OsString],
+    environment: &[(OsString, OsString)],
+) -> io::Result<()> {
+    let folder = program.parent().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{} has no folder", program.display()),
+        )
+    })?;
+
+    let mut command = Command::new(program);
+    command
+        .args(arguments)
+        .env_clear()
+        .envs(environment.iter().map(|(name, value)| (name, value)))
+        .current_dir(folder)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+
+    let mut child = command.spawn()?;
+    thread::spawn(move || child.wait());
+
+    Ok(())
 }
 
 pub(crate) fn detached_environment() -> io::Result<Vec<(OsString, OsString)>> {

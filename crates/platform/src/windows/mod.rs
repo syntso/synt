@@ -12,7 +12,7 @@ mod stream;
 
 pub(crate) use account::{home_directory, user_name};
 pub(crate) use address::{absolute_address, address, default_address};
-pub(crate) use detach::{detach, detached_environment, system_root};
+pub(crate) use detach::{detached_environment, spawn_detached, system_root};
 pub(crate) use listener::Listener;
 pub(crate) use peer::{current_user, peer_of};
 pub(crate) use permissions::{owned_by_current_user, writable_by_others};
