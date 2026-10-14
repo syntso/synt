@@ -11,9 +11,12 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+bytes.workspace = true
 data-encoding.workspace = true
+fallible-iterator.workspace = true
 futures-util.workspace = true
 mysql_async.workspace = true
+postgres-protocol.workspace = true
 redis.workspace = true
 rusqlite.workspace = true
 rustls.workspace = true

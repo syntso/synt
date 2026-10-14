@@ -226,7 +226,10 @@ mod tests {
 
     #[test]
     fn backtick_names_stay() {
-        assert_eq!(masked("SELECT `select` FROM `t`"), "SELECT `select` FROM `t`");
+        assert_eq!(
+            masked("SELECT `select` FROM `t`"),
+            "SELECT `select` FROM `t`"
+        );
     }
 
     #[test]

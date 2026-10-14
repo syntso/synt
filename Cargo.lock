@@ -3886,9 +3886,12 @@ dependencies = [
 name = "synt-db"
 version = "0.0.0"
 dependencies = [
+ "bytes",
  "data-encoding",
+ "fallible-iterator 0.2.0",
  "futures-util",
  "mysql_async",
+ "postgres-protocol",
  "redis",
  "rusqlite",
  "rustls",
