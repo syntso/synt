@@ -15,12 +15,24 @@ pub(crate) struct Lane {
     stop: CancellationToken,
 }
 
+#[derive(Clone)]
+struct Driver {
+    guest: Arc<Guest>,
+    stop: CancellationToken,
+    handle: Handle,
+}
+
 impl Lane {
     pub(crate) fn start(guest: Arc<Guest>, handle: &Handle) -> Self {
         let (wakes, incoming) = mpsc::channel(QUEUED);
         let stop = CancellationToken::new();
 
-        handle.spawn(drive(guest, incoming, stop.clone(), handle.clone()));
+        let driver = Driver {
+            guest,
+            stop: stop.clone(),
+            handle: handle.clone(),
+        };
+        handle.spawn(driver.drive(incoming));
 
         Self { wakes, stop }
     }
@@ -36,43 +48,42 @@ impl Drop for Lane {
     }
 }
 
-async fn drive(
-    guest: Arc<Guest>,
-    mut incoming: mpsc::Receiver<Wake>,
-    stop: CancellationToken,
-    handle: Handle,
-) {
-    loop {
-        let wakes = tokio::select! {
-            () = stop.cancelled() => return,
-            next = incoming.recv() => match next {
-                Some(wake) => vec![wake],
-                None => return,
-            },
-            due = guest.timers().due() => due.into_iter().map(Wake::Timer).collect(),
-        };
-
-        for wake in wakes {
-            perform(&guest, wake, &stop, &handle).await;
+impl Driver {
+    async fn drive(self, mut incoming: mpsc::Receiver<Wake>) {
+        while let Some(wakes) = self.next(&mut incoming).await {
+            for wake in wakes {
+                self.perform(wake).await;
+            }
         }
     }
-}
 
-async fn perform(guest: &Arc<Guest>, wake: Wake, stop: &CancellationToken, handle: &Handle) {
-    let what = wake.describe();
-    let guest = Arc::clone(guest);
-    let id = guest.manifest().id.clone();
-    let stop = stop.clone();
-    let handle = handle.clone();
+    async fn next(&self, incoming: &mut mpsc::Receiver<Wake>) -> Option<Vec<Wake>> {
+        tokio::select! {
+            () = self.stop.cancelled() => None,
+            next = incoming.recv() => next.map(|wake| vec![wake]),
+            due = self.guest.timers().due() => Some(due.into_iter().map(Wake::Timer).collect()),
+        }
+    }
 
-    let outcome = task::spawn_blocking(move || guest.wake(&wake, stop, handle)).await;
+    async fn perform(&self, wake: Wake) {
+        let what = wake.describe();
+        let id = self.guest.manifest().id.clone();
+        let driver = self.clone();
 
-    let problem = match outcome {
-        Ok(Ok(Ok(()))) => return,
-        Ok(Ok(Err(error))) => format!("{}: {}", error.code, error.message),
-        Ok(Err(error)) => error.to_string(),
-        Err(_) => "stopped unexpectedly".to_owned(),
-    };
+        let outcome = task::spawn_blocking(move || {
+            driver
+                .guest
+                .wake(&wake, driver.stop.clone(), driver.handle.clone())
+        })
+        .await;
 
-    eprintln!("synt-core: extension {id}: {what}: {problem}");
+        let problem = match outcome {
+            Ok(Ok(Ok(()))) => return,
+            Ok(Ok(Err(error))) => error.to_string(),
+            Ok(Err(error)) => error.to_string(),
+            Err(_) => "stopped unexpectedly".to_owned(),
+        };
+
+        eprintln!("synt-core: extension {id}: {what}: {problem}");
+    }
 }
