@@ -9,6 +9,7 @@ use tokio::time;
 use tokio_util::sync::CancellationToken;
 
 use super::{Attached, Attachment, Block, Console, Ending, Origin, Screen, SessionId, SessionKind};
+use crate::clock::milliseconds;
 use crate::link::Link;
 use crate::locked::locked;
 
@@ -203,8 +204,4 @@ impl Terminal {
     fn ending(&self) -> Option<Ending> {
         locked(&self.ending).clone()
     }
-}
-
-fn milliseconds(elapsed: Duration) -> u64 {
-    u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
 }

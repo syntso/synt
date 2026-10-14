@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::time::Instant;
 
 use super::{Block, Mark, OpenBlock, Sighting};
+use crate::clock::milliseconds;
 
 const KEPT_BLOCKS: usize = 1000;
 
@@ -67,10 +68,6 @@ impl Blocks {
 
         Some(block)
     }
-}
-
-fn milliseconds(elapsed: std::time::Duration) -> u64 {
-    u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]

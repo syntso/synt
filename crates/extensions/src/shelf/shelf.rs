@@ -1,8 +1,9 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use rusqlite::{Connection, OptionalExtension, Row};
+use synt_journal::{Clock, SystemClock};
 
 use super::Installed;
 use super::schema;
@@ -187,10 +188,7 @@ impl Shelf {
 }
 
 pub(crate) fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
-        .unwrap_or_default()
+    unsigned_number(SystemClock.now().as_millis())
 }
 
 fn add_manifest_column(connection: &Connection) -> Result<(), ExtensionError> {

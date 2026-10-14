@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, OptionalExtension, Row};
 
 use super::schema;
 use super::{NewGrant, StoredGrant};
 use crate::CoreError;
+use crate::clock::unix_millis;
 use crate::locked::locked;
 use crate::ssh_keys::{KeyInfo, KeyName};
 
@@ -37,7 +37,7 @@ impl State {
     pub(crate) fn remember_project(&self, path: &Path) -> Result<(), CoreError> {
         self.lock().execute(
             "INSERT OR IGNORE INTO open_projects (path, opened_at) VALUES (?1, ?2)",
-            (path.to_string_lossy(), now()),
+            (path.to_string_lossy(), unix_millis()),
         )?;
 
         Ok(())
@@ -66,7 +66,7 @@ impl State {
     }
 
     pub(crate) fn insert_grant(&self, grant: NewGrant) -> Result<StoredGrant, CoreError> {
-        let created_at = now();
+        let created_at = unix_millis();
         let connection = self.lock();
 
         connection.execute(
@@ -211,13 +211,6 @@ fn stored_ssh_key(row: &Row<'_>) -> rusqlite::Result<KeyInfo> {
         fingerprint: row.get(3)?,
         created_at: unsigned(row.get(4)?),
     })
-}
-
-fn now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX))
-        .unwrap_or_default()
 }
 
 fn unsigned(value: i64) -> u64 {

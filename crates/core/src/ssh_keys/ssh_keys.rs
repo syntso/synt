@@ -1,5 +1,4 @@
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use synt_platform::Vault;
 use synt_ssh::{KeyVault, StoredKey};
@@ -7,6 +6,7 @@ use zeroize::Zeroizing;
 
 use super::{KeyInfo, KeyName};
 use crate::CoreError;
+use crate::clock::unix_millis;
 use crate::locked::locked;
 use crate::state::State;
 
@@ -35,7 +35,8 @@ impl SshKeys {
             )));
         }
 
-        let info = KeyInfo::new(name, key.summary(), now());
+        let created_at = u64::try_from(unix_millis()).unwrap_or_default();
+        let info = KeyInfo::new(name, key.summary(), created_at);
         self.vault.write(&name.vault_item(), key.private_bytes())?;
 
         if let Err(error) = self.state.insert_ssh_key(&info) {
@@ -76,13 +77,6 @@ impl KeyVault for SshKeys {
             .read(&name.vault_item())
             .map_err(|error| error.to_string())
     }
-}
-
-fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::SessionInfo;
 use crate::broker::requester;
+use crate::clock::milliseconds;
 use crate::terminal::{Terminal, Terminals};
 
 #[derive(Debug, Clone)]
@@ -59,6 +60,6 @@ async fn describe(terminal: &Arc<Terminal>) -> SessionInfo {
         rows: size.rows,
         attached: terminal.attached().await,
         blocks: terminal.blocks().await.len(),
-        age_ms: u64::try_from(terminal.age().as_millis()).unwrap_or(u64::MAX),
+        age_ms: milliseconds(terminal.age()),
     }
 }
