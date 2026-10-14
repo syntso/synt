@@ -39,7 +39,7 @@ impl CoreCaller {
         };
 
         let answer = match origin {
-            Some(origin) => on_behalf(&core, &actor, origin, request).await?,
+            Some(origin) => Self::on_behalf(&core, &actor, origin, request).await?,
             None => core.dispatch_unprompted(&actor, request).await,
         };
 
@@ -47,35 +47,35 @@ impl CoreCaller {
             .map(|outcome| outcome.value)
             .map_err(|error| CallFailure::new(code_name(error.code), error.message))
     }
+
+    async fn on_behalf(
+        core: &Core,
+        actor: &Actor,
+        origin: &Context,
+        request: ActionCall,
+    ) -> Result<Result<ActionOutcome, RpcError>, CallFailure> {
+        let link = origin
+            .connection::<Link>()
+            .ok_or_else(|| CallFailure::new("unavailable", "the call came without a connection"))?;
+
+        let behalf = OnBehalf {
+            actor: origin.actor(),
+            request: origin.request(),
+            approved: false,
+            planned: None,
+            stop: Some(origin.stop()),
+        };
+
+        Ok(core
+            .dispatch_on_behalf(actor, behalf, request, origin.stop(), &link)
+            .await)
+    }
 }
 
 impl Caller for CoreCaller {
     fn call<'a>(&'a self, call: ExtensionCall, origin: Option<&'a Context>) -> CallFuture<'a> {
         Box::pin(self.dispatch(call, origin))
     }
-}
-
-async fn on_behalf(
-    core: &Core,
-    actor: &Actor,
-    origin: &Context,
-    request: ActionCall,
-) -> Result<Result<ActionOutcome, RpcError>, CallFailure> {
-    let link = origin
-        .connection::<Link>()
-        .ok_or_else(|| CallFailure::new("unavailable", "the call came without a connection"))?;
-
-    let behalf = OnBehalf {
-        actor: origin.actor(),
-        request: origin.request(),
-        approved: false,
-        planned: None,
-        stop: Some(origin.stop()),
-    };
-
-    Ok(core
-        .dispatch_on_behalf(actor, behalf, request, origin.stop(), &link)
-        .await)
 }
 
 fn code_name(code: ErrorCode) -> &'static str {
