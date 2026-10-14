@@ -7,7 +7,7 @@ use crate::SyncError;
 use crate::id::{Generation, MemberId, ProjectId};
 use crate::provider::{MemberKey, SyncProvider, WrappedKey};
 use crate::report::{Access, MemberInfo};
-use crate::seal::{DeviceKey, Keyring, unwrap, wrap};
+use crate::seal::{DeviceKey, KeyWrap, Keyring};
 
 const VAULT_PREFIX: &str = "sync.project.";
 
@@ -60,7 +60,9 @@ impl Membership {
     }
 
     pub(crate) fn forget_keyring(vault: &dyn Vault, project: &ProjectId) -> Result<(), SyncError> {
-        vault.remove(&vault_item(project)).map_err(SyncError::from)
+        vault.remove(&Self::vault_item(project))?;
+
+        Ok(())
     }
 
     pub(crate) fn leave(&self) -> Result<(), SyncError> {
@@ -102,7 +104,7 @@ impl Membership {
         let keyring = self.keyring_for_work()?;
         let recipient = self.member_key(member)?;
 
-        let wrapped = wrap(&self.project, &self.device, &recipient, &keyring)?;
+        let wrapped = self.key_wrap().wrap(&recipient, &keyring)?;
         self.provider.share(&self.project, &[wrapped])?;
 
         Ok(keyring.generation())
@@ -133,14 +135,15 @@ impl Membership {
 
         for member in self.provider.members(&self.project)? {
             let shared = self.provider.key(&self.project, &member.member)?.is_some();
+            let access = if shared {
+                Access::Member
+            } else {
+                Access::Waiting
+            };
 
             members.push(MemberInfo {
                 this_device: member.member == me,
-                access: if shared {
-                    Access::Member
-                } else {
-                    Access::Waiting
-                },
+                access,
                 member: member.member,
             });
         }
@@ -150,12 +153,7 @@ impl Membership {
 
     fn start_keyring(&self) -> Result<(), SyncError> {
         let keyring = Keyring::generate()?;
-        let wrapped = wrap(
-            &self.project,
-            &self.device,
-            &self.device.member_key(),
-            &keyring,
-        )?;
+        let wrapped = self.key_wrap().wrap(&self.device.member_key(), &keyring)?;
 
         self.save(&keyring)?;
         self.provider.share(&self.project, &[wrapped])
@@ -177,7 +175,7 @@ impl Membership {
                 ))
             })?;
 
-        let keyring = unwrap(&self.project, &self.device, sender, wrapped)?;
+        let keyring = self.key_wrap().unwrap(sender, wrapped)?;
 
         if held.is_some_and(|held| !keyring.keeps(held)) {
             return Err(SyncError::refused(
@@ -198,7 +196,7 @@ impl Membership {
                 continue;
             }
 
-            wrapped.push(wrap(&self.project, &self.device, &member, keyring)?);
+            wrapped.push(self.key_wrap().wrap(&member, keyring)?);
         }
 
         Ok(wrapped)
@@ -219,22 +217,23 @@ impl Membership {
 
     fn keyring(&self) -> Result<Option<Keyring>, SyncError> {
         self.vault
-            .read(&self.vault_item())?
+            .read(&Self::vault_item(&self.project))?
             .map(|bytes| Keyring::from_bytes(&bytes))
             .transpose()
     }
 
     fn save(&self, keyring: &Keyring) -> Result<(), SyncError> {
         self.vault
-            .write(&self.vault_item(), &keyring.to_bytes())
-            .map_err(SyncError::from)
+            .write(&Self::vault_item(&self.project), &keyring.to_bytes())?;
+
+        Ok(())
     }
 
-    fn vault_item(&self) -> String {
-        vault_item(&self.project)
+    fn key_wrap(&self) -> KeyWrap<'_> {
+        KeyWrap::new(&self.project, &self.device)
     }
-}
 
-fn vault_item(project: &ProjectId) -> String {
-    format!("{VAULT_PREFIX}{project}")
+    fn vault_item(project: &ProjectId) -> String {
+        format!("{VAULT_PREFIX}{project}")
+    }
 }

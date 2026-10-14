@@ -5,8 +5,8 @@ mod disabled;
 mod member_info;
 mod membership_change;
 mod revision_info;
-mod round_report;
-mod sync_status;
+mod round;
+mod status;
 
 pub use access::Access;
 pub use applied::Applied;
@@ -15,5 +15,5 @@ pub use disabled::Disabled;
 pub use member_info::MemberInfo;
 pub use membership_change::MembershipChange;
 pub use revision_info::RevisionInfo;
-pub use round_report::RoundReport;
-pub use sync_status::SyncStatus;
+pub use round::RoundReport;
+pub use status::SyncStatus;

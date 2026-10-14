@@ -1,5 +1,6 @@
 use std::io;
 
+use synt_actions::ActionError;
 use synt_platform::PlatformError;
 use thiserror::Error;
 
@@ -56,5 +57,14 @@ impl SyncError {
 
     pub(crate) fn provider(reason: impl Into<String>) -> Self {
         Self::Provider(reason.into())
+    }
+}
+
+impl From<SyncError> for ActionError {
+    fn from(error: SyncError) -> Self {
+        match error {
+            SyncError::Invalid(reason) => Self::InvalidParams(reason),
+            other => Self::failed(other.to_string()),
+        }
     }
 }

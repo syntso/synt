@@ -1,10 +1,10 @@
 use crate::document::{DocumentPath, Revision};
-use crate::merge::merge_toml;
+use crate::merge::TomlText;
 use crate::provider::SealedRevision;
 use crate::seal::Keyring;
 
 pub fn merge(base: Option<&[u8]>, older: &[u8], newer: &[u8]) -> (Option<Vec<u8>>, Vec<String>) {
-    let merged = merge_toml(base, older, newer);
+    let merged = TomlText::merge(base, older, newer);
 
     (merged.body, merged.conflicts)
 }

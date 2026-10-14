@@ -1,8 +1,7 @@
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::ProjectParams;
-use super::failure::failure;
+use super::params::ProjectParams;
 use crate::Syncer;
 use crate::report::SyncStatus;
 
@@ -38,6 +37,6 @@ impl Action for SyncStatusAction {
         _context: &Context,
         params: ProjectParams,
     ) -> Result<SyncStatus, ActionError> {
-        self.syncer.status(&params.project).await.map_err(failure)
+        Ok(self.syncer.status(&params.project).await?)
     }
 }

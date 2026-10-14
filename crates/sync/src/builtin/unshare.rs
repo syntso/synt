@@ -1,8 +1,7 @@
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::MemberParams;
-use super::failure::{failure, invalid};
+use super::params::MemberParams;
 use crate::Syncer;
 use crate::id::MemberId;
 use crate::report::MembershipChange;
@@ -39,11 +38,8 @@ impl Action for SyncUnshare {
         _context: &Context,
         params: MemberParams,
     ) -> Result<MembershipChange, ActionError> {
-        let member = MemberId::parse(&params.member).map_err(invalid)?;
+        let member = MemberId::parse(&params.member)?;
 
-        self.syncer
-            .unshare(&params.project, member)
-            .await
-            .map_err(failure)
+        Ok(self.syncer.unshare(&params.project, member).await?)
     }
 }

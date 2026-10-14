@@ -1,5 +1,9 @@
-mod folder_provider;
+mod at_path;
+mod json_file;
 mod revision_file;
+mod store;
 
-pub use folder_provider::FolderProvider;
+use at_path::AtPath;
+use json_file::JsonFile;
 use revision_file::RevisionFile;
+pub use store::FolderProvider;

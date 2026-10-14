@@ -1,12 +1,12 @@
-mod document_id;
+mod document;
 mod generation;
 mod hex;
-mod member_id;
-mod project_id;
-mod revision_id;
+mod member;
+mod project;
+mod revision;
 
-pub use document_id::DocumentId;
+pub use document::DocumentId;
 pub use generation::Generation;
-pub use member_id::MemberId;
-pub use project_id::ProjectId;
-pub use revision_id::RevisionId;
+pub use member::MemberId;
+pub use project::ProjectId;
+pub use revision::RevisionId;

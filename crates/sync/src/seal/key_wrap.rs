@@ -1,9 +1,6 @@
-use hkdf::Hkdf;
-use sha2::Sha256;
 use zeroize::Zeroizing;
 
-use super::secret_key::SECRET_KEY_BYTES;
-use super::{DeviceKey, Keyring, SecretKey, cipher};
+use super::{DeviceKey, Keyring, SecretKey};
 use crate::SyncError;
 use crate::canonical::Canonical;
 use crate::encoding::Base64;
@@ -12,90 +9,94 @@ use crate::provider::{MemberKey, WrappedKey};
 
 const SALT: &[u8] = b"synt.sync.wrap.v1";
 
-pub(crate) fn wrap(
-    project: &ProjectId,
-    sender: &DeviceKey,
-    recipient: &MemberKey,
-    keyring: &Keyring,
-) -> Result<WrappedKey, SyncError> {
-    let ephemeral = DeviceKey::generate()?;
-
-    let mut wrapped = WrappedKey {
-        member: recipient.member.clone(),
-        by: sender.member(),
-        generation: keyring.generation(),
-        ephemeral: ephemeral.public_key(),
-        sealed: Base64::default(),
-    };
-
-    let context = context(project, &wrapped);
-    let fresh = ephemeral.agree(&recipient.public_key)?;
-    let lasting = sender.agree(&recipient.public_key)?;
-    let key = wrapping_key(&shared(&fresh, &lasting), &context);
-
-    wrapped.sealed = Base64::new(cipher::seal(&key, &context, &keyring.to_bytes())?);
-
-    Ok(wrapped)
+pub(crate) struct KeyWrap<'a> {
+    project: &'a ProjectId,
+    device: &'a DeviceKey,
 }
 
-pub(crate) fn unwrap(
-    project: &ProjectId,
-    recipient: &DeviceKey,
-    sender: &MemberKey,
-    wrapped: &WrappedKey,
-) -> Result<Keyring, SyncError> {
-    sender.check()?;
-
-    if wrapped.member != recipient.member() || wrapped.by != sender.member {
-        return Err(SyncError::refused(
-            "the shared key names other members than the ones it came from and to",
-        ));
+impl<'a> KeyWrap<'a> {
+    pub(crate) fn new(project: &'a ProjectId, device: &'a DeviceKey) -> Self {
+        Self { project, device }
     }
 
-    let context = context(project, wrapped);
-    let fresh = recipient.agree(&wrapped.ephemeral)?;
-    let lasting = recipient.agree(&sender.public_key)?;
-    let key = wrapping_key(&shared(&fresh, &lasting), &context);
+    pub(crate) fn wrap(
+        &self,
+        recipient: &MemberKey,
+        keyring: &Keyring,
+    ) -> Result<WrappedKey, SyncError> {
+        let ephemeral = DeviceKey::generate()?;
 
-    let bytes = cipher::open(&key, &context, wrapped.sealed.get())?;
-    let keyring = Keyring::from_bytes(&bytes)?;
+        let mut wrapped = WrappedKey {
+            member: recipient.member.clone(),
+            by: self.device.member(),
+            generation: keyring.generation(),
+            ephemeral: ephemeral.public_key(),
+            sealed: Base64::default(),
+        };
 
-    if keyring.generation() != wrapped.generation {
-        return Err(SyncError::refused(
-            "the shared key is not of the generation it claims",
-        ));
+        let context = self.context(&wrapped);
+        let fresh = ephemeral.agree(&recipient.public_key)?;
+        let lasting = self.device.agree(&recipient.public_key)?;
+        let key = Self::wrapping_key(&fresh, &lasting, &context)?;
+
+        wrapped.sealed = Base64::new(key.seal(&context, &keyring.to_bytes())?);
+
+        Ok(wrapped)
     }
 
-    Ok(keyring)
-}
+    pub(crate) fn unwrap(
+        &self,
+        sender: &MemberKey,
+        wrapped: &WrappedKey,
+    ) -> Result<Keyring, SyncError> {
+        sender.check()?;
 
-fn context(project: &ProjectId, wrapped: &WrappedKey) -> Vec<u8> {
-    Canonical::new("synt.sync.wrap")
-        .text(project.get())
-        .text(wrapped.member.get())
-        .text(wrapped.by.get())
-        .number(u64::from(wrapped.generation.get()))
-        .bytes(wrapped.ephemeral.get())
-        .finish()
-}
+        if wrapped.member != self.device.member() || wrapped.by != sender.member {
+            return Err(SyncError::refused(
+                "the shared key names other members than the ones it came from and to",
+            ));
+        }
 
-fn shared(fresh: &[u8; SECRET_KEY_BYTES], lasting: &[u8; SECRET_KEY_BYTES]) -> Zeroizing<Vec<u8>> {
-    Zeroizing::new([fresh.as_slice(), lasting.as_slice()].concat())
-}
+        let context = self.context(wrapped);
+        let fresh = self.device.agree(&wrapped.ephemeral)?;
+        let lasting = self.device.agree(&sender.public_key)?;
+        let key = Self::wrapping_key(&fresh, &lasting, &context)?;
 
-fn wrapping_key(shared: &[u8], context: &[u8]) -> SecretKey {
-    let mut key = Zeroizing::new([0_u8; SECRET_KEY_BYTES]);
+        let keyring = Keyring::from_bytes(&key.open(&context, wrapped.sealed.get())?)?;
 
-    Hkdf::<Sha256>::new(Some(SALT), shared)
-        .expand(context, key.as_mut())
-        .expect("32 bytes is a valid HKDF-SHA256 output length");
+        if keyring.generation() != wrapped.generation {
+            return Err(SyncError::refused(
+                "the shared key is not of the generation it claims",
+            ));
+        }
 
-    SecretKey::new(*key)
+        Ok(keyring)
+    }
+
+    fn context(&self, wrapped: &WrappedKey) -> Vec<u8> {
+        Canonical::new("synt.sync.wrap")
+            .text(self.project.get())
+            .text(wrapped.member.get())
+            .text(wrapped.by.get())
+            .number(u64::from(wrapped.generation.get()))
+            .bytes(wrapped.ephemeral.get())
+            .finish()
+    }
+
+    fn wrapping_key(
+        fresh: &[u8; SecretKey::BYTES],
+        lasting: &[u8; SecretKey::BYTES],
+        context: &[u8],
+    ) -> Result<SecretKey, SyncError> {
+        let shared = Zeroizing::new([fresh.as_slice(), lasting.as_slice()].concat());
+
+        SecretKey::derive(SALT, &shared, context)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{unwrap, wrap};
+    use super::KeyWrap;
     use crate::id::ProjectId;
     use crate::seal::{DeviceKey, Keyring};
 
@@ -108,9 +109,14 @@ mod tests {
         let alice = DeviceKey::generate().unwrap();
         let bob = DeviceKey::generate().unwrap();
         let keyring = Keyring::generate().unwrap().rotated().unwrap();
+        let project = project();
 
-        let wrapped = wrap(&project(), &alice, &bob.member_key(), &keyring).unwrap();
-        let unwrapped = unwrap(&project(), &bob, &alice.member_key(), &wrapped).unwrap();
+        let wrapped = KeyWrap::new(&project, &alice)
+            .wrap(&bob.member_key(), &keyring)
+            .unwrap();
+        let unwrapped = KeyWrap::new(&project, &bob)
+            .unwrap(&alice.member_key(), &wrapped)
+            .unwrap();
 
         assert_eq!(unwrapped, keyring);
     }
@@ -121,10 +127,17 @@ mod tests {
         let bob = DeviceKey::generate().unwrap();
         let eve = DeviceKey::generate().unwrap();
         let keyring = Keyring::generate().unwrap();
+        let project = project();
 
-        let wrapped = wrap(&project(), &alice, &bob.member_key(), &keyring).unwrap();
+        let wrapped = KeyWrap::new(&project, &alice)
+            .wrap(&bob.member_key(), &keyring)
+            .unwrap();
 
-        assert!(unwrap(&project(), &eve, &alice.member_key(), &wrapped).is_err());
+        assert!(
+            KeyWrap::new(&project, &eve)
+                .unwrap(&alice.member_key(), &wrapped)
+                .is_err()
+        );
     }
 
     #[test]
@@ -133,11 +146,18 @@ mod tests {
         let bob = DeviceKey::generate().unwrap();
         let mallory = DeviceKey::generate().unwrap();
         let keyring = Keyring::generate().unwrap();
+        let project = project();
 
-        let mut wrapped = wrap(&project(), &mallory, &bob.member_key(), &keyring).unwrap();
+        let mut wrapped = KeyWrap::new(&project, &mallory)
+            .wrap(&bob.member_key(), &keyring)
+            .unwrap();
         wrapped.by = alice.member();
 
-        assert!(unwrap(&project(), &bob, &alice.member_key(), &wrapped).is_err());
+        assert!(
+            KeyWrap::new(&project, &bob)
+                .unwrap(&alice.member_key(), &wrapped)
+                .is_err()
+        );
     }
 
     #[test]
@@ -146,9 +166,16 @@ mod tests {
         let bob = DeviceKey::generate().unwrap();
         let keyring = Keyring::generate().unwrap();
         let other = ProjectId::parse(&"7a".repeat(16)).unwrap();
+        let project = project();
 
-        let wrapped = wrap(&other, &alice, &bob.member_key(), &keyring).unwrap();
+        let wrapped = KeyWrap::new(&other, &alice)
+            .wrap(&bob.member_key(), &keyring)
+            .unwrap();
 
-        assert!(unwrap(&project(), &bob, &alice.member_key(), &wrapped).is_err());
+        assert!(
+            KeyWrap::new(&project, &bob)
+                .unwrap(&alice.member_key(), &wrapped)
+                .is_err()
+        );
     }
 }

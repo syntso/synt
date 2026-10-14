@@ -14,13 +14,13 @@ pub struct MemberKey {
 impl MemberKey {
     pub fn new(public_key: PublicKey) -> Self {
         Self {
-            member: member_of(&public_key),
+            member: Self::member_of(&public_key),
             public_key,
         }
     }
 
     pub fn check(&self) -> Result<(), SyncError> {
-        if member_of(&self.public_key) == self.member {
+        if Self::member_of(&self.public_key) == self.member {
             return Ok(());
         }
 
@@ -29,10 +29,10 @@ impl MemberKey {
             self.member
         )))
     }
-}
 
-fn member_of(public_key: &PublicKey) -> MemberId {
-    MemberId::from_digest(&Sha256::digest(public_key.get()))
+    fn member_of(public_key: &PublicKey) -> MemberId {
+        MemberId::from_digest(&Sha256::digest(public_key.get()))
+    }
 }
 
 #[cfg(test)]

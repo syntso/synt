@@ -1,195 +1,69 @@
-use toml::{Table, Value};
-use toml_edit::{DocumentMut, Item, TableLike};
+use toml::Table;
 
-use super::Merged;
+use super::Layout;
+use super::fields::FieldMerge;
+use crate::merge::Merged;
 
 pub(crate) const WHOLE_DOCUMENT: &str = "*";
 
-pub(crate) fn merge_toml(base: Option<&[u8]>, older: &[u8], newer: &[u8]) -> Merged {
-    let (Some(older_table), Some(newer_table)) = (parse(older), parse(newer)) else {
-        return Merged::conflicted(Some(newer), WHOLE_DOCUMENT);
-    };
-    let base_table = base.and_then(parse).unwrap_or_default();
-
-    let mut conflicts = Vec::new();
-    let merged = merge_tables(&base_table, &older_table, &newer_table, "", &mut conflicts);
-
-    Merged {
-        body: Some(text(&merged, (older, &older_table), (newer, &newer_table))),
-        conflicts,
-    }
+pub(crate) struct TomlText<'a> {
+    bytes: &'a [u8],
+    table: Table,
 }
 
-fn merge_tables(
-    base: &Table,
-    older: &Table,
-    newer: &Table,
-    prefix: &str,
-    conflicts: &mut Vec<String>,
-) -> Table {
-    let mut keys: Vec<&String> = older.keys().chain(newer.keys()).collect();
-    keys.sort();
-    keys.dedup();
-
-    let mut merged = Table::new();
-
-    for key in keys {
-        let field = field_name(prefix, key);
-        let value = merge_value(
-            base.get(key),
-            older.get(key),
-            newer.get(key),
-            &field,
-            conflicts,
-        );
-
-        if let Some(value) = value {
-            merged.insert(key.clone(), value);
-        }
-    }
-
-    merged
-}
-
-fn merge_value(
-    base: Option<&Value>,
-    older: Option<&Value>,
-    newer: Option<&Value>,
-    field: &str,
-    conflicts: &mut Vec<String>,
-) -> Option<Value> {
-    if older == newer || base == newer {
-        return older.cloned();
-    }
-
-    if base == older {
-        return newer.cloned();
-    }
-
-    if let (Some(Value::Table(older)), Some(Value::Table(newer))) = (older, newer) {
-        let empty = Table::new();
-        let base = match base {
-            Some(Value::Table(base)) => base,
-            _ => &empty,
+impl<'a> TomlText<'a> {
+    pub(crate) fn merge(base: Option<&[u8]>, older: &[u8], newer: &[u8]) -> Merged {
+        let (Some(older_text), Some(newer_text)) = (TomlText::parse(older), TomlText::parse(newer))
+        else {
+            return Merged::conflicted(Some(newer), WHOLE_DOCUMENT);
         };
+        let base_table = base
+            .and_then(TomlText::parse)
+            .map(|base| base.table)
+            .unwrap_or_default();
 
-        return Some(Value::Table(merge_tables(
-            base, older, newer, field, conflicts,
-        )));
-    }
+        let mut fields = FieldMerge::default();
+        let merged = fields.tables(&base_table, &older_text.table, &newer_text.table, "");
 
-    conflicts.push(field.to_owned());
-    newer.or(older).cloned()
-}
-
-fn field_name(prefix: &str, key: &str) -> String {
-    if prefix.is_empty() {
-        return key.to_owned();
-    }
-
-    format!("{prefix}.{key}")
-}
-
-fn parse(bytes: &[u8]) -> Option<Table> {
-    let text = std::str::from_utf8(bytes).ok()?;
-
-    text.parse::<Table>().ok()
-}
-
-fn text(merged: &Table, older: (&[u8], &Table), newer: (&[u8], &Table)) -> Vec<u8> {
-    if merged == newer.1 {
-        return newer.0.to_vec();
-    }
-
-    if merged == older.1 {
-        return older.0.to_vec();
-    }
-
-    rewritten(merged, older.0, newer.0).unwrap_or_else(|| merged.to_string().into_bytes())
-}
-
-fn rewritten(merged: &Table, older: &[u8], newer: &[u8]) -> Option<Vec<u8>> {
-    let older = document(older)?;
-    let mut newer = document(newer)?;
-
-    apply(newer.as_table_mut(), Some(older.as_table()), merged);
-
-    let text = newer.to_string();
-    let faithful = text.parse::<Table>().ok().as_ref() == Some(merged);
-
-    faithful.then(|| text.into_bytes())
-}
-
-fn apply(target: &mut dyn TableLike, older: Option<&dyn TableLike>, merged: &Table) {
-    let stale: Vec<String> = target
-        .iter()
-        .map(|(key, _)| key.to_owned())
-        .filter(|key| !merged.contains_key(key))
-        .collect();
-
-    for key in stale {
-        target.remove(&key);
-    }
-
-    for (key, wanted) in merged {
-        let older_item = older.and_then(|older| older.get(key));
-
-        if target
-            .get(key)
-            .and_then(|item| item_value(key, item))
-            .as_ref()
-            == Some(wanted)
-        {
-            continue;
-        }
-
-        if let (Some(inner), Value::Table(wanted)) = (
-            target.get_mut(key).and_then(Item::as_table_like_mut),
-            wanted,
-        ) {
-            apply(inner, older_item.and_then(Item::as_table_like), wanted);
-            continue;
-        }
-
-        let replacement = older_item
-            .filter(|item| item_value(key, item).as_ref() == Some(wanted))
-            .cloned()
-            .or_else(|| fresh_item(key, wanted));
-
-        match (target.get_mut(key), replacement) {
-            (Some(item), Some(replacement)) => *item = replacement,
-            (None, Some(replacement)) => {
-                target.insert(key, replacement);
-            }
-            (_, None) => {}
+        Merged {
+            body: Some(older_text.text(&merged, &newer_text)),
+            conflicts: fields.into_conflicts(),
         }
     }
-}
 
-fn item_value(key: &str, item: &Item) -> Option<Value> {
-    let mut alone = DocumentMut::new();
-    alone.insert(key, item.clone());
+    fn parse(bytes: &'a [u8]) -> Option<Self> {
+        let table = std::str::from_utf8(bytes).ok()?.parse().ok()?;
 
-    alone.to_string().parse::<Table>().ok()?.remove(key)
-}
+        Some(Self { bytes, table })
+    }
 
-fn fresh_item(key: &str, value: &Value) -> Option<Item> {
-    let mut alone = Table::new();
-    alone.insert(key.to_owned(), value.clone());
+    fn text(&self, merged: &Table, newer: &Self) -> Vec<u8> {
+        if merged == &newer.table {
+            return newer.bytes.to_vec();
+        }
 
-    document(alone.to_string().as_bytes())?.remove(key)
-}
+        if merged == &self.table {
+            return self.bytes.to_vec();
+        }
 
-fn document(bytes: &[u8]) -> Option<DocumentMut> {
-    std::str::from_utf8(bytes).ok()?.parse().ok()
+        self.rewritten(merged, newer)
+            .unwrap_or_else(|| merged.to_string().into_bytes())
+    }
+
+    fn rewritten(&self, merged: &Table, newer: &Self) -> Option<Vec<u8>> {
+        let older = Layout::parse(self.bytes)?;
+        let newer = Layout::parse(newer.bytes)?;
+
+        newer.reshaped(&older, merged)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{WHOLE_DOCUMENT, merge_toml};
+    use super::{TomlText, WHOLE_DOCUMENT};
 
     fn merge(base: &str, older: &str, newer: &str) -> (String, Vec<String>) {
-        let merged = merge_toml(Some(base.as_bytes()), older.as_bytes(), newer.as_bytes());
+        let merged = TomlText::merge(Some(base.as_bytes()), older.as_bytes(), newer.as_bytes());
 
         (
             String::from_utf8(merged.body.unwrap()).unwrap(),
@@ -322,7 +196,7 @@ mod tests {
 
     #[test]
     fn without_a_common_base_equal_fields_agree_and_different_ones_conflict() {
-        let merged = merge_toml(None, b"a = 1\nb = 2\n", b"a = 1\nb = 3\nc = 4\n");
+        let merged = TomlText::merge(None, b"a = 1\nb = 2\n", b"a = 1\nb = 3\nc = 4\n");
 
         assert_eq!(
             table(&String::from_utf8(merged.body.unwrap()).unwrap()),
@@ -333,7 +207,7 @@ mod tests {
 
     #[test]
     fn a_side_that_is_not_toml_makes_the_newer_side_win_whole() {
-        let merged = merge_toml(Some(b"a = 1"), b"a = [", b"a = 2");
+        let merged = TomlText::merge(Some(b"a = 1"), b"a = [", b"a = 2");
 
         assert_eq!(merged.body.unwrap(), b"a = 2");
         assert_eq!(merged.conflicts, vec![WHOLE_DOCUMENT]);

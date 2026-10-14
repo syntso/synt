@@ -1,8 +1,7 @@
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::ProjectParams;
-use super::failure::failure;
+use super::params::ProjectParams;
 use crate::Syncer;
 use crate::report::Disabled;
 
@@ -34,6 +33,6 @@ impl Action for SyncDisable {
         _context: &Context,
         params: ProjectParams,
     ) -> Result<Disabled, ActionError> {
-        self.syncer.disable(&params.project).await.map_err(failure)
+        Ok(self.syncer.disable(&params.project).await?)
     }
 }
