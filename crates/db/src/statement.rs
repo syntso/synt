@@ -1,7 +1,9 @@
 mod classification;
-mod masked;
 mod command;
+mod kind;
+mod masked;
 mod sql;
 
 pub use classification::Classification;
-pub use masked::masked;
+pub use kind::StatementKind;
+pub use masked::Masked;

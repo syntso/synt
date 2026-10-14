@@ -1,5 +1,5 @@
 use serde_json::{Value, json};
-use synt_db::masked;
+use synt_db::Masked;
 
 const SQL: &str = "sql";
 const COMMAND: &str = "command";
@@ -14,7 +14,7 @@ pub(super) fn recorded_statement(params: &Value) -> Value {
     let mut recorded = fields.clone();
 
     if let Some(Value::String(sql)) = fields.get(SQL) {
-        recorded.insert(SQL.to_owned(), Value::String(masked(sql)));
+        recorded.insert(SQL.to_owned(), Value::String(Masked::new(sql).into()));
     }
 
     if let Some(command) = fields.get(COMMAND) {

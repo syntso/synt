@@ -1,6 +1,8 @@
 mod part;
 mod scanner;
 
+use std::fmt::{self, Display, Formatter};
+
 use self::part::Part;
 use self::scanner::Scanner;
 
@@ -8,58 +10,87 @@ const MASK: char = '?';
 const LONGEST: usize = 2048;
 const CUT: &str = " …";
 
-pub fn masked(text: &str) -> String {
-    let characters: Vec<char> = text.chars().collect();
-
-    let standard = Scanner::parts(&characters, false);
-    let escaped = Scanner::parts(&characters, true);
-    let parts = standard
-        .iter()
-        .zip(&escaped)
-        .map(|(one, other)| one.stricter(*other));
-
-    let shown = rendered(characters.iter().copied().zip(parts));
-
-    shortened(shown.trim())
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Masked {
+    text: String,
 }
 
-fn rendered(parts: impl Iterator<Item = (char, Part)>) -> String {
-    let mut out = String::new();
-    let mut previous = Part::Shown;
+impl Masked {
+    pub fn new(text: &str) -> Self {
+        let characters: Vec<char> = text.chars().collect();
 
-    for (character, part) in parts {
-        match part {
-            Part::Literal if previous != Part::Literal => out.push(MASK),
-            Part::Literal => {}
-            Part::Shown if !character.is_whitespace() => out.push(character),
-            Part::Shown | Part::Comment => space(&mut out),
+        let standard = Scanner::parts(&characters, false);
+        let escaped = Scanner::parts(&characters, true);
+        let parts = standard
+            .iter()
+            .zip(&escaped)
+            .map(|(one, other)| one.stricter(*other));
+
+        let shown = Self::rendered(characters.iter().copied().zip(parts));
+
+        Self {
+            text: Self::shortened(shown.trim()),
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.text
+    }
+
+    fn rendered(parts: impl Iterator<Item = (char, Part)>) -> String {
+        let mut out = String::new();
+        let mut previous = Part::Shown;
+
+        for (character, part) in parts {
+            match part {
+                Part::Literal if previous != Part::Literal => out.push(MASK),
+                Part::Literal => {}
+                Part::Shown if !character.is_whitespace() => out.push(character),
+                Part::Shown | Part::Comment => Self::space(&mut out),
+            }
+
+            previous = part;
         }
 
-        previous = part;
+        out
     }
 
-    out
+    fn space(out: &mut String) {
+        if out.chars().last().is_some_and(|last| last != ' ') {
+            out.push(' ');
+        }
+    }
+
+    fn shortened(text: &str) -> String {
+        if text.chars().count() <= LONGEST {
+            return text.to_owned();
+        }
+
+        let kept: String = text.chars().take(LONGEST).collect();
+
+        format!("{kept}{CUT}")
+    }
 }
 
-fn space(out: &mut String) {
-    if out.chars().last().is_some_and(|last| last != ' ') {
-        out.push(' ');
+impl Display for Masked {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.text)
     }
 }
 
-fn shortened(text: &str) -> String {
-    if text.chars().count() <= LONGEST {
-        return text.to_owned();
+impl From<Masked> for String {
+    fn from(masked: Masked) -> Self {
+        masked.text
     }
-
-    let kept: String = text.chars().take(LONGEST).collect();
-
-    format!("{kept}{CUT}")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::masked;
+    use super::Masked;
+
+    fn masked(text: &str) -> String {
+        Masked::new(text).into()
+    }
 
     #[test]
     fn string_and_number_literals_become_question_marks() {

@@ -25,5 +25,5 @@ pub use paging::{Page, Rows};
 pub use place::Place;
 pub use query::Query;
 pub use server::Server;
-pub use statement::{Classification, masked};
+pub use statement::{Classification, Masked, StatementKind};
 pub use tls::TlsMode;
