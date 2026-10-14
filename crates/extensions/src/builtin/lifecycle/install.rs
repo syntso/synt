@@ -5,8 +5,8 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
 use super::ExtensionInfo;
-use super::blocking::{blocking, failure};
 use crate::Extensions;
+use crate::builtin::blocking::blocking;
 use crate::extension::Candidate;
 
 #[derive(Clone)]
@@ -43,10 +43,7 @@ impl Action for ExtensionInstall {
         _target: Option<&ResourceRef>,
         params: &mut InstallParams,
     ) -> Result<Option<Value>, ActionError> {
-        let candidate = self
-            .extensions
-            .examine_listed(&params.id)
-            .map_err(|error| failure(&error))?;
+        let candidate = self.extensions.examine_listed(&params.id)?;
         let shown = candidate.shown("registry");
 
         params.candidate = Some(candidate);

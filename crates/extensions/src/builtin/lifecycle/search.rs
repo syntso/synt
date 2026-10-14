@@ -4,8 +4,8 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::SearchHit;
-use super::blocking::blocking;
 use crate::Extensions;
+use crate::builtin::blocking::blocking;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionSearch {

@@ -1,7 +1,7 @@
 use serde::Serialize;
 
-use crate::files::Picked;
 use crate::manifest::FileAccess;
+use crate::picked::Picked;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct FileEntry {

@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::render_params::RenderParams;
 use super::rendered::Rendered;
 use crate::Extensions;
 use crate::builtin::guard::refuse_extensions;
-use crate::builtin::guest_thread::on_guest_thread;
-use crate::extension::Guest;
+use crate::extension::{Guest, on_guest_thread};
 use crate::runtime::GuestCall;
 use crate::view::ViewCheck;
 
@@ -18,6 +18,16 @@ const LARGEST_TREE: usize = 1024 * 1024;
 #[derive(Clone)]
 pub(crate) struct ExtensionViewRender {
     extensions: Extensions,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RenderParams {
+    pub extension: String,
+    pub view: String,
+
+    #[serde(default)]
+    pub params: Value,
 }
 
 impl ExtensionViewRender {
@@ -55,17 +65,15 @@ impl Action for ExtensionViewRender {
     async fn run(&self, context: &Context, params: RenderParams) -> Result<Rendered, ActionError> {
         refuse_extensions(context)?;
 
-        let loaded = self
-            .extensions
-            .loaded(&params.extension)
-            .map_err(|error| ActionError::failed(error.to_string()))?;
-        if !loaded
+        let loaded = self.extensions.loaded(&params.extension)?;
+        let contributed = loaded
             .guest
             .manifest()
             .contributes
             .views()
-            .contains(params.view.as_str())
-        {
+            .contains(params.view.as_str());
+
+        if !contributed {
             return Err(ActionError::InvalidParams(format!(
                 "{} contributes no view {}",
                 params.extension, params.view

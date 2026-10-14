@@ -7,8 +7,8 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
 use super::ExtensionInfo;
-use super::blocking::{blocking, failure};
 use crate::Extensions;
+use crate::builtin::blocking::blocking;
 use crate::extension::Candidate;
 
 #[derive(Clone)]
@@ -61,8 +61,7 @@ impl Action for ExtensionInstallLocal {
     ) -> Result<Option<Value>, ActionError> {
         let candidate = self
             .extensions
-            .examine_local(&PathBuf::from(&params.path))
-            .map_err(|error| failure(&error))?;
+            .examine_local(&PathBuf::from(&params.path))?;
         let shown = candidate.shown(&params.path);
 
         params.candidate = Some(candidate);

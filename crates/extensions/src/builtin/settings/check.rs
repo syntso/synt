@@ -37,11 +37,12 @@ impl<'a> SettingsCheck<'a> {
             .and_then(Value::as_array)
             .map_or(&[][..], Vec::as_slice);
 
-        match required
+        let missing = required
             .iter()
             .filter_map(Value::as_str)
-            .find(|name| !values.contains_key(*name))
-        {
+            .find(|name| !values.contains_key(*name));
+
+        match missing {
             Some(name) => Err(format!("the setting {name} is required")),
             None => Ok(()),
         }

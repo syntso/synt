@@ -1,11 +1,11 @@
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::get::current;
-use super::set_params::SetParams;
-use super::settings_values::SettingsValues;
+use super::check::SettingsCheck;
+use super::values::SettingsValues;
 use crate::builtin::blocking::blocking;
-use crate::settings::SettingsCheck;
 use crate::{ExtensionError, Extensions};
 
 #[derive(Clone)]
@@ -13,9 +13,32 @@ pub(crate) struct ExtensionSettingsSet {
     extensions: Extensions,
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SetParams {
+    pub extension: String,
+    pub values: Value,
+}
+
 impl ExtensionSettingsSet {
     pub(crate) fn new(extensions: Extensions) -> Self {
         Self { extensions }
+    }
+
+    fn save(&self, params: &SetParams) -> Result<SettingsValues, ExtensionError> {
+        let SettingsValues { schema, .. } =
+            SettingsValues::current(&self.extensions, &params.extension)?;
+
+        SettingsCheck::new(&schema)
+            .check(&params.values)
+            .map_err(ExtensionError::Refused)?;
+
+        self.extensions
+            .services()
+            .shelf
+            .put_settings(&params.extension, &params.values)?;
+
+        SettingsValues::current(&self.extensions, &params.extension)
     }
 }
 
@@ -44,22 +67,9 @@ impl Action for ExtensionSettingsSet {
         _context: &Context,
         params: SetParams,
     ) -> Result<SettingsValues, ActionError> {
-        let extensions = self.extensions.clone();
+        let action = self.clone();
 
-        blocking(move || {
-            let SettingsValues { schema, .. } = current(&extensions, &params.extension)?;
-            SettingsCheck::new(&schema)
-                .check(&params.values)
-                .map_err(ExtensionError::Refused)?;
-
-            extensions
-                .services()
-                .shelf
-                .put_settings(&params.extension, &params.values)?;
-
-            current(&extensions, &params.extension)
-        })
-        .await
+        blocking(move || action.save(&params)).await
     }
 }
 

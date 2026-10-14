@@ -2,24 +2,24 @@ use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::ExtensionInfo;
-use super::blocking::blocking;
-use super::id_params::IdParams;
+use super::params::IdParams;
 use crate::Extensions;
+use crate::builtin::blocking::blocking;
 
 #[derive(Clone)]
-pub(crate) struct ExtensionDisable {
+pub(crate) struct ExtensionRemove {
     extensions: Extensions,
 }
 
-impl ExtensionDisable {
+impl ExtensionRemove {
     pub(crate) fn new(extensions: Extensions) -> Self {
         Self { extensions }
     }
 }
 
-impl Action for ExtensionDisable {
-    const ID: &'static str = "extension.disable";
-    const TITLE: &'static str = "Disable an installed extension without removing it";
+impl Action for ExtensionRemove {
+    const ID: &'static str = "extension.remove";
+    const TITLE: &'static str = "Remove an extension with its files and storage";
     const RISK: Risk = Risk::Write;
     const PERSON_ONLY: bool = true;
 
@@ -37,6 +37,6 @@ impl Action for ExtensionDisable {
     ) -> Result<ExtensionInfo, ActionError> {
         let extensions = self.extensions.clone();
 
-        blocking(move || extensions.disable(&params.id)).await
+        blocking(move || extensions.remove(&params.id)).await
     }
 }

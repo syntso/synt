@@ -1,17 +1,14 @@
 use synt_actions::{ActionError, Registry};
 
 use super::contributions::ExtensionContributions;
-use super::disable::ExtensionDisable;
 use super::document::ExtensionDocuments;
-use super::enable::ExtensionEnable;
 use super::file::{ExtensionFileForget, ExtensionFileList, ExtensionFilePick};
 use super::http::ExtensionHttp;
-use super::install::ExtensionInstall;
-use super::install_local::ExtensionInstallLocal;
-use super::list::ExtensionList;
+use super::lifecycle::{
+    ExtensionDisable, ExtensionEnable, ExtensionInstall, ExtensionInstallLocal, ExtensionList,
+    ExtensionRemove, ExtensionSearch,
+};
 use super::panel::{ExtensionPanelAsset, ExtensionPanelMessage, ExtensionPanelOpen};
-use super::remove::ExtensionRemove;
-use super::search::ExtensionSearch;
 use super::settings::{ExtensionSettingsGet, ExtensionSettingsSet};
 use super::view::ExtensionViewRender;
 use crate::Extensions;

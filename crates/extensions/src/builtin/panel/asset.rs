@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
-use data_encoding::BASE64;
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::asset_file::Asset;
-use super::asset_params::AssetParams;
+use super::asset_file::AssetFile;
 use super::mime::mime_of;
 use crate::Extensions;
 use crate::builtin::guard::refuse_extensions;
-use crate::builtin::guest_thread::on_guest_thread;
+use crate::extension::on_guest_thread;
 use crate::manifest::is_asset_path;
 
 const LARGEST_ASSET: usize = 8 * 1024 * 1024;
@@ -19,9 +19,29 @@ pub(crate) struct ExtensionPanelAsset {
     extensions: Extensions,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AssetParams {
+    pub extension: String,
+    pub path: String,
+}
+
 impl ExtensionPanelAsset {
     pub(crate) fn new(extensions: Extensions) -> Self {
         Self { extensions }
+    }
+}
+
+impl AssetParams {
+    fn mime(&self) -> Result<&'static str, ActionError> {
+        mime_of(&self.path)
+            .filter(|_| is_asset_path(&self.path))
+            .ok_or_else(|| {
+                ActionError::InvalidParams(format!(
+                    "{:?} is not a file a web panel may load",
+                    self.path
+                ))
+            })
     }
 }
 
@@ -31,29 +51,17 @@ impl Action for ExtensionPanelAsset {
     const RISK: Risk = Risk::Read;
 
     type Params = AssetParams;
-    type Output = Asset;
+    type Output = AssetFile;
 
-    fn summary(&self, output: &Asset) -> Value {
+    fn summary(&self, output: &AssetFile) -> Value {
         json!({ "path": output.path, "mime": output.mime, "bytes": output.bytes })
     }
 
-    async fn run(&self, context: &Context, params: AssetParams) -> Result<Asset, ActionError> {
+    async fn run(&self, context: &Context, params: AssetParams) -> Result<AssetFile, ActionError> {
         refuse_extensions(context)?;
 
-        let mime = mime_of(&params.path)
-            .filter(|_| is_asset_path(&params.path))
-            .ok_or_else(|| {
-                ActionError::InvalidParams(format!(
-                    "{:?} is not a file a web panel may load",
-                    params.path
-                ))
-            })?;
-
-        let loaded = self
-            .extensions
-            .loaded(&params.extension)
-            .map_err(|error| ActionError::failed(error.to_string()))?;
-        let guest = Arc::clone(&loaded.guest);
+        let mime = params.mime()?;
+        let guest = Arc::clone(&self.extensions.loaded(&params.extension)?.guest);
         let path = params.path.clone();
 
         let found = on_guest_thread(move |_| guest.asset(&path).map(Ok)).await?;
@@ -66,11 +74,6 @@ impl Action for ExtensionPanelAsset {
                 ))
             })?;
 
-        Ok(Asset {
-            path: params.path,
-            mime,
-            bytes: data.len(),
-            data: BASE64.encode(&data),
-        })
+        Ok(AssetFile::new(params.path, mime, &data))
     }
 }

@@ -1,18 +1,27 @@
 use std::sync::Arc;
 
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::message_params::MessageParams;
 use crate::Extensions;
 use crate::builtin::guard::refuse_extensions;
-use crate::builtin::guest_thread::on_guest_thread;
+use crate::extension::on_guest_thread;
 use crate::manifest::Panel;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionPanelMessage {
     extensions: Extensions,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MessageParams {
+    pub extension: String,
+    pub panel: String,
+    pub message: Value,
 }
 
 impl ExtensionPanelMessage {
@@ -50,16 +59,14 @@ impl Action for ExtensionPanelMessage {
     async fn run(&self, context: &Context, params: MessageParams) -> Result<Value, ActionError> {
         refuse_extensions(context)?;
 
-        let loaded = self
-            .extensions
-            .loaded(&params.extension)
-            .map_err(|error| ActionError::failed(error.to_string()))?;
+        let loaded = self.extensions.loaded(&params.extension)?;
         let is_web = loaded
             .guest
             .manifest()
             .contributes
             .panel(&params.panel)
             .is_some_and(Panel::is_web);
+
         if !is_web {
             return Err(ActionError::InvalidParams(format!(
                 "{} contributes no web panel {}",
