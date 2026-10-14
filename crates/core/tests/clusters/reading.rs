@@ -115,8 +115,12 @@ async fn a_cluster_behind_a_bastion_is_reached_through_an_ssh_tunnel() {
     assert!(listed.value["items"].as_array().unwrap().len() >= 4);
     assert_eq!(journaled["kind"], "Namespace");
     assert!(
-        unreachable.to_string().contains("not a cluster"),
+        unreachable.to_string().contains("is a host, not a cluster"),
         "{unreachable}"
+    );
+    assert!(
+        no_logs.to_string().contains("is a host, not a cluster"),
+        "{no_logs}"
     );
 
     lab.finish().await;
