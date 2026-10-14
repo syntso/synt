@@ -5,10 +5,16 @@ use super::ViewCheck;
 const MOST_OPERATIONS: usize = 1_000;
 const OPERATIONS: [&str; 3] = ["add", "remove", "replace"];
 
-pub(crate) struct ViewPatch;
+pub(crate) struct ViewPatch<'a> {
+    owns: &'a dyn Fn(&str) -> bool,
+}
 
-impl ViewPatch {
-    pub(crate) fn check(patch: &Value, owns: &dyn Fn(&str) -> bool) -> Result<(), String> {
+impl<'a> ViewPatch<'a> {
+    pub(crate) fn new(owns: &'a dyn Fn(&str) -> bool) -> Self {
+        Self { owns }
+    }
+
+    pub(crate) fn check(&self, patch: &Value) -> Result<(), String> {
         let operations = patch
             .as_array()
             .ok_or("a view patch is a list of JSON Patch operations")?;
@@ -21,10 +27,10 @@ impl ViewPatch {
 
         operations
             .iter()
-            .try_for_each(|operation| Self::operation(operation, owns))
+            .try_for_each(|operation| self.operation(operation))
     }
 
-    fn operation(operation: &Value, owns: &dyn Fn(&str) -> bool) -> Result<(), String> {
+    fn operation(&self, operation: &Value) -> Result<(), String> {
         let op = operation
             .get("op")
             .and_then(Value::as_str)
@@ -41,7 +47,7 @@ impl ViewPatch {
 
         match (op, operation.get("value")) {
             ("remove", _) => Ok(()),
-            (_, Some(value)) => ViewCheck::new(owns).value(value),
+            (_, Some(value)) => ViewCheck::new(self.owns).value(value),
             (_, None) => Err(format!("a view patch {op} needs a value")),
         }
     }
@@ -65,7 +71,7 @@ mod tests {
             { "op": "remove", "path": "/children/2" }
         ]);
 
-        assert_eq!(ViewPatch::check(&patch, &owns), Ok(()));
+        assert_eq!(ViewPatch::new(&owns).check(&patch), Ok(()));
     }
 
     #[test]
@@ -78,7 +84,7 @@ mod tests {
             json!([{ "op": "add", "path": "/x" }]),
             json!([{ "op": "add", "path": "/x", "value": { "type": "button", "title": "Go", "action": "ssh.exec" } }]),
         ] {
-            assert!(ViewPatch::check(&patch, &owns).is_err(), "{patch}");
+            assert!(ViewPatch::new(&owns).check(&patch).is_err(), "{patch}");
         }
     }
 }
