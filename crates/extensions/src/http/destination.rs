@@ -1,3 +1,5 @@
+use std::net::Ipv4Addr;
+
 use ureq::http::Uri;
 
 use crate::manifest::Capabilities;
@@ -64,7 +66,11 @@ impl Destination {
     }
 
     fn is_loopback(&self) -> bool {
-        self.host == "localhost" || self.host.starts_with("127.")
+        self.host == "localhost"
+            || self
+                .host
+                .parse::<Ipv4Addr>()
+                .is_ok_and(|address| address.is_loopback())
     }
 }
 
@@ -111,6 +117,31 @@ mod tests {
         assert!(grafana.may_carry("token", &capabilities()));
         assert!(!local.may_carry("token", &capabilities()));
         assert!(!grafana.may_carry("other", &capabilities()));
+    }
+
+    #[test]
+    fn only_this_computer_counts_as_private_over_plain_http() {
+        for url in [
+            "http://localhost:3000/",
+            "http://127.0.0.1/",
+            "http://127.8.9.10/",
+        ] {
+            assert!(
+                Destination::parse(url).unwrap().keeps_secrets_private(),
+                "{url}"
+            );
+        }
+
+        for url in [
+            "http://127.evil.com/",
+            "http://127.0.0.1.evil.com/",
+            "http://localhost.evil.com/",
+        ] {
+            assert!(
+                !Destination::parse(url).unwrap().keeps_secrets_private(),
+                "{url}"
+            );
+        }
     }
 
     #[test]
