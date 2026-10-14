@@ -13,8 +13,12 @@ pub struct Manifest {
 
 impl Manifest {
     pub fn parse(text: &str) -> Result<Self, KubeError> {
-        let documents: Vec<Value> = serde_saphyr::from_multiple(text)
-            .map_err(|error| KubeError::invalid(format!("the manifest is not YAML: {error}")))?;
+        let documents: Vec<Value> = serde_saphyr::from_multiple(text).map_err(|error| {
+            let reason = error.to_string();
+            let first_line = reason.lines().next().unwrap_or_default().trim_end().to_owned();
+
+            KubeError::invalid(format!("the manifest is not YAML: {first_line}"))
+        })?;
 
         let mut objects = Vec::new();
         for document in documents.into_iter().filter(|document| !document.is_null()) {
@@ -171,6 +175,16 @@ metadata:
             .expect_err("no name");
 
         assert!(error.to_string().contains("metadata.name"));
+    }
+
+    #[test]
+    fn a_yaml_error_does_not_quote_the_manifest() {
+        let text = "apiVersion: v1\nkind: Secret\nstringData:\n  password: hunter2\n  bad: [unclosed\n";
+
+        let error = Manifest::parse(text).expect_err("broken").to_string();
+
+        assert!(error.contains("line 5"), "{error}");
+        assert!(!error.contains("hunter2"), "{error}");
     }
 
     #[test]
