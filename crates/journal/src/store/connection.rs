@@ -39,7 +39,17 @@ pub(super) fn open_read_only(path: &Path) -> Result<Connection, JournalError> {
     Ok(connection)
 }
 
-pub(super) fn journal_id(connection: &Connection) -> Result<JournalId, JournalError> {
+pub(super) fn check_id(connection: &Connection, expected: JournalId) -> Result<(), JournalError> {
+    let found = journal_id(connection)?;
+
+    if found != expected {
+        return Err(JournalError::Foreign { expected, found });
+    }
+
+    Ok(())
+}
+
+fn journal_id(connection: &Connection) -> Result<JournalId, JournalError> {
     let bytes: Vec<u8> = connection.query_row(
         "SELECT value FROM meta WHERE key = ?1",
         [schema::ID_KEY],

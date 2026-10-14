@@ -3,6 +3,7 @@ use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
+use super::row::{stored_link, stored_seq};
 use super::{RowView, connection, scan};
 use crate::anchor::Mark;
 use crate::chain::{Fields, JournalId, Link};
@@ -26,13 +27,11 @@ impl WriteDb {
         Ok(Self { connection })
     }
 
-    pub(crate) fn open(path: &Path) -> Result<Self, JournalError> {
+    pub(crate) fn open(path: &Path, journal: JournalId) -> Result<Self, JournalError> {
         let connection = connection::open_writable(path)?;
-        Ok(Self { connection })
-    }
+        connection::check_id(&connection, journal)?;
 
-    pub(crate) fn journal_id(&self) -> Result<JournalId, JournalError> {
-        connection::journal_id(&self.connection)
+        Ok(Self { connection })
     }
 
     pub(crate) fn tail(&self) -> Result<Option<(Seq, Timestamp)>, JournalError> {
@@ -49,11 +48,7 @@ impl WriteDb {
             return Ok(None);
         };
 
-        let seq = Seq::from_sql(seq).ok_or(JournalError::Corrupt {
-            seq: Seq::ORIGIN,
-            reason: "negative sequence number",
-        })?;
-        Ok(Some((seq, Timestamp::from_millis(at))))
+        Ok(Some((stored_seq(seq)?, Timestamp::from_millis(at))))
     }
 
     pub(crate) fn link_at(&self, seq: Seq) -> Result<Option<Link>, JournalError> {
@@ -123,14 +118,8 @@ impl WriteDb {
             return Ok(None);
         };
 
-        let seq = Seq::from_sql(seq).ok_or(JournalError::Corrupt {
-            seq: Seq::ORIGIN,
-            reason: "negative sequence number",
-        })?;
-        let link = Link::from_slice(&link).ok_or(JournalError::Corrupt {
-            seq,
-            reason: "link has the wrong length",
-        })?;
+        let seq = stored_seq(seq)?;
+        let link = stored_link(seq, &link)?;
 
         Ok(Some(Mark::new(seq, link)))
     }

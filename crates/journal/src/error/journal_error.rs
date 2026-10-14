@@ -1,5 +1,5 @@
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use thiserror::Error;
@@ -64,4 +64,14 @@ pub enum JournalError {
 
     #[error("commit failed: {0}")]
     Commit(Arc<JournalError>),
+}
+
+impl JournalError {
+    pub(crate) fn no_file(path: &Path, journal: JournalId, anchored: bool) -> Self {
+        if anchored {
+            Self::Missing(journal)
+        } else {
+            Self::NotFound(path.to_owned())
+        }
+    }
 }

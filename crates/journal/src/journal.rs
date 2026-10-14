@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::anchor::{Anchors, KeyStore, Mark};
 use crate::builder::JournalBuilder;
-use crate::chain::{Fields, JournalId, JournalKey, Linker};
+use crate::chain::{Fields, JournalId, Linker};
 use crate::error::JournalError;
 use crate::lock::WriterLock;
 use crate::model::{Clock, NewEvent, Seq, Timestamp};
@@ -52,7 +52,7 @@ impl Journal {
         }
 
         let device = keys.ensure_device_key()?;
-        let linker = Linker::new(&JournalKey::derive(&device, id));
+        let linker = Linker::derive(&device, id);
         let anchors = Anchors::genesis(linker.genesis());
 
         let db = WriteDb::create(path, id)?;
@@ -82,23 +82,11 @@ impl Journal {
         let stored = keys.anchors(id)?;
 
         if !path.try_exists()? {
-            return Err(match stored {
-                Some(_) => JournalError::Missing(id),
-                None => JournalError::NotFound(path.to_owned()),
-            });
+            return Err(JournalError::no_file(path, id, stored.is_some()));
         }
 
-        let db = WriteDb::open(path)?;
-        let found = db.journal_id()?;
-
-        if found != id {
-            return Err(JournalError::Foreign {
-                expected: id,
-                found,
-            });
-        }
-
-        let linker = linker(keys.as_ref(), id)?;
+        let db = WriteDb::open(path, id)?;
+        let linker = Linker::derive(&keys.device_key()?, id);
         let tail = db.tail()?;
 
         let anchors = match stored {
@@ -238,13 +226,6 @@ impl Journal {
             None => Ok(()),
         }
     }
-}
-
-fn linker(keys: &dyn KeyStore, id: JournalId) -> Result<Linker, JournalError> {
-    let device = keys.device_key()?;
-    let key = JournalKey::derive(&device, id);
-
-    Ok(Linker::new(&key))
 }
 
 fn recover(db: &WriteDb, linker: &Linker, anchors: Anchors) -> Result<Mark, JournalError> {

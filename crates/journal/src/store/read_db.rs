@@ -16,13 +16,11 @@ pub(crate) struct ReadDb {
 }
 
 impl ReadDb {
-    pub(crate) fn open(path: &Path) -> Result<Self, JournalError> {
+    pub(crate) fn open(path: &Path, journal: JournalId) -> Result<Self, JournalError> {
         let connection = connection::open_read_only(path)?;
-        Ok(Self { connection })
-    }
+        connection::check_id(&connection, journal)?;
 
-    pub(crate) fn journal_id(&self) -> Result<JournalId, JournalError> {
-        connection::journal_id(&self.connection)
+        Ok(Self { connection })
     }
 
     pub(crate) fn get(&self, seq: Seq) -> Result<Option<Event>, JournalError> {

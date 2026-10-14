@@ -1,7 +1,7 @@
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 
-use super::{JournalKey, Link};
+use super::{DeviceKey, JournalId, JournalKey, Link};
 
 const GENESIS: &[u8] = b"genesis";
 
@@ -10,9 +10,11 @@ pub(crate) struct Linker {
 }
 
 impl Linker {
-    pub(crate) fn new(key: &JournalKey) -> Self {
+    pub(crate) fn derive(device: &DeviceKey, journal: JournalId) -> Self {
+        let key = JournalKey::derive(device, journal);
         let mac =
             Hmac::<Sha256>::new_from_slice(key.expose()).expect("HMAC accepts keys of any length");
+
         Self { mac }
     }
 
@@ -38,11 +40,11 @@ impl Linker {
 #[cfg(test)]
 mod tests {
     use super::Linker;
-    use crate::chain::{DeviceKey, JournalId, JournalKey};
+    use crate::chain::{DeviceKey, JournalId};
 
     fn linker(key: u8) -> Linker {
         let device = DeviceKey::from_bytes([key; 32]);
-        Linker::new(&JournalKey::derive(&device, JournalId::from_bytes([0; 16])))
+        Linker::derive(&device, JournalId::from_bytes([0; 16]))
     }
 
     #[test]

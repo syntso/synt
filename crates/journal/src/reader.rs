@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::anchor::KeyStore;
-use crate::chain::{JournalId, JournalKey, Linker};
+use crate::chain::{JournalId, Linker};
 use crate::error::JournalError;
 use crate::export;
 use crate::filter::Filter;
@@ -28,24 +28,12 @@ impl JournalReader {
         let path = path.as_ref();
 
         if !path.try_exists()? {
-            return Err(match keys.anchors(id)? {
-                Some(_) => JournalError::Missing(id),
-                None => JournalError::NotFound(path.to_owned()),
-            });
+            let anchored = keys.anchors(id)?.is_some();
+            return Err(JournalError::no_file(path, id, anchored));
         }
 
-        let db = ReadDb::open(path)?;
-        let found = db.journal_id()?;
-
-        if found != id {
-            return Err(JournalError::Foreign {
-                expected: id,
-                found,
-            });
-        }
-
-        let device = keys.device_key()?;
-        let linker = Linker::new(&JournalKey::derive(&device, id));
+        let db = ReadDb::open(path, id)?;
+        let linker = Linker::derive(&keys.device_key()?, id);
 
         Ok(Self {
             id,

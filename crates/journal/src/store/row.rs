@@ -22,14 +22,8 @@ pub(crate) struct RowView<'a> {
 
 impl<'a> RowView<'a> {
     pub(crate) fn read(row: &'a Row<'_>) -> Result<Self, JournalError> {
-        let raw_seq: i64 = row.get(0)?;
-        let seq = Seq::from_sql(raw_seq).ok_or(JournalError::Corrupt {
-            seq: Seq::ORIGIN,
-            reason: "negative sequence number",
-        })?;
-
         Ok(Self {
-            seq,
+            seq: stored_seq(row.get(0)?)?,
             at: row.get(1)?,
             actor: blob(row, 2)?,
             kind: row.get(3)?,
@@ -89,6 +83,20 @@ impl<'a> RowView<'a> {
             link,
         })
     }
+}
+
+pub(super) fn stored_seq(value: i64) -> Result<Seq, JournalError> {
+    Seq::from_sql(value).ok_or(JournalError::Corrupt {
+        seq: Seq::ORIGIN,
+        reason: "negative sequence number",
+    })
+}
+
+pub(super) fn stored_link(seq: Seq, bytes: &[u8]) -> Result<Link, JournalError> {
+    Link::from_slice(bytes).ok_or(JournalError::Corrupt {
+        seq,
+        reason: "link has the wrong length",
+    })
 }
 
 fn blob<'a>(row: &'a Row<'_>, index: usize) -> rusqlite::Result<&'a [u8]> {
