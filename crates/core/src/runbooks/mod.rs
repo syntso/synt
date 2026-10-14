@@ -4,7 +4,7 @@ mod export;
 mod param;
 mod plan;
 mod run;
-mod runbooks;
+mod service;
 mod store;
 mod template;
 
@@ -13,5 +13,5 @@ pub(crate) use draft::{Draft, DraftStep};
 pub(crate) use export::ShellScript;
 pub(crate) use plan::Plan;
 pub use run::{RunReport, Runs};
-pub use runbooks::Runbooks;
+pub use service::Runbooks;
 pub use store::{RunbookEntry, RunbookListing};
