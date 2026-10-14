@@ -1,7 +1,8 @@
 use std::collections::HashSet;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Mutex, MutexGuard};
 
 use super::grant::Grant;
+use crate::locked::locked;
 
 #[derive(Debug, Default)]
 pub(super) struct Grants {
@@ -18,6 +19,6 @@ impl Grants {
     }
 
     fn lock(&self) -> MutexGuard<'_, HashSet<Grant>> {
-        self.standing.lock().unwrap_or_else(PoisonError::into_inner)
+        locked(&self.standing)
     }
 }

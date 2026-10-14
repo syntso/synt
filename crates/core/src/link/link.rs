@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Mutex, MutexGuard};
 
 use bytes::Bytes;
 use synt_proto::{Frame, StreamId};
@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 
 use super::{Delivery, Route};
+use crate::locked::locked;
 
 type Routes = HashMap<StreamId, Route>;
 
@@ -93,6 +94,6 @@ impl Link {
     }
 
     fn lock(&self) -> MutexGuard<'_, Routes> {
-        self.routes.lock().unwrap_or_else(PoisonError::into_inner)
+        locked(&self.routes)
     }
 }

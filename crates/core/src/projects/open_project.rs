@@ -1,10 +1,11 @@
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use notify::RecommendedWatcher;
 
 use super::Project;
 use super::watch::watch;
 use crate::CoreError;
+use crate::locked::locked;
 
 pub(crate) struct OpenProject {
     project: Arc<Mutex<Project>>,
@@ -24,6 +25,6 @@ impl OpenProject {
     }
 
     pub(crate) fn lock(&self) -> MutexGuard<'_, Project> {
-        self.project.lock().unwrap_or_else(PoisonError::into_inner)
+        locked(&self.project)
     }
 }

@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
@@ -10,6 +10,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{Attached, Attachment, Block, Console, Ending, Origin, Screen, SessionId, SessionKind};
 use crate::link::Link;
+use crate::locked::locked;
 
 const INPUT_BACKLOG: usize = 256;
 const CLOSE_GRACE: Duration = Duration::from_secs(5);
@@ -168,7 +169,7 @@ impl Terminal {
         };
 
         screen.end(ending.clone()).await;
-        *self.ending.lock().unwrap_or_else(PoisonError::into_inner) = Some(ending.clone());
+        *locked(&self.ending) = Some(ending.clone());
 
         ending
     }
@@ -184,19 +185,13 @@ impl Terminal {
     }
 
     fn request_end(&self, reason: EndReason) {
-        let mut requested = self
-            .requested_end
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let mut requested = locked(&self.requested_end);
 
         requested.get_or_insert(reason);
     }
 
     fn reason(&self, end: &ShellEnd) -> EndReason {
-        let requested = *self
-            .requested_end
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let requested = *locked(&self.requested_end);
 
         match requested {
             Some(reason) => reason,
@@ -206,10 +201,7 @@ impl Terminal {
     }
 
     fn ending(&self) -> Option<Ending> {
-        self.ending
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+        locked(&self.ending).clone()
     }
 }
 

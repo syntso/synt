@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use synt_proto::{Message, Notification};
 use tokio::sync::mpsc;
 
 use super::registration::Registration;
+use crate::locked::locked;
 
 type Sessions = HashMap<u64, mpsc::Sender<Message>>;
 
@@ -40,6 +41,6 @@ impl Apps {
     }
 
     fn lock(&self) -> MutexGuard<'_, Sessions> {
-        self.sessions.lock().unwrap_or_else(PoisonError::into_inner)
+        locked(&self.sessions)
     }
 }

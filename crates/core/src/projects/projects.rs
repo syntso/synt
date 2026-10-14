@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use synt_ssh::Target;
 
@@ -12,6 +12,7 @@ use super::{
     ResourceListing, TargetRef,
 };
 use crate::CoreError;
+use crate::locked::locked;
 use crate::state::State;
 
 type Opened = BTreeMap<String, OpenProject>;
@@ -214,7 +215,7 @@ impl Projects {
     }
 
     fn lock(&self) -> MutexGuard<'_, Opened> {
-        self.opened.lock().unwrap_or_else(PoisonError::into_inner)
+        locked(&self.opened)
     }
 }
 

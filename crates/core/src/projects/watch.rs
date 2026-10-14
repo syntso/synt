@@ -1,11 +1,12 @@
 use std::path::Path;
-use std::sync::{Arc, Mutex, PoisonError, Weak};
+use std::sync::{Arc, Mutex, Weak};
 
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
 use super::Project;
 use super::project::RESOURCES;
 use crate::CoreError;
+use crate::locked::locked;
 
 pub(super) fn watch(
     project: &Arc<Mutex<Project>>,
@@ -38,7 +39,7 @@ fn changed(reloaded: &Weak<Mutex<Project>>, event: notify::Result<Event>) {
         return;
     };
 
-    let mut project = project.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut project = locked(&project);
 
     match event {
         Ok(event) if matches!(event.kind, EventKind::Access(_)) => return,

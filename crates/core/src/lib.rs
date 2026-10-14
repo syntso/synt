@@ -11,6 +11,7 @@ mod grants;
 mod idle;
 mod keys;
 mod link;
+mod locked;
 mod login;
 mod on_behalf;
 mod parsed_call;

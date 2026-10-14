@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use synt_platform::Vault;
@@ -7,6 +7,7 @@ use zeroize::Zeroizing;
 
 use super::{KeyInfo, KeyName};
 use crate::CoreError;
+use crate::locked::locked;
 use crate::state::State;
 
 #[derive(Clone)]
@@ -63,7 +64,7 @@ impl SshKeys {
     }
 
     fn change(&self) -> MutexGuard<'_, ()> {
-        self.changes.lock().unwrap_or_else(PoisonError::into_inner)
+        locked(&self.changes)
     }
 }
 

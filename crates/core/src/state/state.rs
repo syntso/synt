@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, OptionalExtension, Row};
@@ -7,6 +7,7 @@ use rusqlite::{Connection, OptionalExtension, Row};
 use super::schema;
 use super::{NewGrant, StoredGrant};
 use crate::CoreError;
+use crate::locked::locked;
 use crate::ssh_keys::{KeyInfo, KeyName};
 
 #[derive(Debug, Clone)]
@@ -184,9 +185,7 @@ impl State {
     }
 
     fn lock(&self) -> MutexGuard<'_, Connection> {
-        self.connection
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+        locked(&self.connection)
     }
 }
 

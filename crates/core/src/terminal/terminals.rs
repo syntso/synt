@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::{self, Debug, Formatter};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use bytes::Bytes;
 use futures_util::future::join_all;
@@ -11,6 +11,7 @@ use synt_ssh::TerminalSize;
 use tokio::sync::mpsc;
 
 use super::{Console, ConsoleOutput, Ending, Origin, SessionId, Terminal, pump};
+use crate::locked::locked;
 use crate::recorder::{Call, Recorder};
 
 type Open = HashMap<SessionId, Arc<Terminal>>;
@@ -122,7 +123,7 @@ impl Terminals {
     }
 
     fn lock(&self) -> MutexGuard<'_, Open> {
-        self.open.lock().unwrap_or_else(PoisonError::into_inner)
+        locked(&self.open)
     }
 }
 

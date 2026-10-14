@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use tokio_util::sync::CancellationToken;
 
@@ -9,6 +9,7 @@ use super::{GrantId, GrantSeal, Hold, StandingGrant};
 use crate::CoreError;
 use crate::access::AccessRequest;
 use crate::blocking::blocking;
+use crate::locked::locked;
 use crate::state::{NewGrant, State, StoredGrant};
 
 type Kept = BTreeMap<GrantId, (StoredGrant, StandingGrant)>;
@@ -95,7 +96,7 @@ impl AlwaysGrants {
     }
 
     fn keep(&self, grant: NewGrant) -> Result<GrantId, CoreError> {
-        let _writing = lock(&self.writing);
+        let _writing = locked(&self.writing);
 
         let stored = self.state.insert_grant(grant)?;
         let standing = StandingGrant::from_stored(stored.clone())
@@ -116,7 +117,7 @@ impl AlwaysGrants {
     }
 
     fn forget(&self, id: GrantId) -> Result<Option<StandingGrant>, CoreError> {
-        let _writing = lock(&self.writing);
+        let _writing = locked(&self.writing);
 
         if !self.lock().contains_key(&id) {
             return Ok(None);
@@ -143,7 +144,7 @@ impl AlwaysGrants {
     }
 
     fn lock(&self) -> MutexGuard<'_, Kept> {
-        lock(&self.kept)
+        locked(&self.kept)
     }
 }
 
@@ -164,8 +165,4 @@ fn sealed_grants(state: &State, seal: &GrantSeal) -> Result<Vec<StoredGrant>, Co
     seal.save(&[])?;
 
     Ok(Vec::new())
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
