@@ -24,7 +24,9 @@ synt-journal = { path = "../crates/journal" }
 synt-platform = { path = "../crates/platform" }
 synt-proto = { path = "../crates/proto" }
 synt-ssh = { path = "../crates/ssh" }
+synt-sync = { path = "../crates/sync" }
 tokio-util = { version = "0.7.20", features = ["codec"] }
+toml = "1.1.8"
 
 [lib]
 path = "src/lib.rs"
@@ -98,6 +100,20 @@ bench = false
 [[bin]]
 name = "pty_cursor_question"
 path = "fuzz_targets/pty_cursor_question.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sync_merge"
+path = "fuzz_targets/sync_merge.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sync_wire"
+path = "fuzz_targets/sync_wire.rs"
 test = false
 doc = false
 bench = false

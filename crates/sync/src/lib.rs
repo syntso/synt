@@ -4,6 +4,8 @@ mod clock;
 mod document;
 mod encoding;
 mod error;
+#[cfg(fuzzing)]
+pub mod fuzzing;
 mod history;
 mod id;
 mod membership;
