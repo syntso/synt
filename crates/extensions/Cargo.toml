@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 data-encoding.workspace = true
+getrandom.workspace = true
 minisign-verify.workspace = true
 rusqlite.workspace = true
 rustls.workspace = true
@@ -23,16 +24,18 @@ serde_json.workspace = true
 sha2.workspace = true
 synt-actions.workspace = true
 synt-journal.workspace = true
+synt-platform.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt", "sync"] }
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 tokio-util.workspace = true
 toml.workspace = true
 ureq.workspace = true
 wasmtime.workspace = true
 wasmtime-wasi.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 minisign.workspace = true
 tempfile.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 wat.workspace = true

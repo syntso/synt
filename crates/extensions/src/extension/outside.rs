@@ -7,6 +7,6 @@ use crate::caller::Caller;
 
 pub(crate) struct Outside {
     pub(crate) caller: Arc<dyn Caller>,
-    pub(crate) context: Context,
+    pub(crate) origin: Option<Context>,
     pub(crate) runtime: Handle,
 }

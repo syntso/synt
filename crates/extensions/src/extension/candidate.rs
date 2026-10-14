@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use serde_json::{Value, json};
+use synt_actions::Risk;
 
 use super::{ActionSpec, Guest};
 use crate::package::Package;
@@ -10,6 +11,7 @@ pub(crate) struct Candidate {
     pub(crate) package: Package,
     pub(crate) guest: Arc<Guest>,
     pub(crate) specs: Vec<ActionSpec>,
+    pub(crate) ceiling: Risk,
     pub(crate) replaces: Option<Installed>,
 }
 
@@ -31,10 +33,12 @@ impl Candidate {
             "description": manifest.description,
             "repository": manifest.repository,
             "version": manifest.version,
+            "api": manifest.api,
             "from": source,
             "signed": self.package.signed,
             "sha256": self.package.sha256,
             "capabilities": manifest.capabilities,
+            "contributes": manifest.contributes,
             "actions": actions,
             "replaces": replaces,
         })

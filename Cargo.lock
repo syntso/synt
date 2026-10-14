@@ -3257,6 +3257,7 @@ name = "synt-extensions"
 version = "0.0.0"
 dependencies = [
  "data-encoding",
+ "getrandom 0.4.3",
  "minisign",
  "minisign-verify",
  "rusqlite",
@@ -3269,6 +3270,7 @@ dependencies = [
  "sha2 0.11.1",
  "synt-actions",
  "synt-journal",
+ "synt-platform",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
@@ -3278,6 +3280,7 @@ dependencies = [
  "wasmtime",
  "wasmtime-wasi",
  "wat",
+ "zeroize",
 ]
 
 [[package]]

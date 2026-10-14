@@ -1,19 +1,28 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
-use synt_actions::{Description, Handle};
+use synt_actions::{Description, Handle, Risk};
 use synt_journal::ActionId;
 
 use super::{ActionSpec, ExtensionAction, Guest};
+use crate::background::{Lane, Wake};
+use crate::events::ExtensionEvent;
 use crate::shelf::Installed;
 
 pub(crate) struct Loaded {
     pub(crate) guest: Arc<Guest>,
     pub(crate) installed: Installed,
+    pub(crate) ceiling: Risk,
     handles: Vec<Handle>,
+    lane: OnceLock<Lane>,
 }
 
 impl Loaded {
-    pub(crate) fn new(guest: Arc<Guest>, specs: Vec<ActionSpec>, installed: Installed) -> Self {
+    pub(crate) fn new(
+        guest: Arc<Guest>,
+        specs: Vec<ActionSpec>,
+        ceiling: Risk,
+        installed: Installed,
+    ) -> Self {
         let handles = specs
             .into_iter()
             .map(|spec| {
@@ -22,11 +31,33 @@ impl Loaded {
             })
             .collect();
 
-        Self {
+        let loaded = Self {
             guest,
             installed,
+            ceiling,
             handles,
+            lane: OnceLock::new(),
+        };
+
+        loaded.wake_up();
+        loaded
+    }
+
+    pub(crate) fn wake_up(&self) {
+        let services = self.guest.services();
+        let Some(handle) = services.background.get() else {
+            return;
+        };
+
+        if services.caller.get().is_none() {
+            return;
         }
+
+        self.lane.get_or_init(|| {
+            let lane = Lane::start(Arc::clone(&self.guest), handle);
+            lane.wake(Wake::Start);
+            lane
+        });
     }
 
     pub(crate) fn handle(&self, id: &ActionId) -> Option<Handle> {
@@ -45,5 +76,18 @@ impl Loaded {
             .iter()
             .map(|handle| handle.id().as_str().to_owned())
             .collect()
+    }
+
+    pub(crate) fn hear(&self, event: &ExtensionEvent) -> bool {
+        let id = &self.installed.id;
+        let listens = self.guest.manifest().capabilities.hears(event.topic);
+
+        if !listens || event.caused_by(id) {
+            return false;
+        }
+
+        self.lane
+            .get()
+            .is_some_and(|lane| lane.wake(Wake::Event(event.clone())))
     }
 }

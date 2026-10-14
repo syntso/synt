@@ -3,7 +3,7 @@ use synt_actions::Risk;
 use synt_journal::ActionId;
 
 use crate::ExtensionError;
-use crate::bindings::synt::extension::types::{self, Action};
+use crate::interface::DescribedAction;
 
 const LONGEST_TITLE: usize = 200;
 const LARGEST_SCHEMA: usize = 64 * 1024;
@@ -18,7 +18,10 @@ pub(crate) struct ActionSpec {
 }
 
 impl ActionSpec {
-    pub(crate) fn from_described(extension: &str, action: &Action) -> Result<Self, ExtensionError> {
+    pub(crate) fn from_described(
+        extension: &str,
+        action: &DescribedAction,
+    ) -> Result<Self, ExtensionError> {
         let id = action_id(extension, &action.id)?;
         let title = title(action)?;
         let params_schema = schema(action)?;
@@ -26,7 +29,7 @@ impl ActionSpec {
         Ok(Self {
             id,
             title,
-            risk: risk(action.risk),
+            risk: action.risk,
             takes_target: action.takes_target,
             params_schema,
         })
@@ -59,7 +62,7 @@ fn action_id(extension: &str, id: &str) -> Result<ActionId, ExtensionError> {
     ActionId::new(id).map_err(|error| refused(format!("action {id:?}: {error}")))
 }
 
-fn title(action: &Action) -> Result<String, ExtensionError> {
+fn title(action: &DescribedAction) -> Result<String, ExtensionError> {
     let title = action.title.trim();
 
     if title.is_empty() || title.len() > LONGEST_TITLE || title.contains(char::is_control) {
@@ -72,7 +75,7 @@ fn title(action: &Action) -> Result<String, ExtensionError> {
     Ok(title.to_owned())
 }
 
-fn schema(action: &Action) -> Result<Value, ExtensionError> {
+fn schema(action: &DescribedAction) -> Result<Value, ExtensionError> {
     if action.params_schema.len() > LARGEST_SCHEMA {
         return Err(refused(format!(
             "the params schema of {} is over {LARGEST_SCHEMA} bytes",
@@ -97,14 +100,6 @@ fn schema(action: &Action) -> Result<Value, ExtensionError> {
     Ok(schema)
 }
 
-fn risk(risk: types::Risk) -> Risk {
-    match risk {
-        types::Risk::Read => Risk::Read,
-        types::Risk::Write => Risk::Write,
-        types::Risk::Privileged => Risk::Privileged,
-    }
-}
-
 fn refused(reason: String) -> ExtensionError {
     ExtensionError::Component(reason)
 }
@@ -115,13 +110,13 @@ mod tests {
     use synt_actions::Risk;
 
     use super::ActionSpec;
-    use crate::bindings::synt::extension::types::{self, Action};
+    use crate::interface::DescribedAction;
 
-    fn action(id: &str, schema: &str) -> Action {
-        Action {
+    fn action(id: &str, schema: &str) -> DescribedAction {
+        DescribedAction {
             id: id.to_owned(),
             title: "Greet a host".to_owned(),
-            risk: types::Risk::Privileged,
+            risk: Risk::Privileged,
             takes_target: true,
             params_schema: schema.to_owned(),
         }
