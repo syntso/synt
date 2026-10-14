@@ -17,4 +17,12 @@ impl Rows {
     pub fn count(&self) -> usize {
         self.rows.len()
     }
+
+    pub(crate) fn into_first_cell(self) -> Value {
+        self.rows
+            .into_iter()
+            .next()
+            .and_then(|row| row.into_iter().next())
+            .unwrap_or(Value::Null)
+    }
 }

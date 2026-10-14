@@ -36,4 +36,8 @@ impl DbError {
             code,
         }
     }
+
+    pub(crate) fn unexpected_catalog_row() -> Self {
+        Self::Lost("the catalog answered with an unexpected row".to_owned())
+    }
 }

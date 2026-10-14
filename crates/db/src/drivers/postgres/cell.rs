@@ -1,54 +1,96 @@
+use std::error::Error;
+
 use fallible_iterator::FallibleIterator;
 use postgres_protocol::types as wire;
 use serde_json::{Value, json};
-use tokio_postgres::types::{Kind, Type};
+use tokio_postgres::Row;
+use tokio_postgres::types::{FromSql, Kind, Type};
 
-use super::numeric::numeric;
+use super::numeric::Numeric;
 use crate::calendar;
 use crate::cells::{binary, float, text_or_binary};
 
 const DAYS_FROM_1970_TO_2000: i64 = 10_957;
 const MICROS_FROM_1970_TO_2000: i64 = DAYS_FROM_1970_TO_2000 * 86_400_000_000;
 const JSONB_VERSION: u8 = 1;
+const UTC: &str = "+00";
+const IPV4_BITS: u8 = 32;
+const IPV6_BITS: u8 = 128;
 
-pub(super) fn decode(kind: &Type, bytes: Option<&[u8]>) -> Value {
-    let Some(bytes) = bytes else {
-        return Value::Null;
-    };
-
-    known(kind, bytes).unwrap_or_else(|| text_or_binary(bytes))
+pub(super) struct Cell<'a> {
+    kind: Type,
+    bytes: Option<&'a [u8]>,
 }
 
-fn known(kind: &Type, bytes: &[u8]) -> Option<Value> {
-    if let Kind::Array(element) = kind.kind() {
-        return array(element, bytes);
+impl<'a> Cell<'a> {
+    pub(super) fn new(kind: Type, bytes: Option<&'a [u8]>) -> Self {
+        Self { kind, bytes }
     }
 
-    let value = match *kind {
-        Type::BOOL => Value::Bool(wire::bool_from_sql(bytes).ok()?),
-        Type::INT2 => json!(wire::int2_from_sql(bytes).ok()?),
-        Type::INT4 => json!(wire::int4_from_sql(bytes).ok()?),
-        Type::INT8 => json!(wire::int8_from_sql(bytes).ok()?),
-        Type::OID => json!(wire::oid_from_sql(bytes).ok()?),
-        Type::FLOAT4 => float(f64::from(wire::float4_from_sql(bytes).ok()?)),
-        Type::FLOAT8 => float(wire::float8_from_sql(bytes).ok()?),
-        Type::NUMERIC => Value::String(numeric(bytes)?),
-        Type::CHAR => {
-            json!(char::from(wire::char_from_sql(bytes).ok()?.cast_unsigned()).to_string())
-        }
-        Type::BYTEA => binary(bytes),
-        Type::JSON => serde_json::from_slice(bytes).ok()?,
-        Type::JSONB => jsonb(bytes)?,
-        Type::UUID => Value::String(uuid(wire::uuid_from_sql(bytes).ok()?)),
-        Type::DATE => Value::String(date(wire::date_from_sql(bytes).ok()?)),
-        Type::TIME => Value::String(calendar::time_of_day(wire::time_from_sql(bytes).ok()?)),
-        Type::TIMESTAMP => Value::String(timestamp(wire::timestamp_from_sql(bytes).ok()?, "")),
-        Type::TIMESTAMPTZ => Value::String(timestamp(wire::timestamp_from_sql(bytes).ok()?, "+00")),
-        Type::INET | Type::CIDR => Value::String(inet(bytes)?),
-        _ => return None,
-    };
+    pub(super) fn read_row(row: &Row) -> Vec<Value> {
+        (0..row.len())
+            .map(|index| {
+                row.try_get::<_, Cell<'_>>(index)
+                    .map_or(Value::Null, Cell::into_json)
+            })
+            .collect()
+    }
 
-    Some(value)
+    pub(super) fn into_json(self) -> Value {
+        let Some(bytes) = self.bytes else {
+            return Value::Null;
+        };
+
+        self.known(bytes).unwrap_or_else(|| text_or_binary(bytes))
+    }
+
+    fn known(&self, bytes: &[u8]) -> Option<Value> {
+        if let Kind::Array(element) = self.kind.kind() {
+            return array(element, bytes);
+        }
+
+        let value = match self.kind {
+            Type::BOOL => Value::Bool(wire::bool_from_sql(bytes).ok()?),
+            Type::INT2 => json!(wire::int2_from_sql(bytes).ok()?),
+            Type::INT4 => json!(wire::int4_from_sql(bytes).ok()?),
+            Type::INT8 => json!(wire::int8_from_sql(bytes).ok()?),
+            Type::OID => json!(wire::oid_from_sql(bytes).ok()?),
+            Type::FLOAT4 => float(f64::from(wire::float4_from_sql(bytes).ok()?)),
+            Type::FLOAT8 => float(wire::float8_from_sql(bytes).ok()?),
+            Type::NUMERIC => Value::String(Numeric::read(bytes)?.to_string()),
+            Type::CHAR => {
+                json!(char::from(wire::char_from_sql(bytes).ok()?.cast_unsigned()).to_string())
+            }
+            Type::BYTEA => binary(bytes),
+            Type::JSON => serde_json::from_slice(bytes).ok()?,
+            Type::JSONB => jsonb(bytes)?,
+            Type::UUID => Value::String(uuid(wire::uuid_from_sql(bytes).ok()?)),
+            Type::DATE => Value::String(date(wire::date_from_sql(bytes).ok()?)),
+            Type::TIME => Value::String(calendar::time_of_day(wire::time_from_sql(bytes).ok()?)),
+            Type::TIMESTAMP => Value::String(timestamp(wire::timestamp_from_sql(bytes).ok()?, "")),
+            Type::TIMESTAMPTZ => {
+                Value::String(timestamp(wire::timestamp_from_sql(bytes).ok()?, UTC))
+            }
+            Type::INET | Type::CIDR => Value::String(inet(bytes)?),
+            _ => return None,
+        };
+
+        Some(value)
+    }
+}
+
+impl<'a> FromSql<'a> for Cell<'a> {
+    fn from_sql(kind: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
+        Ok(Self::new(kind.clone(), Some(raw)))
+    }
+
+    fn from_sql_null(kind: &Type) -> Result<Self, Box<dyn Error + Sync + Send>> {
+        Ok(Self::new(kind.clone(), None))
+    }
+
+    fn accepts(_kind: &Type) -> bool {
+        true
+    }
 }
 
 fn array(element: &Type, bytes: &[u8]) -> Option<Value> {
@@ -62,7 +104,7 @@ fn array(element: &Type, bytes: &[u8]) -> Option<Value> {
 
     let values: Vec<Value> = array
         .values()
-        .map(|value| Ok(decode(element, value)))
+        .map(|value| Ok(Cell::new(element.clone(), value).into_json()))
         .collect()
         .ok()?;
 
@@ -139,7 +181,11 @@ fn timestamp(micros_since_2000: i64, zone: &str) -> String {
 
 fn inet(bytes: &[u8]) -> Option<String> {
     let inet = wire::inet_from_sql(bytes).ok()?;
-    let full = if inet.addr().is_ipv4() { 32 } else { 128 };
+    let full = if inet.addr().is_ipv4() {
+        IPV4_BITS
+    } else {
+        IPV6_BITS
+    };
 
     if inet.netmask() == full {
         return Some(inet.addr().to_string());
@@ -150,10 +196,14 @@ fn inet(bytes: &[u8]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-    use tokio_postgres::types::Type;
+    use serde_json::{Value, json};
+    use tokio_postgres::types::{Kind, Type};
 
-    use super::decode;
+    use super::Cell;
+
+    fn decode(kind: &Type, bytes: Option<&[u8]>) -> Value {
+        Cell::new(kind.clone(), bytes).into_json()
+    }
 
     #[test]
     fn null_is_null_whatever_the_type() {
@@ -209,7 +259,7 @@ mod tests {
         let citext = Type::new(
             "citext".to_owned(),
             99_999,
-            tokio_postgres::types::Kind::Simple,
+            Kind::Simple,
             "public".to_owned(),
         );
 
