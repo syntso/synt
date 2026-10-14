@@ -1,3 +1,20 @@
+mod apps;
+mod notice;
+mod open_question;
+mod registration;
+mod rule;
+mod until_restart;
+mod waiting;
+
+pub(crate) use notice::{requester, risk_level};
+pub(crate) use registration::Registration;
+
+use apps::Apps;
+use open_question::OpenQuestion;
+use rule::Rule;
+use until_restart::UntilRestart;
+use waiting::Waiting;
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -11,15 +28,8 @@ use tokio::sync::mpsc;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
-use super::apps::Apps;
-use super::grant::Grant;
-use super::grants::Grants;
-use super::notice;
-use super::registration::Registration;
-use super::rule::Rule;
-use super::waiting::Waiting;
 use crate::access::{AccessRequest, Decision, Gate, Scope};
-use crate::grants::{AlwaysGrants, GrantId, Hold};
+use crate::grants::{AlwaysGrants, GrantId, GrantScope, Hold};
 use crate::log::log;
 
 const PATIENCE: Duration = Duration::from_secs(120);
@@ -32,7 +42,7 @@ const REQUESTER_GONE: &str = "the requester disconnected";
 
 #[derive(Debug)]
 pub struct Broker {
-    grants: Grants,
+    until_restart: UntilRestart,
     always: Option<AlwaysGrants>,
     apps: Arc<Apps>,
     waiting: Arc<Waiting>,
@@ -43,7 +53,7 @@ pub struct Broker {
 impl Broker {
     pub fn new() -> Self {
         Self {
-            grants: Grants::default(),
+            until_restart: UntilRestart::default(),
             always: None,
             apps: Arc::new(Apps::default()),
             waiting: Arc::new(Waiting::default()),
@@ -108,7 +118,7 @@ impl Broker {
     }
 
     fn standing(&self, request: &AccessRequest<'_>) -> Option<Decision> {
-        if self.grants.covers(&Grant::covering(request)) {
+        if self.until_restart.covers(request) {
             return Some(Decision::Approved(Scope::UntilRestart));
         }
 
@@ -125,7 +135,7 @@ impl Broker {
 
         let mut question = self.waiting.open(self.next_id());
 
-        let approval = notice::approval_request(question.id(), request);
+        let approval = request.approval(question.id());
         let notification = approval.to_notification().map_err(|_| UNSENDABLE)?;
 
         if self.apps.broadcast(&notification) == 0 {
@@ -149,7 +159,7 @@ impl Broker {
         match decision {
             ApprovalDecision::Deny => Decision::deny(REFUSED_BY_PERSON),
             ApprovalDecision::AllowUntilRestart if grantable => {
-                self.grants.give(Grant::covering(request));
+                self.until_restart.give(GrantScope::covering(request));
                 Decision::Approved(Scope::UntilRestart)
             }
             ApprovalDecision::AllowAlways if grantable => self.keep(request).await,
@@ -161,7 +171,7 @@ impl Broker {
 
     async fn keep(&self, request: &AccessRequest<'_>) -> Decision {
         let Some(always) = &self.always else {
-            self.grants.give(Grant::covering(request));
+            self.until_restart.give(GrantScope::covering(request));
             return Decision::Approved(Scope::UntilRestart);
         };
 

@@ -10,12 +10,12 @@ use crate::locked::locked;
 type Held = HashMap<GrantId, HashMap<u64, CancellationToken>>;
 
 #[derive(Debug, Default)]
-pub(super) struct Holders {
+pub(super) struct GrantUsers {
     held: Mutex<Held>,
     next_number: AtomicU64,
 }
 
-impl Holders {
+impl GrantUsers {
     pub(super) fn hold(self: &Arc<Self>, grant: GrantId, stop: CancellationToken) -> Hold {
         let number = self.next_number.fetch_add(1, Ordering::Relaxed);
 

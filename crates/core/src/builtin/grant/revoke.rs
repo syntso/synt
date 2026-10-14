@@ -70,18 +70,18 @@ impl Action for GrantRevoke {
     }
 
     async fn run(&self, context: &Context, params: RevokeParams) -> Result<Revoked, ActionError> {
-        let revoked = self.grants.revoke(params.id).await?;
+        let revocation = self
+            .grants
+            .revoke(params.id)
+            .await?
+            .ok_or_else(|| ActionError::failed(format!("there is no grant {}", params.id)))?;
 
-        let Some((grant, stopped)) = revoked else {
-            return Err(ActionError::failed(format!(
-                "there is no grant {}",
-                params.id
-            )));
-        };
-
-        let grant = GrantInfo::from(grant);
+        let grant = GrantInfo::from(revocation.grant);
         self.note(context, &grant).await?;
 
-        Ok(Revoked { grant, stopped })
+        Ok(Revoked {
+            grant,
+            stopped: revocation.stopped,
+        })
     }
 }

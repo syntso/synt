@@ -1,27 +1,27 @@
 use std::sync::Arc;
 
 use super::GrantId;
-use super::holders::Holders;
+use super::GrantUsers;
 
 #[derive(Debug)]
 pub(crate) struct Hold {
     grant: GrantId,
     number: u64,
-    holders: Arc<Holders>,
+    users: Arc<GrantUsers>,
 }
 
 impl Hold {
-    pub(super) fn new(grant: GrantId, number: u64, holders: Arc<Holders>) -> Self {
+    pub(super) fn new(grant: GrantId, number: u64, users: Arc<GrantUsers>) -> Self {
         Self {
             grant,
             number,
-            holders,
+            users,
         }
     }
 }
 
 impl Drop for Hold {
     fn drop(&mut self) {
-        self.holders.release(self.grant, self.number);
+        self.users.release(self.grant, self.number);
     }
 }

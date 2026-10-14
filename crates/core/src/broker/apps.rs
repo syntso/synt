@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use synt_proto::{Message, Notification};
 use tokio::sync::mpsc;
 
-use super::registration::Registration;
+use super::Registration;
 use crate::locked::locked;
 
 type Sessions = HashMap<u64, mpsc::Sender<Message>>;

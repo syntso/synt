@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::apps::Apps;
+use super::Apps;
 
 #[derive(Debug)]
 pub(crate) struct Registration {
