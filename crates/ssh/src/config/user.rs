@@ -7,8 +7,8 @@ use ssh2_config::{HostParams, ParseRule, SshConfig};
 
 use super::HostSettings;
 use crate::SshError;
+use crate::directory::SshDirectory;
 use crate::locked::locked;
-use crate::ssh_directory::SshDirectory;
 
 const CONFIG_FILE: &str = "config";
 const NO_JUMP: &str = "none";

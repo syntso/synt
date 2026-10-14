@@ -2,8 +2,8 @@ use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 
 use super::{ConnectionState, ConnectionStatus, Lease, PoolBuilder, Slots};
+use crate::directory::SshDirectory;
 use crate::known_hosts::KnownHosts;
-use crate::ssh_directory::SshDirectory;
 use crate::{SshError, Target};
 
 #[derive(Clone)]

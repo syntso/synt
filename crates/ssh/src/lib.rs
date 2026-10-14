@@ -1,6 +1,7 @@
 mod auth;
 mod config;
 mod dial;
+mod directory;
 mod error;
 mod exec;
 #[cfg(fuzzing)]
@@ -12,7 +13,6 @@ mod pool;
 mod session;
 mod sftp;
 mod shell;
-mod ssh_directory;
 mod stored_key;
 mod target;
 mod tunnel;

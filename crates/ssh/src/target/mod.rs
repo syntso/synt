@@ -1,5 +1,5 @@
+mod endpoint;
 mod spec;
-mod target;
 
+pub use endpoint::Target;
 pub(crate) use spec::Spec;
-pub use target::Target;

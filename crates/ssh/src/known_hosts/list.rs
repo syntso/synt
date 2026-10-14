@@ -5,7 +5,7 @@ use russh::keys::{Algorithm, PublicKey};
 
 use super::{Entry, Marker, Verdict};
 use crate::SshError;
-use crate::ssh_directory::SshDirectory;
+use crate::directory::SshDirectory;
 
 const FILES: [&str; 2] = ["known_hosts", "known_hosts2"];
 const DEFAULT_PORT: u16 = 22;

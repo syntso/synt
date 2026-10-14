@@ -5,7 +5,7 @@ use russh::keys::agent::AgentIdentity;
 
 use super::{Agent, Candidate, KeyFile, KeySource, agent};
 use crate::Target;
-use crate::ssh_directory::SshDirectory;
+use crate::directory::SshDirectory;
 
 const DEFAULT_KEYS: [&str; 3] = ["id_ed25519", "id_ecdsa", "id_rsa"];
 const MOST_ATTEMPTS: usize = 5;

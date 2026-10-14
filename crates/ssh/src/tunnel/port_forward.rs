@@ -7,7 +7,7 @@ use tokio::task::JoinHandle;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
-use super::forward::serve;
+use super::forwarder::Forwarder;
 use super::{Destination, Traffic, TunnelId, TunnelStatus};
 use crate::{Lease, Pool, SshError, Target};
 
@@ -41,12 +41,12 @@ impl Tunnel {
         let lease = Arc::new(lease);
         let traffic = Arc::new(Traffic::default());
 
-        let serving = tokio::spawn(serve(
-            listener,
+        let forwarder = Forwarder::new(
             Arc::clone(&lease),
             destination.clone(),
             Arc::clone(&traffic),
-        ));
+        );
+        let serving = tokio::spawn(forwarder.serve(listener));
 
         Ok(Self {
             id,

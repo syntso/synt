@@ -1,14 +1,14 @@
 mod destination;
-mod forward;
+mod forwarder;
+mod id;
+mod port_forward;
+mod status;
 mod traffic;
-mod tunnel;
-mod tunnel_id;
-mod tunnel_status;
 mod tunnels;
 
 pub use destination::Destination;
+pub use id::TunnelId;
+use port_forward::Tunnel;
+pub use status::TunnelStatus;
 use traffic::Traffic;
-use tunnel::Tunnel;
-pub use tunnel_id::TunnelId;
-pub use tunnel_status::TunnelStatus;
 pub use tunnels::Tunnels;

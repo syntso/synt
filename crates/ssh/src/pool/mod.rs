@@ -1,21 +1,21 @@
+mod builder;
 mod connection_state;
 mod connection_status;
 mod dial_attempt;
+mod handle;
 mod holders;
 mod lease;
 mod phase;
-mod pool;
-mod pool_builder;
 mod slot;
 mod slots;
 
+pub use builder::PoolBuilder;
 pub use connection_state::ConnectionState;
 pub use connection_status::ConnectionStatus;
 use dial_attempt::DialAttempt;
+pub use handle::Pool;
 use holders::Holders;
 pub use lease::Lease;
 use phase::Phase;
-pub use pool::Pool;
-pub use pool_builder::PoolBuilder;
 use slot::Slot;
 use slots::Slots;
