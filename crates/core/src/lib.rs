@@ -29,11 +29,13 @@ mod terminal;
 
 pub use broker::Broker;
 pub use builtin::{
-    Databases, Files, GrantList, GrantRevoke, JournalPage, JournalVerify, KeyGenerate, KeyImport,
-    KeyList, KeyRemove, Kube, LocalSessionOpen, Ping, Pong, ProjectClose, ProjectList, ProjectOpen,
-    ResourceGet, ResourceList, ResourcePut, ResourceRemove, SecretList, SecretPut, SecretRemove,
-    SessionAttach, SessionBlocks, SessionClose, SessionIntegration, SessionList, SessionResize,
-    SshConnections, SshExec, SshSessionOpen, SshWarm, TunnelClose, TunnelList, TunnelOpen,
+    Databases, DocumentHistory, DocumentResolve, Files, GrantList, GrantRevoke, JournalPage,
+    JournalVerify, KeyGenerate, KeyImport, KeyList, KeyRemove, Kube, LocalSessionOpen, Ping, Pong,
+    ProjectClose, ProjectList, ProjectOpen, ResourceGet, ResourceList, ResourcePut, ResourceRemove,
+    SecretList, SecretPut, SecretRemove, SessionAttach, SessionBlocks, SessionClose,
+    SessionIntegration, SessionList, SessionResize, SshConnections, SshExec, SshSessionOpen,
+    SshWarm, SyncDisable, SyncEnable, SyncShare, SyncStatus, SyncUnshare, TunnelClose, TunnelList,
+    TunnelOpen,
 };
 pub use core::{Core, VERSION};
 pub use error::CoreError;

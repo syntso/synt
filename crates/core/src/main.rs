@@ -8,13 +8,15 @@ use std::time::Duration;
 
 use synt_actions::{ActionError, Registry};
 use synt_core::{
-    AlwaysGrants, Broker, Core, CoreCaller, CoreScreen, Databases, EventFeed, ExtensionMerger,
-    Files, GrantList, GrantRevoke, IdleWatch, JournalPage, JournalVerify, KeyGenerate, KeyImport,
-    KeyList, KeyRemove, Kube, LocalSessionOpen, LoginCommand, Ping, ProjectClose, ProjectList,
-    ProjectOpen, Projects, ResourceGet, ResourceList, ResourcePut, ResourceRemove, Runbooks,
-    SecretList, SecretPut, SecretRemove, Secrets, Server, SessionAttach, SessionBlocks,
-    SessionClose, SessionIntegration, SessionList, SessionResize, SshConnections, SshExec, SshKeys,
-    SshSessionOpen, SshWarm, Storage, Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
+    AlwaysGrants, Broker, Core, CoreCaller, CoreScreen, Databases, DocumentHistory,
+    DocumentResolve, EventFeed, ExtensionMerger, Files, GrantList, GrantRevoke, IdleWatch,
+    JournalPage, JournalVerify, KeyGenerate, KeyImport, KeyList, KeyRemove, Kube, LocalSessionOpen,
+    LoginCommand, Ping, ProjectClose, ProjectList, ProjectOpen, Projects, ResourceGet,
+    ResourceList, ResourcePut, ResourceRemove, Runbooks, SecretList, SecretPut, SecretRemove,
+    Secrets, Server, SessionAttach, SessionBlocks, SessionClose, SessionIntegration, SessionList,
+    SessionResize, SshConnections, SshExec, SshKeys, SshSessionOpen, SshWarm, Storage, SyncDisable,
+    SyncEnable, SyncShare, SyncStatus, SyncUnshare, Terminals, TunnelClose, TunnelList, TunnelOpen,
+    VERSION,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Journal, JournalWriter};
@@ -99,7 +101,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     .with_projects(Arc::new(projects.clone()));
 
     let syncer = syncer(&storage, &projects, &journal, &extensions)?;
-    syncer.register(&mut registry)?;
+    register_sync(&mut registry, &syncer)?;
 
     extensions.register(&mut registry)?;
     load_extensions(&extensions).await?;
@@ -203,6 +205,16 @@ fn register_secrets(registry: &mut Registry, secrets: &Secrets) -> Result<(), Ac
     registry.register(SecretPut::new(secrets.clone()))?;
     registry.register(SecretList::new(secrets.clone()))?;
     registry.register(SecretRemove::new(secrets.clone()))
+}
+
+fn register_sync(registry: &mut Registry, syncer: &Syncer) -> Result<(), ActionError> {
+    registry.register(SyncEnable::new(syncer.clone()))?;
+    registry.register(SyncDisable::new(syncer.clone()))?;
+    registry.register(SyncStatus::new(syncer.clone()))?;
+    registry.register(SyncShare::new(syncer.clone()))?;
+    registry.register(SyncUnshare::new(syncer.clone()))?;
+    registry.register(DocumentHistory::new(syncer.clone()))?;
+    registry.register(DocumentResolve::new(syncer.clone()))
 }
 
 fn syncer(

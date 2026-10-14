@@ -1,18 +1,25 @@
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
+use synt_sync::{DocumentPath, RevisionId, RevisionInfo, Syncer};
 
-use super::params::ResolveParams;
-use crate::Syncer;
-use crate::document::DocumentPath;
-use crate::id::RevisionId;
-use crate::report::RevisionInfo;
-
-pub(crate) struct DocumentResolve {
+pub struct DocumentResolve {
     syncer: Syncer,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ResolveParams {
+    pub project: String,
+    #[schemars(with = "String")]
+    pub path: DocumentPath,
+    #[schemars(with = "String")]
+    pub revision: RevisionId,
+}
+
 impl DocumentResolve {
-    pub(crate) fn new(syncer: Syncer) -> Self {
+    pub fn new(syncer: Syncer) -> Self {
         Self { syncer }
     }
 }
@@ -35,9 +42,11 @@ impl Action for DocumentResolve {
         _context: &Context,
         params: ResolveParams,
     ) -> Result<RevisionInfo, ActionError> {
-        let path = DocumentPath::parse(&params.path)?;
-        let revision = RevisionId::parse(&params.revision)?;
+        let resolved = self
+            .syncer
+            .resolve(&params.project, params.path, params.revision)
+            .await?;
 
-        Ok(self.syncer.resolve(&params.project, path, revision).await?)
+        Ok(resolved)
     }
 }

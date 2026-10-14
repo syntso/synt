@@ -9,7 +9,7 @@ pub(super) fn encode(digest: &[u8]) -> String {
     data_encoding::HEXLOWER.encode(bytes)
 }
 
-pub(super) fn check(what: &str, text: &str) -> Result<(), SyncError> {
+pub(super) fn check(what: &'static str, text: &str) -> Result<(), SyncError> {
     let valid = text.len() == ID_LENGTH
         && text
             .chars()
@@ -19,9 +19,10 @@ pub(super) fn check(what: &str, text: &str) -> Result<(), SyncError> {
         return Ok(());
     }
 
-    Err(SyncError::invalid(format!(
-        "{text:?} is not a {what}: it needs {ID_LENGTH} lowercase hex characters"
-    )))
+    Err(SyncError::BadId {
+        what,
+        text: text.to_owned(),
+    })
 }
 
 macro_rules! hex_id {

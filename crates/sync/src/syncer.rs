@@ -1,32 +1,25 @@
 mod builder;
 mod engine;
 mod notes;
-mod project;
 mod reports;
 mod round;
 mod sync_loop;
 
 pub use builder::SyncerBuilder;
-pub use project::{ProjectFolder, ProjectFolders};
 pub use sync_loop::SyncLoop;
 
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use synt_actions::{ActionError, Registry};
 use synt_platform::Vault;
 use tokio::{task, time};
 
-use crate::SyncError;
-use crate::builtin::{
-    DocumentHistory, DocumentResolve, SyncDisable, SyncEnable, SyncShare, SyncStatusAction,
-    SyncUnshare,
-};
 use crate::document::DocumentPath;
 use crate::id::{MemberId, RevisionId};
 use crate::provider::Place;
-use crate::report::{Disabled, MembershipChange, RevisionInfo, RoundReport, SyncStatus};
+use crate::report::{Disabled, MembershipChange, RevisionInfo, RoundReport, StatusReport};
+use crate::{OpenProjects, SyncError};
 use engine::Engine;
 
 #[derive(Clone)]
@@ -38,25 +31,15 @@ impl Syncer {
     pub fn builder(
         state: &Path,
         vault: Arc<dyn Vault>,
-        folders: Arc<dyn ProjectFolders>,
+        projects: Arc<dyn OpenProjects>,
     ) -> SyncerBuilder {
-        SyncerBuilder::new(state, vault, folders)
+        SyncerBuilder::new(state, vault, projects)
     }
 
     pub(crate) fn new(engine: Engine) -> Self {
         Self {
             engine: Arc::new(engine),
         }
-    }
-
-    pub fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
-        registry.register(SyncEnable::new(self.clone()))?;
-        registry.register(SyncDisable::new(self.clone()))?;
-        registry.register(SyncStatusAction::new(self.clone()))?;
-        registry.register(SyncShare::new(self.clone()))?;
-        registry.register(SyncUnshare::new(self.clone()))?;
-        registry.register(DocumentHistory::new(self.clone()))?;
-        registry.register(DocumentResolve::new(self.clone()))
     }
 
     pub fn start(&self, every: Duration) -> SyncLoop {
@@ -76,7 +59,7 @@ impl Syncer {
             .unwrap_or_default()
     }
 
-    pub async fn enable(&self, project: &str, place: Place) -> Result<SyncStatus, SyncError> {
+    pub async fn enable(&self, project: &str, place: Place) -> Result<StatusReport, SyncError> {
         let project = project.to_owned();
 
         self.run(move |engine| engine.enable(&project, &place))
@@ -89,7 +72,7 @@ impl Syncer {
         self.run(move |engine| engine.disable(&project)).await
     }
 
-    pub async fn status(&self, project: &str) -> Result<SyncStatus, SyncError> {
+    pub async fn status(&self, project: &str) -> Result<StatusReport, SyncError> {
         let project = project.to_owned();
 
         self.run(move |engine| engine.status(&project)).await

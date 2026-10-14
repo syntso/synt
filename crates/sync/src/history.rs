@@ -1,8 +1,10 @@
+mod origin;
 mod row;
 mod schema;
 mod stored_document;
 mod synced_project;
 
+pub(crate) use origin::Origin;
 pub(crate) use stored_document::StoredDocument;
 pub(crate) use synced_project::SyncedProject;
 
@@ -11,11 +13,10 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use rusqlite::{Connection, OptionalExtension, Params, Row, Transaction, params};
-use serde::Serialize;
 
 use crate::SyncError;
 use crate::clock::unix_millis;
-use crate::document::{DocumentPath, Revision};
+use crate::document::Revision;
 use crate::id::{DocumentId, MemberId, ProjectId, RevisionId};
 use crate::merge::DocumentGraph;
 use crate::provider::{Cursor, Place, SealedRevision};
@@ -71,7 +72,11 @@ impl History {
         self.lock().execute(
             "INSERT OR IGNORE INTO sync_projects (project, place, cursor, enabled_at) \
              VALUES (?1, ?2, '', ?3)",
-            params![project.get(), json(place)?, signed(unix_millis())],
+            params![
+                project.get(),
+                serde_json::to_string(place)?,
+                signed(unix_millis())
+            ],
         )?;
 
         Ok(())
@@ -103,7 +108,7 @@ impl History {
         &self,
         project: &ProjectId,
         revision: &Revision,
-        pushed: bool,
+        origin: Origin,
     ) -> Result<bool, SyncError> {
         self.in_transaction(|transaction| {
             let inserted = transaction.execute(
@@ -115,13 +120,13 @@ impl History {
                     project.get(),
                     revision.id.get(),
                     revision.document.get(),
-                    json(&revision.parents)?,
+                    serde_json::to_string(&revision.parents)?,
                     signed(revision.at),
                     revision.path.get(),
                     revision.body,
-                    json(&revision.conflicts)?,
+                    serde_json::to_string(&revision.conflicts)?,
                     revision.author.as_ref().map(MemberId::get),
-                    pushed,
+                    origin.is_pushed(),
                 ],
             )?;
 
@@ -240,7 +245,11 @@ impl History {
     ) -> Result<(), SyncError> {
         self.lock().execute(
             "INSERT OR IGNORE INTO sync_held (project, revision, sealed) VALUES (?1, ?2, ?3)",
-            [project.get(), sealed.revision.get(), &json(sealed)?],
+            [
+                project.get(),
+                sealed.revision.get(),
+                &serde_json::to_string(sealed)?,
+            ],
         )?;
 
         Ok(())
@@ -302,14 +311,14 @@ impl FromRow for Revision {
         let at: i64 = row.get("at")?;
 
         Ok(Self {
-            id: row.parsed("revision", RevisionId::parse)?,
-            document: row.parsed("document", DocumentId::parse)?,
+            id: row.parsed("revision")?,
+            document: row.parsed("document")?,
             parents: row.json("parents")?,
             at: u64::try_from(at).unwrap_or_default(),
-            path: row.parsed("path", DocumentPath::parse)?,
+            path: row.parsed("path")?,
             body: row.get("body")?,
             conflicts: row.json("conflicts")?,
-            author: row.optional("author", MemberId::parse)?,
+            author: row.parsed_or_null("author")?,
         })
     }
 }
@@ -318,10 +327,6 @@ impl FromRow for SealedRevision {
     fn from_row(row: &Row<'_>) -> rusqlite::Result<Self> {
         row.json("sealed")
     }
-}
-
-fn json(value: &impl Serialize) -> Result<String, SyncError> {
-    serde_json::to_string(value).map_err(|error| SyncError::invalid(error.to_string()))
 }
 
 fn signed(value: u64) -> i64 {

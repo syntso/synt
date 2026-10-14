@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use synt_sync::{
-    DocumentMerger, MemberId, Place, RevisionInfo, RoundReport, SyncError, SyncStatus, Syncer,
+    DocumentMerger, MemberId, Place, RevisionInfo, RoundReport, StatusReport, SyncError, Syncer,
 };
 use tempfile::TempDir;
 
@@ -81,14 +81,14 @@ impl Device {
         &self.syncer
     }
 
-    pub async fn enable(&self) -> SyncStatus {
+    pub async fn enable(&self) -> StatusReport {
         self.syncer
             .enable(PROJECT_SLUG, Place::Folder(self.shared.clone()))
             .await
             .unwrap()
     }
 
-    pub async fn status(&self) -> SyncStatus {
+    pub async fn status(&self) -> StatusReport {
         self.syncer.status(PROJECT_SLUG).await.unwrap()
     }
 

@@ -1,24 +1,22 @@
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
+use synt_sync::{MembershipChange, Syncer};
 
 use super::params::MemberParams;
-use crate::Syncer;
-use crate::id::MemberId;
-use crate::report::MembershipChange;
 
-pub(crate) struct SyncShare {
+pub struct SyncUnshare {
     syncer: Syncer,
 }
 
-impl SyncShare {
-    pub(crate) fn new(syncer: Syncer) -> Self {
+impl SyncUnshare {
+    pub fn new(syncer: Syncer) -> Self {
         Self { syncer }
     }
 }
 
-impl Action for SyncShare {
-    const ID: &'static str = "sync.share";
-    const TITLE: &'static str = "Share a project's key with a member who asked to join";
+impl Action for SyncUnshare {
+    const ID: &'static str = "sync.unshare";
+    const TITLE: &'static str = "Remove a member from a project and rotate its key";
     const RISK: Risk = Risk::Write;
     const PERSON_ONLY: bool = true;
 
@@ -38,8 +36,6 @@ impl Action for SyncShare {
         _context: &Context,
         params: MemberParams,
     ) -> Result<MembershipChange, ActionError> {
-        let member = MemberId::parse(&params.member)?;
-
-        Ok(self.syncer.share(&params.project, member).await?)
+        Ok(self.syncer.unshare(&params.project, params.member).await?)
     }
 }

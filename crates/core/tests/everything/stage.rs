@@ -17,7 +17,7 @@ use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 
 use super::EchoServer;
-use crate::common::{Approver, Grounds, Harness};
+use crate::common::{Approver, Grounds, Harness, register_sync};
 
 pub const PROJECT: &str = "orders";
 const PROJECT_FILE: &str = "id = \"0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e\"\nname = \"Orders\"\n";
@@ -255,7 +255,7 @@ fn assemble(grounds: &Grounds) -> (Arc<Core>, Extensions, Projects, Syncer) {
     .merger(Arc::new(ExtensionMerger::new(extensions.clone())))
     .open()
     .unwrap();
-    syncer.register(&mut registry).unwrap();
+    register_sync(&mut registry, &syncer);
     extensions.register(&mut registry).unwrap();
 
     let core = Arc::new(Core::new(registry, grounds.journal(), Broker::new()));

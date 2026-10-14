@@ -75,13 +75,6 @@ impl Keyring {
             .unwrap_or(Generation::FIRST)
     }
 
-    pub(crate) fn current(&self) -> Result<(Generation, &SecretKey), SyncError> {
-        let generation = self.generation();
-        let key = self.key(generation)?;
-
-        Ok((generation, key))
-    }
-
     pub(crate) fn key(&self, generation: Generation) -> Result<&SecretKey, SyncError> {
         self.keys
             .get(&generation)

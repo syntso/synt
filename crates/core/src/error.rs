@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use synt_actions::ActionError;
 use synt_journal::{JournalError, JournalId};
 use synt_platform::{KeyPlace, PlatformError};
+use synt_sync::SyncError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -82,5 +83,11 @@ impl From<CoreError> for ActionError {
             CoreError::Runbook(reason) => Self::InvalidParams(reason),
             other => Self::Failed(other.to_string()),
         }
+    }
+}
+
+impl From<CoreError> for SyncError {
+    fn from(error: CoreError) -> Self {
+        Self::Projects(Box::new(error))
     }
 }

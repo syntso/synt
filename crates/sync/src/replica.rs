@@ -2,28 +2,29 @@ mod outcome;
 mod recorded;
 mod scan;
 mod settled;
+mod target;
 
-use outcome::Outcome;
 pub(crate) use recorded::Recorded;
-use scan::Scan;
 pub(crate) use settled::Settled;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use crate::SyncError;
 use crate::clock::unix_millis;
-use crate::document::{DocumentPath, Draft, ProjectFiles, Revision};
-use crate::history::{History, StoredDocument};
+use crate::document::{DocumentPath, Draft, Revision};
+use crate::history::{History, Origin, StoredDocument};
 use crate::id::{MemberId, ProjectId, RevisionId};
 use crate::merge::{DocumentGraph, DocumentMerger, ThreeWay};
 use crate::report::RevisionInfo;
 use crate::seal::Naming;
+use crate::{ProjectFolder, SyncError};
+use outcome::Outcome;
+use scan::Scan;
+use target::Target;
 
 pub(crate) struct Replica {
     history: History,
-    project: ProjectId,
-    files: ProjectFiles,
+    folder: ProjectFolder,
     naming: Naming,
     me: MemberId,
     merger: Option<Arc<dyn DocumentMerger>>,
@@ -32,16 +33,14 @@ pub(crate) struct Replica {
 impl Replica {
     pub(crate) fn new(
         history: History,
-        project: ProjectId,
-        files: ProjectFiles,
+        folder: ProjectFolder,
         naming: Naming,
         me: MemberId,
         merger: Option<Arc<dyn DocumentMerger>>,
     ) -> Self {
         Self {
             history,
-            project,
-            files,
+            folder,
             naming,
             me,
             merger,
@@ -49,36 +48,27 @@ impl Replica {
     }
 
     pub(crate) fn project(&self) -> &ProjectId {
-        &self.project
+        self.folder.id()
     }
 
     pub(crate) fn record_edits(&self) -> Result<Recorded, SyncError> {
-        self.files.check_root(&self.project)?;
+        self.folder.check()?;
 
         let scan = self.scan()?;
         scan.refuse_removing_everything()?;
 
-        let (edits, problems) = scan.into_parts();
-        let mut recorded = Recorded { edits: 0, problems };
-
-        for edit in edits {
-            match self.record(&edit) {
-                Ok(()) => recorded.edits += 1,
-                Err(error) => recorded.problems.push(format!("{}: {error}", edit.path)),
-            }
-        }
-
-        Ok(recorded)
+        Ok(scan.record(|edit| self.record(edit)))
     }
 
     pub(crate) fn accept(&self, revision: &Revision) -> Result<bool, SyncError> {
-        self.history.insert(&self.project, revision, true)
+        self.history
+            .insert(self.project(), revision, Origin::Pulled)
     }
 
     pub(crate) fn settle(&self) -> Result<Settled, SyncError> {
         let mut settled = Settled::default();
 
-        for stored in self.history.documents(&self.project)? {
+        for stored in self.history.documents(self.project())? {
             match self.settle_document(&stored) {
                 Ok(outcome) => settled.add(outcome),
                 Err(error) => settled.problems.push(format!("{}: {error}", stored.path)),
@@ -95,29 +85,28 @@ impl Replica {
     ) -> Result<Revision, SyncError> {
         self.record_edits()?;
 
-        let document = self.naming.document_id(path);
-        let graph = self.history.graph(&self.project, &document)?;
-        let chosen = graph.get(chosen).ok_or_else(|| {
-            SyncError::invalid(format!("revision {chosen} is not in the history of {path}"))
+        let graph = self.graph_of(path)?;
+        let chosen = graph.get(chosen).ok_or_else(|| SyncError::NotInHistory {
+            revision: chosen.clone(),
+            path: path.clone(),
         })?;
 
         if !graph.has_conflict() {
-            return Err(SyncError::invalid(format!(
-                "{path} has no conflict to resolve"
-            )));
+            return Err(SyncError::NoConflict(path.clone()));
         }
 
         let heads = graph.heads().iter().map(|head| head.id.clone()).collect();
         let resolution = self.authored(path, heads, chosen.body.clone());
-        self.history.insert(&self.project, &resolution, false)?;
+
+        self.history
+            .insert(self.project(), &resolution, Origin::Local)?;
         self.settle()?;
 
         Ok(resolution)
     }
 
     pub(crate) fn history_of(&self, path: &DocumentPath) -> Result<Vec<RevisionInfo>, SyncError> {
-        let document = self.naming.document_id(path);
-        let graph = self.history.graph(&self.project, &document)?;
+        let graph = self.graph_of(path)?;
         let on_disk = self.stored(path)?.and_then(|stored| stored.on_disk);
         let heads: BTreeSet<&RevisionId> = graph.heads().iter().map(|head| &head.id).collect();
 
@@ -137,15 +126,14 @@ impl Replica {
 
     fn scan(&self) -> Result<Scan, SyncError> {
         let known = self.known_documents()?;
-        let mut paths: BTreeSet<DocumentPath> = self.files.paths()?;
+        let mut paths: BTreeSet<DocumentPath> = self.folder.paths()?;
         paths.extend(known.keys().cloned());
 
         let mut scan = Scan::default();
 
         for path in paths {
-            match self.look_at(&path, known.get(&path)) {
-                Ok((was_live, edit)) => scan.found(&path, was_live, edit),
-                Err(error) => scan.failed(&path, &error),
+            if let Err(error) = self.look_at(&path, known.get(&path), &mut scan) {
+                scan.failed(&path, &error);
             }
         }
 
@@ -156,25 +144,24 @@ impl Replica {
         &self,
         path: &DocumentPath,
         stored: Option<&StoredDocument>,
-    ) -> Result<(bool, Option<Revision>), SyncError> {
-        let current = self.files.read(path)?;
+        scan: &mut Scan,
+    ) -> Result<(), SyncError> {
+        let current = self.folder.read(path)?;
         let on_disk = self.on_disk(stored)?;
-        let was_live = on_disk
-            .as_ref()
-            .is_some_and(|revision| !revision.is_removal());
 
         let unchanged = match &on_disk {
             Some(revision) => revision.body == current,
             None => current.is_none(),
         };
-        if unchanged {
-            return Ok((was_live, None));
-        }
 
-        let parents = on_disk.map(|revision| revision.id).into_iter().collect();
-        let edit = self.authored(path, parents, current);
+        let edit = (!unchanged).then(|| {
+            let parents = on_disk.iter().map(|revision| revision.id.clone()).collect();
 
-        Ok((was_live, Some(edit)))
+            self.authored(path, parents, current)
+        });
+        scan.found(path, on_disk.as_ref(), edit);
+
+        Ok(())
     }
 
     fn authored(
@@ -196,31 +183,31 @@ impl Replica {
     }
 
     fn record(&self, edit: &Revision) -> Result<(), SyncError> {
-        self.history.insert(&self.project, edit, false)?;
-        self.history.set_on_disk(&self.project, edit)
+        self.history.insert(self.project(), edit, Origin::Local)?;
+        self.history.set_on_disk(self.project(), edit)
     }
 
     fn settle_document(&self, stored: &StoredDocument) -> Result<Outcome, SyncError> {
-        let graph = self.history.graph(&self.project, &stored.document)?;
+        let graph = self.history.graph(self.project(), &stored.document)?;
 
-        let Some((target, merged)) = self.target(&graph)? else {
+        let Some(target) = self.target(&graph)? else {
             return Ok(Outcome::default());
         };
 
-        let applied =
-            stored.on_disk.as_ref() != Some(&target.id) && self.apply(stored, &graph, &target)?;
+        let moved = stored.on_disk.as_ref() != Some(&target.revision.id);
+        let applied = moved && self.apply(stored, &graph, &target.revision)?;
 
         Ok(Outcome {
-            merged,
-            applied: applied.then(|| target.applied()),
+            merged: target.merged,
+            applied: applied.then(|| target.revision.applied()),
         })
     }
 
-    fn target(&self, graph: &DocumentGraph) -> Result<Option<(Revision, bool)>, SyncError> {
+    fn target(&self, graph: &DocumentGraph) -> Result<Option<Target>, SyncError> {
         let heads = graph.heads();
 
         if let [head] = heads.as_slice() {
-            return Ok(Some(((*head).clone(), false)));
+            return Ok(Some(Target::head((*head).clone())));
         }
 
         let Some(first) = heads.first() else {
@@ -247,9 +234,9 @@ impl Replica {
                 author: None,
             },
         );
-        self.history.insert(&self.project, &merge, false)?;
+        self.history.insert(self.project(), &merge, Origin::Local)?;
 
-        Ok(Some((merge, true)))
+        Ok(Some(Target::merge(merge)))
     }
 
     fn apply(
@@ -263,7 +250,7 @@ impl Replica {
             .as_ref()
             .and_then(|id| graph.get(id))
             .and_then(|revision| revision.body.as_deref());
-        let current = self.files.read(&target.path)?;
+        let current = self.folder.read(&target.path)?;
 
         if current.as_deref() != expected {
             return Ok(false);
@@ -271,19 +258,25 @@ impl Replica {
 
         let changes = current != target.body;
         match &target.body {
-            Some(body) if changes => self.files.write(&target.path, body)?,
-            None if changes => self.files.remove(&target.path)?,
+            Some(body) if changes => self.folder.write(&target.path, body)?,
+            None if changes => self.folder.remove(&target.path)?,
             _ => {}
         }
-        self.history.set_on_disk(&self.project, target)?;
+        self.history.set_on_disk(self.project(), target)?;
 
         Ok(changes)
     }
 
+    fn graph_of(&self, path: &DocumentPath) -> Result<DocumentGraph, SyncError> {
+        let document = self.naming.document_id(path);
+
+        self.history.graph(self.project(), &document)
+    }
+
     fn known_documents(&self) -> Result<BTreeMap<DocumentPath, StoredDocument>, SyncError> {
-        Ok(self
-            .history
-            .documents(&self.project)?
+        let documents = self.history.documents(self.project())?;
+
+        Ok(documents
             .into_iter()
             .map(|stored| (stored.path.clone(), stored))
             .collect())
@@ -303,7 +296,7 @@ impl Replica {
             return Ok(None);
         };
 
-        let graph = self.history.graph(&self.project, document)?;
+        let graph = self.history.graph(self.project(), document)?;
 
         Ok(graph.get(on_disk).cloned())
     }

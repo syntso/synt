@@ -1,29 +1,28 @@
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
+use synt_sync::{StatusReport, Syncer};
 
 use super::params::ProjectParams;
-use crate::Syncer;
-use crate::report::SyncStatus;
 
-pub(crate) struct SyncStatusAction {
+pub struct SyncStatus {
     syncer: Syncer,
 }
 
-impl SyncStatusAction {
-    pub(crate) fn new(syncer: Syncer) -> Self {
+impl SyncStatus {
+    pub fn new(syncer: Syncer) -> Self {
         Self { syncer }
     }
 }
 
-impl Action for SyncStatusAction {
+impl Action for SyncStatus {
     const ID: &'static str = "sync.status";
     const TITLE: &'static str = "Show how a project syncs: members, key, conflicts";
     const RISK: Risk = Risk::Read;
 
     type Params = ProjectParams;
-    type Output = SyncStatus;
+    type Output = StatusReport;
 
-    fn summary(&self, output: &SyncStatus) -> Value {
+    fn summary(&self, output: &StatusReport) -> Value {
         json!({
             "project": output.project,
             "access": output.access,
@@ -36,7 +35,7 @@ impl Action for SyncStatusAction {
         &self,
         _context: &Context,
         params: ProjectParams,
-    ) -> Result<SyncStatus, ActionError> {
+    ) -> Result<StatusReport, ActionError> {
         Ok(self.syncer.status(&params.project).await?)
     }
 }

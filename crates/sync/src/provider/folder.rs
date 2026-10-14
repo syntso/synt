@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::SyncError;
 use crate::id::{MemberId, ProjectId};
-use crate::provider::{Cursor, MemberKey, SealedRevision, SyncProvider, WrappedKey};
+use crate::provider::{Cursor, MemberKey, Pulled, SealedRevision, SyncProvider, WrappedKey};
 use at_path::AtPath;
 use json_file::JsonFile;
 use revision_file::RevisionFile;
@@ -27,10 +27,7 @@ pub struct FolderProvider {
 impl FolderProvider {
     pub fn open(root: &Path) -> Result<Self, SyncError> {
         if !root.is_dir() {
-            return Err(SyncError::provider(format!(
-                "the sync folder {} does not exist",
-                root.display()
-            )));
+            return Err(SyncError::NoSyncFolder(root.to_owned()));
         }
 
         Ok(Self {
@@ -103,18 +100,16 @@ impl SyncProvider for FolderProvider {
         Ok(())
     }
 
-    fn pull(
-        &self,
-        project: &ProjectId,
-        since: &Cursor,
-    ) -> Result<(Vec<SealedRevision>, Cursor), SyncError> {
+    fn pull(&self, project: &ProjectId, since: &Cursor) -> Result<Pulled, SyncError> {
         let floor = RevisionFile::parse(since.get())
             .map(|seen| RevisionFile::floor(seen.at().saturating_sub(LATE_WRITERS_MS)))
             .unwrap_or_default();
         let folder = self.folder(project, REVISIONS);
 
-        let mut revisions = Vec::new();
-        let mut cursor = since.clone();
+        let mut pulled = Pulled {
+            revisions: Vec::new(),
+            cursor: since.clone(),
+        };
 
         for file in self.revision_files(project)? {
             if file.name() < floor.as_str() {
@@ -122,15 +117,15 @@ impl SyncProvider for FolderProvider {
             }
 
             if let Some(revision) = JsonFile::new(folder.join(file.name())).read()? {
-                revisions.push(revision);
+                pulled.revisions.push(revision);
             }
 
-            if file.name() > cursor.get() {
-                cursor = Cursor::new(file.name());
+            if file.name() > pulled.cursor.get() {
+                pulled.cursor = Cursor::new(file.name());
             }
         }
 
-        Ok((revisions, cursor))
+        Ok(pulled)
     }
 
     fn members(&self, project: &ProjectId) -> Result<Vec<MemberKey>, SyncError> {

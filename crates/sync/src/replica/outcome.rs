@@ -1,7 +1,7 @@
 use crate::report::Applied;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct Outcome {
-    pub(crate) merged: bool,
-    pub(crate) applied: Option<Applied>,
+pub(super) struct Outcome {
+    pub(super) merged: bool,
+    pub(super) applied: Option<Applied>,
 }

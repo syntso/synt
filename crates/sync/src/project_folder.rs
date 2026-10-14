@@ -1,51 +1,53 @@
+mod entry;
+
 use std::collections::BTreeSet;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use synt_platform::{read_plain_file, replace_file};
 
-use super::DocumentPath;
-use super::kind::{EXTENSIONS, MOST_EXTENSION_PARTS, PROJECT_FILE, RESOURCES, RUNBOOKS};
-use super::payload::LARGEST_BODY;
 use crate::SyncError;
+use crate::document::{
+    DocumentPath, EXTENSIONS, LARGEST_BODY, MOST_EXTENSION_PARTS, PROJECT_FILE, RESOURCES, RUNBOOKS,
+};
 use crate::id::ProjectId;
+use entry::Entry;
 
-#[derive(Debug, Clone)]
-pub(crate) struct ProjectFiles {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectFolder {
+    id: ProjectId,
     root: PathBuf,
 }
 
-impl ProjectFiles {
-    pub(crate) fn new(root: &Path) -> Self {
-        Self {
-            root: root.to_owned(),
-        }
+impl ProjectFolder {
+    pub fn new(id: ProjectId, root: PathBuf) -> Self {
+        Self { id, root }
     }
 
-    pub(crate) fn check_root(&self, project: &ProjectId) -> Result<(), SyncError> {
-        if !is_folder(&self.root)? {
-            return Err(SyncError::Project(format!(
-                "{} is not a plain folder any more; the round is skipped until the project is back",
-                self.root.display()
-            )));
+    pub fn id(&self) -> &ProjectId {
+        &self.id
+    }
+
+    pub(crate) fn check(&self) -> Result<(), SyncError> {
+        if Entry::at(&self.root)? != Entry::Folder {
+            return Err(SyncError::FolderGone(self.root.clone()));
         }
 
-        let found = self.project_file_id()?;
-        if found.as_deref() == Some(project.get()) {
+        if self.project_file_id()?.as_ref() == Some(&self.id) {
             return Ok(());
         }
 
-        Err(SyncError::Project(format!(
-            "{} does not hold the project file of project {project} any more; the round is skipped until it is back",
-            self.root.display()
-        )))
+        Err(SyncError::ProjectFileGone {
+            folder: self.root.clone(),
+            project: self.id.clone(),
+        })
     }
 
     pub(crate) fn paths(&self) -> Result<BTreeSet<DocumentPath>, SyncError> {
         let mut found = BTreeSet::new();
 
-        if is_file(&self.root.join(PROJECT_FILE))? {
+        if Entry::at(&self.root.join(PROJECT_FILE))? == Entry::File {
             found.insert(DocumentPath::parse(PROJECT_FILE)?);
         }
 
@@ -91,7 +93,7 @@ impl ProjectFiles {
         }
     }
 
-    fn project_file_id(&self) -> Result<Option<String>, SyncError> {
+    fn project_file_id(&self) -> Result<Option<ProjectId>, SyncError> {
         let Some(bytes) = self.read(&DocumentPath::parse(PROJECT_FILE)?)? else {
             return Ok(None);
         };
@@ -104,11 +106,11 @@ impl ProjectFiles {
             .as_ref()
             .and_then(|table| table.get("id"))
             .and_then(toml::Value::as_str)
-            .map(str::to_owned))
+            .and_then(|id| ProjectId::parse(id).ok()))
     }
 
     fn documents_in(&self, folder: &str) -> Result<Vec<DocumentPath>, SyncError> {
-        let names = self.entries(folder, fs::FileType::is_file)?;
+        let names = self.entries(folder, Entry::File)?;
 
         Ok(names
             .into_iter()
@@ -129,7 +131,7 @@ impl ProjectFiles {
     }
 
     fn folders_in(&self, folder: &str) -> Result<Vec<String>, SyncError> {
-        let folders = self.entries(folder, fs::FileType::is_dir)?;
+        let folders = self.entries(folder, Entry::Folder)?;
 
         Ok(folders
             .into_iter()
@@ -137,14 +139,10 @@ impl ProjectFiles {
             .collect())
     }
 
-    fn entries(
-        &self,
-        folder: &str,
-        wanted: fn(&fs::FileType) -> bool,
-    ) -> Result<Vec<String>, SyncError> {
+    fn entries(&self, folder: &str, wanted: Entry) -> Result<Vec<String>, SyncError> {
         let path = self.root.join(folder);
 
-        if !is_folder(&path)? {
+        if Entry::at(&path)? != Entry::Folder {
             return Ok(Vec::new());
         }
 
@@ -153,7 +151,7 @@ impl ProjectFiles {
         for entry in fs::read_dir(&path)? {
             let entry = entry?;
 
-            if wanted(&entry.file_type()?)
+            if Entry::of(entry.file_type()?) == wanted
                 && let Some(name) = entry.file_name().to_str()
             {
                 names.push(name.to_owned());
@@ -167,8 +165,8 @@ impl ProjectFiles {
         for folder in path.folders() {
             let full = self.root.join(&folder);
 
-            if full.symlink_metadata().is_ok() && !is_folder(&full)? {
-                return Err(not_a_folder(&full));
+            if !matches!(Entry::at(&full)?, Entry::Missing | Entry::Folder) {
+                return Err(SyncError::NotPlainFolder(full));
             }
         }
 
@@ -183,51 +181,32 @@ impl ProjectFiles {
             created => created?,
         }
 
-        if is_folder(&path)? {
+        if Entry::at(&path)? == Entry::Folder {
             return Ok(());
         }
 
-        Err(not_a_folder(&path))
+        Err(SyncError::NotPlainFolder(path))
     }
-}
-
-fn is_folder(path: &Path) -> Result<bool, SyncError> {
-    has_type(path, fs::FileType::is_dir)
-}
-
-fn is_file(path: &Path) -> Result<bool, SyncError> {
-    has_type(path, fs::FileType::is_file)
-}
-
-fn has_type(path: &Path, wanted: fn(&fs::FileType) -> bool) -> Result<bool, SyncError> {
-    match path.symlink_metadata() {
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
-        metadata => Ok(wanted(&metadata?.file_type())),
-    }
-}
-
-fn not_a_folder(path: &Path) -> SyncError {
-    SyncError::Io(io::Error::new(
-        io::ErrorKind::InvalidInput,
-        format!(
-            "{} must be a plain folder, not a link or a file",
-            path.display()
-        ),
-    ))
 }
 
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::Path;
 
-    use super::ProjectFiles;
+    use super::ProjectFolder;
     use crate::document::DocumentPath;
+    use crate::id::ProjectId;
+
+    fn folder_at(root: &Path) -> ProjectFolder {
+        ProjectFolder::new(ProjectId::parse(&"4f".repeat(16)).unwrap(), root.to_owned())
+    }
 
     fn path(text: &str) -> DocumentPath {
         DocumentPath::parse(text).unwrap()
     }
 
-    fn names(files: &ProjectFiles) -> Vec<String> {
+    fn names(files: &ProjectFolder) -> Vec<String> {
         files
             .paths()
             .unwrap()
@@ -256,7 +235,7 @@ mod tests {
         fs::write(root.join("documents/uml/orders.uml"), "@startuml").unwrap();
         fs::write(root.join(".git/config"), "x").unwrap();
 
-        let files = ProjectFiles::new(root);
+        let files = folder_at(root);
 
         assert_eq!(
             names(&files),
@@ -272,7 +251,7 @@ mod tests {
     #[test]
     fn a_written_document_is_read_back_and_removed() {
         let folder = tempfile::tempdir().unwrap();
-        let files = ProjectFiles::new(folder.path());
+        let files = folder_at(folder.path());
         let runbook = path("runbooks/restart.toml");
 
         files.write(&runbook, b"name = \"Restart\"").unwrap();
@@ -294,7 +273,7 @@ mod tests {
         std::os::unix::fs::symlink(outside.path(), folder.path().join("resources")).unwrap();
         fs::write(outside.path().join("api-1.toml"), "a = 1").unwrap();
 
-        let files = ProjectFiles::new(folder.path());
+        let files = folder_at(folder.path());
 
         assert!(names(&files).is_empty());
         assert!(files.write(&path("resources/db.toml"), b"a = 1").is_err());
@@ -314,7 +293,7 @@ mod tests {
         )
         .unwrap();
 
-        let files = ProjectFiles::new(folder.path());
+        let files = folder_at(folder.path());
 
         assert!(names(&files).is_empty());
         assert!(files.read(&path("synt.toml")).is_err());

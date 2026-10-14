@@ -1,6 +1,7 @@
 use serde_json::json;
 use synt_journal::{ActionId, Actor, Details, EventKind, JournalWriter, NewEvent};
 
+use crate::SyncError;
 use crate::id::ProjectId;
 use crate::report::Applied;
 
@@ -27,20 +28,23 @@ impl Notes {
         }
     }
 
-    fn note(journal: &JournalWriter, project: &ProjectId, change: &Applied) -> Result<(), String> {
-        let details = json!({
+    fn note(
+        journal: &JournalWriter,
+        project: &ProjectId,
+        change: &Applied,
+    ) -> Result<(), SyncError> {
+        let details = Details::from_serialize(&json!({
             "project": project,
             "path": change.path,
             "revision": change.revision,
             "author": change.author,
             "removed": change.removed,
             "conflicts": change.conflicts,
-        });
-        let details = Details::from_serialize(&details).map_err(|error| error.to_string())?;
-        let action = ActionId::new(APPLY_NOTE).map_err(|error| error.to_string())?;
+        }))?;
+        let action = ActionId::new(APPLY_NOTE)?;
 
         let event = NewEvent::new(Actor::Core, EventKind::Note, action).details(details);
-        journal.append(event).map_err(|error| error.to_string())?;
+        journal.append(event)?;
 
         Ok(())
     }

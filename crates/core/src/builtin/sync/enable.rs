@@ -1,20 +1,25 @@
 use std::path::PathBuf;
 
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
+use synt_sync::{Place, StatusReport, Syncer};
 
-use super::params::EnableParams;
-use crate::Syncer;
-use crate::provider::Place;
-use crate::report::SyncStatus;
-
-pub(crate) struct SyncEnable {
+pub struct SyncEnable {
     syncer: Syncer,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EnableParams {
+    pub project: String,
+    pub folder: PathBuf,
+}
+
 impl SyncEnable {
-    pub(crate) fn new(syncer: Syncer) -> Self {
+    pub fn new(syncer: Syncer) -> Self {
         Self { syncer }
     }
 }
@@ -26,24 +31,24 @@ impl Action for SyncEnable {
     const PERSON_ONLY: bool = true;
 
     type Params = EnableParams;
-    type Output = SyncStatus;
+    type Output = StatusReport;
 
     fn check(
         &self,
         _target: Option<&ResourceRef>,
         params: &EnableParams,
     ) -> Result<(), ActionError> {
-        if PathBuf::from(&params.folder).is_absolute() {
+        if params.folder.is_absolute() {
             return Ok(());
         }
 
         Err(ActionError::InvalidParams(format!(
-            "the sync folder must be an absolute path, not {:?}",
-            params.folder
+            "the sync folder must be an absolute path, not {}",
+            params.folder.display()
         )))
     }
 
-    fn summary(&self, output: &SyncStatus) -> Value {
+    fn summary(&self, output: &StatusReport) -> Value {
         json!({
             "project": output.project,
             "access": output.access,
@@ -55,8 +60,8 @@ impl Action for SyncEnable {
         &self,
         _context: &Context,
         params: EnableParams,
-    ) -> Result<SyncStatus, ActionError> {
-        let place = Place::Folder(PathBuf::from(params.folder));
+    ) -> Result<StatusReport, ActionError> {
+        let place = Place::Folder(params.folder);
 
         Ok(self.syncer.enable(&params.project, place).await?)
     }

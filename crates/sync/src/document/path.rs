@@ -1,11 +1,13 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
+
 use super::DocumentKind;
-use super::kind::{EXTENSIONS, PROJECT_FILE, RESOURCES, RUNBOOKS};
 use crate::SyncError;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub struct DocumentPath {
     text: String,
     kind: DocumentKind,
@@ -13,18 +15,7 @@ pub struct DocumentPath {
 
 impl DocumentPath {
     pub fn parse(text: &str) -> Result<Self, SyncError> {
-        let kind = DocumentKind::of(text).ok_or_else(|| {
-            SyncError::invalid(format!(
-                "{text:?} is not a document path: use {PROJECT_FILE}, \
-                 {RESOURCES}/<name>.toml, {RUNBOOKS}/<name>.toml or \
-                 {EXTENSIONS}/<extension>/<path>.<suffix>"
-            ))
-        })?;
-
-        Ok(Self {
-            text: text.to_owned(),
-            kind,
-        })
+        Self::try_from(text.to_owned())
     }
 
     pub fn get(&self) -> &str {
@@ -45,6 +36,24 @@ impl DocumentPath {
         let parts: Vec<&str> = self.text.split('/').collect();
 
         (1..parts.len()).map(|end| parts[..end].join("/")).collect()
+    }
+}
+
+impl TryFrom<String> for DocumentPath {
+    type Error = SyncError;
+
+    fn try_from(text: String) -> Result<Self, SyncError> {
+        let Some(kind) = DocumentKind::of(&text) else {
+            return Err(SyncError::BadPath(text));
+        };
+
+        Ok(Self { text, kind })
+    }
+}
+
+impl From<DocumentPath> for String {
+    fn from(path: DocumentPath) -> Self {
+        path.text
     }
 }
 

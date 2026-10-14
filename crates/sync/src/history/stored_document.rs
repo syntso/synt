@@ -14,9 +14,9 @@ pub(crate) struct StoredDocument {
 impl FromRow for StoredDocument {
     fn from_row(row: &Row<'_>) -> rusqlite::Result<Self> {
         Ok(Self {
-            document: row.parsed("document", DocumentId::parse)?,
-            path: row.parsed("path", DocumentPath::parse)?,
-            on_disk: row.optional("on_disk", RevisionId::parse)?,
+            document: row.parsed("document")?,
+            path: row.parsed("path")?,
+            on_disk: row.parsed_or_null("on_disk")?,
         })
     }
 }

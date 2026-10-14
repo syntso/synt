@@ -1,6 +1,6 @@
 use std::fmt;
 
-use data_encoding::BASE64;
+use data_encoding::{BASE64, DecodeError};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -20,11 +20,8 @@ impl Base64 {
         self.0
     }
 
-    pub(crate) fn decode(text: &str) -> Result<Self, String> {
-        BASE64
-            .decode(text.as_bytes())
-            .map(Self)
-            .map_err(|error| format!("invalid base64: {error}"))
+    pub(crate) fn decode(text: &str) -> Result<Self, DecodeError> {
+        BASE64.decode(text.as_bytes()).map(Self)
     }
 }
 
@@ -44,7 +41,7 @@ impl<'de> Deserialize<'de> for Base64 {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
 
-        Self::decode(&text).map_err(D::Error::custom)
+        Self::decode(&text).map_err(|error| D::Error::custom(format!("invalid base64: {error}")))
     }
 }
 

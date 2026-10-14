@@ -16,4 +16,4 @@ pub use member_info::MemberInfo;
 pub use membership_change::MembershipChange;
 pub use revision_info::RevisionInfo;
 pub use round::RoundReport;
-pub use status::SyncStatus;
+pub use status::StatusReport;

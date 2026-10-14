@@ -24,10 +24,7 @@ impl MemberKey {
             return Ok(());
         }
 
-        Err(SyncError::refused(format!(
-            "member {} does not match its public key",
-            self.member
-        )))
+        Err(SyncError::ForgedMember(self.member.clone()))
     }
 
     fn member_of(public_key: &PublicKey) -> MemberId {

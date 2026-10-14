@@ -12,7 +12,7 @@ const LONGEST_CONFLICT_LIST: usize = 256;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Payload {
-    pub(crate) path: String,
+    pub(crate) path: DocumentPath,
     pub(crate) kind: String,
     pub(crate) body: Option<Base64>,
     pub(crate) conflicts: Vec<String>,
@@ -21,26 +21,25 @@ pub(crate) struct Payload {
 
 impl Payload {
     pub(crate) fn into_draft(self, sealed: &SealedRevision) -> Result<Draft, SyncError> {
-        let path = DocumentPath::parse(&self.path)?;
+        let path = self.path;
 
         if path.kind().to_string() != self.kind {
-            return Err(SyncError::refused(format!(
-                "{path} is not a document of kind {}",
-                self.kind
-            )));
+            return Err(SyncError::WrongKind {
+                path,
+                kind: self.kind,
+            });
         }
 
         let body = self.body.map(Base64::into_bytes);
         if body.as_ref().is_some_and(|body| body.len() > LARGEST_BODY) {
-            return Err(SyncError::refused(format!(
-                "{path} is larger than {LARGEST_BODY} bytes"
-            )));
+            return Err(SyncError::TooLarge {
+                path,
+                limit: LARGEST_BODY,
+            });
         }
 
         if self.conflicts.len() > LONGEST_CONFLICT_LIST {
-            return Err(SyncError::refused(format!(
-                "{path} lists too many conflicts"
-            )));
+            return Err(SyncError::TooManyConflicts(path));
         }
 
         Ok(Draft {

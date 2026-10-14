@@ -6,7 +6,7 @@ use synt_platform::Vault;
 
 use super::Syncer;
 use super::engine::Engine;
-use super::project::ProjectFolders;
+use crate::OpenProjects;
 use crate::SyncError;
 use crate::history::History;
 use crate::merge::DocumentMerger;
@@ -14,7 +14,7 @@ use crate::merge::DocumentMerger;
 pub struct SyncerBuilder {
     state: PathBuf,
     vault: Arc<dyn Vault>,
-    folders: Arc<dyn ProjectFolders>,
+    projects: Arc<dyn OpenProjects>,
     journal: Option<JournalWriter>,
     merger: Option<Arc<dyn DocumentMerger>>,
 }
@@ -23,12 +23,12 @@ impl SyncerBuilder {
     pub(crate) fn new(
         state: &Path,
         vault: Arc<dyn Vault>,
-        folders: Arc<dyn ProjectFolders>,
+        projects: Arc<dyn OpenProjects>,
     ) -> Self {
         Self {
             state: state.to_owned(),
             vault,
-            folders,
+            projects,
             journal: None,
             merger: None,
         }
@@ -48,7 +48,13 @@ impl SyncerBuilder {
 
     pub fn open(self) -> Result<Syncer, SyncError> {
         let history = History::open(&self.state)?;
-        let engine = Engine::new(history, self.vault, self.folders, self.journal, self.merger);
+        let engine = Engine::new(
+            history,
+            self.vault,
+            self.projects,
+            self.journal,
+            self.merger,
+        );
 
         Ok(Syncer::new(engine))
     }

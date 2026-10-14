@@ -96,11 +96,7 @@ impl Membership {
     }
 
     pub(crate) fn keyring_for_work(&self) -> Result<Keyring, SyncError> {
-        match self.standing()? {
-            Standing::Member(keyring) => Ok(keyring),
-            Standing::Waiting => Err(SyncError::NoKey(self.project.to_string())),
-            Standing::Removed => Err(SyncError::Removed(self.project.to_string())),
-        }
+        self.standing()?.into_keyring(&self.project)
     }
 
     pub(crate) fn share(&self, member: &MemberId) -> Result<Generation, SyncError> {
@@ -115,9 +111,7 @@ impl Membership {
 
     pub(crate) fn unshare(&self, member: &MemberId) -> Result<Generation, SyncError> {
         if member == &self.me() {
-            return Err(SyncError::invalid(
-                "a device cannot remove itself; use sync.disable on it",
-            ));
+            return Err(SyncError::RemovesItself);
         }
 
         let keyring = self.keyring_for_work()?;
@@ -171,19 +165,12 @@ impl Membership {
         let sender = members
             .iter()
             .find(|member| member.member == wrapped.by)
-            .ok_or_else(|| {
-                SyncError::refused(format!(
-                    "the project key was shared by {}, who is not a member",
-                    wrapped.by
-                ))
-            })?;
+            .ok_or_else(|| SyncError::SharedByStranger(wrapped.by.clone()))?;
 
         let keyring = self.key_wrap().unwrap(sender, wrapped)?;
 
         if held.is_some_and(|held| !keyring.keeps(held)) {
-            return Err(SyncError::refused(
-                "the new project key drops keys this device already holds",
-            ));
+            return Err(SyncError::KeysDropped);
         }
 
         self.save(&keyring)?;
@@ -210,11 +197,9 @@ impl Membership {
             .members(&self.project)?
             .into_iter()
             .find(|key| &key.member == member)
-            .ok_or_else(|| {
-                SyncError::invalid(format!(
-                    "{member} has not joined project {}; run sync.enable on that device first",
-                    self.project
-                ))
+            .ok_or_else(|| SyncError::NotJoined {
+                member: member.clone(),
+                project: self.project.clone(),
             })
     }
 

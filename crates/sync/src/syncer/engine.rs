@@ -4,25 +4,23 @@ use synt_journal::JournalWriter;
 use synt_platform::Vault;
 
 use super::notes::Notes;
-use super::project::{OpenFolder, ProjectFolders};
 use super::reports::Reports;
 use super::round::Round;
-use crate::SyncError;
-use crate::clock::unix_millis;
-use crate::document::{DocumentPath, ProjectFiles};
+use crate::document::DocumentPath;
 use crate::history::{History, SyncedProject};
 use crate::id::{Generation, MemberId, ProjectId, RevisionId};
 use crate::membership::{Membership, Standing};
 use crate::merge::DocumentMerger;
 use crate::provider::Place;
 use crate::replica::Replica;
-use crate::report::{Access, Disabled, MembershipChange, RevisionInfo, RoundReport, SyncStatus};
+use crate::report::{Disabled, MembershipChange, RevisionInfo, RoundReport, StatusReport};
 use crate::seal::{DeviceKey, Keyring};
+use crate::{OpenProjects, ProjectFolder, SyncError};
 
 pub(crate) struct Engine {
     history: History,
     vault: Arc<dyn Vault>,
-    folders: Arc<dyn ProjectFolders>,
+    projects: Arc<dyn OpenProjects>,
     merger: Option<Arc<dyn DocumentMerger>>,
     notes: Notes,
     reports: Reports,
@@ -33,14 +31,14 @@ impl Engine {
     pub(crate) fn new(
         history: History,
         vault: Arc<dyn Vault>,
-        folders: Arc<dyn ProjectFolders>,
+        projects: Arc<dyn OpenProjects>,
         journal: Option<JournalWriter>,
         merger: Option<Arc<dyn DocumentMerger>>,
     ) -> Self {
         Self {
             history,
             vault,
-            folders,
+            projects,
             merger,
             notes: Notes::new(journal),
             reports: Reports::default(),
@@ -48,25 +46,25 @@ impl Engine {
         }
     }
 
-    pub(crate) fn enable(&self, project: &str, place: &Place) -> Result<SyncStatus, SyncError> {
+    pub(crate) fn enable(&self, project: &str, place: &Place) -> Result<StatusReport, SyncError> {
         let _work = self.work();
-        let folder = self.folder(project)?;
+        let folder = self.projects.folder(project)?;
+        let id = folder.id();
 
-        if let Some(synced) = self.history.synced(&folder.id)?
+        if let Some(synced) = self.history.synced(id)?
             && &synced.place != place
         {
-            return Err(SyncError::invalid(format!(
-                "project {} already syncs through {}; run sync.disable first",
-                folder.id, synced.place
-            )));
+            return Err(SyncError::AlreadySyncs {
+                project: synced.project,
+                place: synced.place,
+            });
         }
 
-        let membership =
-            Membership::new(Arc::clone(&self.vault), place.connect()?, folder.id.clone())?;
+        let membership = Membership::new(Arc::clone(&self.vault), place.connect()?, id.clone())?;
         membership.join()?;
-        self.history.enable(&folder.id, place)?;
+        self.history.enable(id, place)?;
 
-        let synced = self.synced(&folder.id)?;
+        let synced = self.synced(id)?;
         self.round_of(&synced);
 
         self.status_of(&synced)
@@ -93,7 +91,7 @@ impl Engine {
         })
     }
 
-    pub(crate) fn status(&self, project: &str) -> Result<SyncStatus, SyncError> {
+    pub(crate) fn status(&self, project: &str) -> Result<StatusReport, SyncError> {
         let _work = self.work();
         let synced = self.synced_by_name(project)?;
 
@@ -142,7 +140,7 @@ impl Engine {
             .history_of(path)?
             .into_iter()
             .find(|info| info.revision == resolution.id)
-            .ok_or_else(|| SyncError::invalid("the resolution vanished from the history"))
+            .ok_or(SyncError::ResolutionLost)
     }
 
     pub(crate) fn round_all(&self) -> Vec<RoundReport> {
@@ -153,11 +151,7 @@ impl Engine {
                 .iter()
                 .map(|synced| self.round_of(synced))
                 .collect(),
-            Err(error) => vec![RoundReport {
-                at: unix_millis(),
-                error: Some(error.to_string()),
-                ..RoundReport::default()
-            }],
+            Err(error) => vec![RoundReport::failed(&error)],
         }
     }
 
@@ -180,10 +174,7 @@ impl Engine {
     }
 
     fn round_of(&self, synced: &SyncedProject) -> RoundReport {
-        let mut report = RoundReport {
-            at: unix_millis(),
-            ..RoundReport::default()
-        };
+        let mut report = RoundReport::starting();
 
         if let Err(error) = self.round_steps(synced, &mut report) {
             report.error = Some(error.to_string());
@@ -200,13 +191,13 @@ impl Engine {
         synced: &SyncedProject,
         report: &mut RoundReport,
     ) -> Result<(), SyncError> {
-        let folder = self.folder(synced.project.get())?;
+        let folder = self.projects.folder(synced.project.get())?;
         let membership = self.membership(synced)?;
 
         let Standing::Member(keyring) = membership.standing()? else {
             return Ok(());
         };
-        let replica = self.replica(&folder, &keyring, &membership)?;
+        let replica = self.replica(folder, &keyring, &membership)?;
 
         let round = Round {
             history: &self.history,
@@ -219,22 +210,17 @@ impl Engine {
         round.run(report)
     }
 
-    fn status_of(&self, synced: &SyncedProject) -> Result<SyncStatus, SyncError> {
+    fn status_of(&self, synced: &SyncedProject) -> Result<StatusReport, SyncError> {
         let project = &synced.project;
         let membership = self.membership(synced)?;
+        let standing = membership.standing()?;
 
-        let (access, generation) = match membership.standing()? {
-            Standing::Member(keyring) => (Access::Member, Some(keyring.generation())),
-            Standing::Waiting => (Access::Waiting, None),
-            Standing::Removed => (Access::Removed, None),
-        };
-
-        Ok(SyncStatus {
+        Ok(StatusReport {
             project: project.clone(),
             place: synced.place.clone(),
             device: membership.me(),
-            access,
-            generation,
+            access: standing.access(),
+            generation: standing.generation(),
             members: membership.members()?,
             documents: self.history.documents(project)?.len(),
             unpushed: self.history.unpushed(project)?.len(),
@@ -245,13 +231,13 @@ impl Engine {
     }
 
     fn working_replica(&self, project: &str) -> Result<Replica, SyncError> {
-        let folder = self.folder(project)?;
-        let synced = self.synced(&folder.id)?;
+        let folder = self.projects.folder(project)?;
+        let synced = self.synced(folder.id())?;
 
         let membership = self.membership(&synced)?;
         let keyring = membership.keyring_for_work()?;
 
-        self.replica(&folder, &keyring, &membership)
+        self.replica(folder, &keyring, &membership)
     }
 
     fn membership(&self, synced: &SyncedProject) -> Result<Membership, SyncError> {
@@ -264,15 +250,16 @@ impl Engine {
 
     fn replica(
         &self,
-        folder: &OpenFolder,
+        folder: ProjectFolder,
         keyring: &Keyring,
         membership: &Membership,
     ) -> Result<Replica, SyncError> {
+        let naming = keyring.naming(folder.id())?;
+
         Ok(Replica::new(
             self.history.clone(),
-            folder.id.clone(),
-            ProjectFiles::new(&folder.path),
-            keyring.naming(&folder.id)?,
+            folder,
+            naming,
             membership.me(),
             self.merger.clone(),
         ))
@@ -281,25 +268,16 @@ impl Engine {
     fn synced(&self, project: &ProjectId) -> Result<SyncedProject, SyncError> {
         self.history
             .synced(project)?
-            .ok_or_else(|| SyncError::NotEnabled(project.to_string()))
+            .ok_or_else(|| SyncError::NotEnabled(project.clone()))
     }
 
     fn synced_by_name(&self, project: &str) -> Result<SyncedProject, SyncError> {
         self.synced(&self.project_id(project)?)
     }
 
-    fn folder(&self, project: &str) -> Result<OpenFolder, SyncError> {
-        let folder = self.folders.folder(project).map_err(SyncError::Project)?;
-
-        Ok(OpenFolder {
-            id: ProjectId::parse(&folder.id)?,
-            path: folder.path,
-        })
-    }
-
     fn project_id(&self, project: &str) -> Result<ProjectId, SyncError> {
-        match self.folder(project) {
-            Ok(folder) => Ok(folder.id),
+        match self.projects.folder(project) {
+            Ok(folder) => Ok(folder.id().clone()),
             Err(error) => ProjectId::parse(project).map_err(|_| error),
         }
     }

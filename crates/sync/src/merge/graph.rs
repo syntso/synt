@@ -82,7 +82,7 @@ impl DocumentGraph {
             return None;
         }
 
-        let path = path.get().to_owned();
+        let path = path.clone();
         let heads = self.heads();
 
         if let [merge] = heads.as_slice() {

@@ -8,7 +8,7 @@ mod registry;
 mod resolved;
 mod resolved_database;
 mod resource;
-mod sync_folders;
+mod sync;
 mod target_ref;
 mod watch;
 

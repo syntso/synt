@@ -14,7 +14,7 @@ pub(crate) struct SyncedProject {
 impl FromRow for SyncedProject {
     fn from_row(row: &Row<'_>) -> rusqlite::Result<Self> {
         Ok(Self {
-            project: row.parsed("project", ProjectId::parse)?,
+            project: row.parsed("project")?,
             place: row.json("place")?,
             cursor: Cursor::new(row.get::<_, String>("cursor")?),
         })

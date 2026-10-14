@@ -4,8 +4,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use synt_actions::Action;
-use synt_core::{Broker, Core, ProjectOpen, Projects, ResourceGet, ResourcePut};
+use synt_actions::{Action, Registry};
+use synt_core::{
+    Broker, Core, DocumentHistory, DocumentResolve, ProjectOpen, Projects, ResourceGet,
+    ResourcePut, SyncDisable, SyncEnable, SyncShare, SyncStatus, SyncUnshare,
+};
 use synt_proto::ActionCall;
 use synt_sync::{SyncLoop, Syncer};
 
@@ -13,6 +16,20 @@ use super::{Grounds, Harness};
 
 pub const PROJECT_ID: &str = "4f2c9a7e1b3d5f60718293a4b5c6d7e8";
 const PROJECT_FILE: &str = "id = \"4f2c9a7e1b3d5f60718293a4b5c6d7e8\"\nname = \"Orders\"\n";
+
+pub fn register_sync(registry: &mut Registry, syncer: &Syncer) {
+    registry.register(SyncEnable::new(syncer.clone())).unwrap();
+    registry.register(SyncDisable::new(syncer.clone())).unwrap();
+    registry.register(SyncStatus::new(syncer.clone())).unwrap();
+    registry.register(SyncShare::new(syncer.clone())).unwrap();
+    registry.register(SyncUnshare::new(syncer.clone())).unwrap();
+    registry
+        .register(DocumentHistory::new(syncer.clone()))
+        .unwrap();
+    registry
+        .register(DocumentResolve::new(syncer.clone()))
+        .unwrap();
+}
 
 pub struct SyncingCore {
     harness: Harness,
@@ -47,7 +64,7 @@ impl SyncingCore {
             .register(ResourcePut::new(projects.clone()))
             .unwrap();
         registry.register(ResourceGet::new(projects)).unwrap();
-        syncer.register(&mut registry).unwrap();
+        register_sync(&mut registry, &syncer);
 
         let core = Core::new(registry, grounds.journal(), Broker::new());
 

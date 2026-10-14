@@ -153,7 +153,7 @@ async fn the_same_field_changed_twice_keeps_the_newer_value_and_reports_a_confli
 
         assert_eq!(file["port"].as_integer(), Some(2200));
         assert_eq!(conflicts.len(), 1);
-        assert_eq!(conflicts[0].path, "resources/api-1.toml");
+        assert_eq!(conflicts[0].path.get(), "resources/api-1.toml");
         assert_eq!(conflicts[0].fields, vec!["port"]);
         assert_eq!(conflicts[0].candidates.len(), 2);
         assert!(conflicts[0].merged.is_some());

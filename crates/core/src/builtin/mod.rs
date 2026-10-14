@@ -13,6 +13,7 @@ mod secret;
 mod session;
 mod sftp;
 mod ssh;
+mod sync;
 mod tunnel;
 
 pub use db::Databases;
@@ -34,4 +35,7 @@ pub use session::{
 };
 pub use sftp::Files;
 pub use ssh::{SshConnections, SshExec, SshWarm};
+pub use sync::{
+    DocumentHistory, DocumentResolve, SyncDisable, SyncEnable, SyncShare, SyncStatus, SyncUnshare,
+};
 pub use tunnel::{TunnelClose, TunnelList, TunnelOpen};

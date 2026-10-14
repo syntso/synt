@@ -1,16 +1,15 @@
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
+use synt_sync::{Disabled, Syncer};
 
 use super::params::ProjectParams;
-use crate::Syncer;
-use crate::report::Disabled;
 
-pub(crate) struct SyncDisable {
+pub struct SyncDisable {
     syncer: Syncer,
 }
 
 impl SyncDisable {
-    pub(crate) fn new(syncer: Syncer) -> Self {
+    pub fn new(syncer: Syncer) -> Self {
         Self { syncer }
     }
 }

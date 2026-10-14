@@ -9,7 +9,7 @@ pub(crate) struct Settled {
 }
 
 impl Settled {
-    pub(crate) fn add(&mut self, outcome: Outcome) {
+    pub(super) fn add(&mut self, outcome: Outcome) {
         self.merged += usize::from(outcome.merged);
         self.applied.extend(outcome.applied);
     }
