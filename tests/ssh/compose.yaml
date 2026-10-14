@@ -1,0 +1,24 @@
+name: synt-ssh-tests
+
+services:
+  bastion:
+    build: .
+    volumes:
+      - ./run/bastion:/run/synt:ro
+    ports:
+      - "127.0.0.1::22"
+    networks:
+      - outside
+      - inside
+
+  target:
+    build: .
+    volumes:
+      - ./run/target:/run/synt:ro
+    networks:
+      - inside
+
+networks:
+  outside: {}
+  inside:
+    internal: true

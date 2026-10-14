@@ -19,6 +19,7 @@ synt-journal = { path = "crates/journal" }
 synt-platform = { path = "crates/platform" }
 synt-proto = { path = "crates/proto" }
 synt-ssh = { path = "crates/ssh" }
+synt-test-servers = { path = "crates/test-servers" }
 
 bytes = "1.12.1"
 clap = { version = "4.6.7", features = ["derive"] }

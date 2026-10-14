@@ -59,3 +59,15 @@ cargo +nightly fuzz run osc133_scanner -- -max_total_time=180
 ```
 
 A crash is a bug: fix it and keep the input as a regression test in the crate.
+
+## SSH integration tests
+
+The tests in `crates/ssh/tests/servers` and `crates/core/tests/servers` talk to real OpenSSH servers. They are ignored by default and skip themselves unless `SYNT_SSH_TESTS=1` is set.
+
+```bash
+tests/ssh/up.sh
+SYNT_SSH_TESTS=1 cargo nextest run -p synt-ssh -p synt-core --test servers --run-ignored only
+tests/ssh/down.sh
+```
+
+`up.sh` needs Docker and `ssh-keygen`. It generates fresh client and host keys in `tests/ssh/run/` (ignored by git) and starts two Alpine OpenSSH containers: `bastion`, published on a random port of `127.0.0.1`, and `target`, reachable only from the bastion as `target:22`. Both log in user `synt` with the client key or the vault key and run a TCP echo on port 7000. The tests write their own `known_hosts` into a temporary folder and never touch `~/.ssh`. CI runs them in the `ssh-integration` job.

@@ -3241,6 +3241,7 @@ dependencies = [
  "synt-platform",
  "synt-proto",
  "synt-ssh",
+ "synt-test-servers",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
@@ -3339,13 +3340,24 @@ dependencies = [
  "russh",
  "russh-sftp",
  "sha1",
+ "sha2 0.11.1",
  "ssh2-config",
  "synt-platform",
+ "synt-test-servers",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",
  "zeroize",
+]
+
+[[package]]
+name = "synt-test-servers"
+version = "0.0.0"
+dependencies = [
+ "data-encoding",
+ "sha2 0.11.1",
+ "tempfile",
 ]
 
 [[package]]
