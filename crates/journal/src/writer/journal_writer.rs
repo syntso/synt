@@ -1,19 +1,19 @@
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Sender};
 use std::thread::{self, JoinHandle};
 
 use tokio::sync::oneshot;
 
+use super::request::Request;
+use super::worker::serve;
 use crate::anchor::KeyStore;
 use crate::chain::JournalId;
 use crate::error::JournalError;
 use crate::journal::Journal;
 use crate::model::{NewEvent, Seq};
 use crate::reader::JournalReader;
-
-const MAX_BATCH: usize = 256;
 
 #[derive(Clone)]
 pub struct JournalWriter {
@@ -26,12 +26,6 @@ struct Inner {
     keys: Arc<dyn KeyStore>,
     requests: Option<Sender<Request>>,
     thread: Option<JoinHandle<()>>,
-}
-
-struct Request {
-    events: Vec<NewEvent>,
-    opens_call: bool,
-    reply: oneshot::Sender<Result<Seq, JournalError>>,
 }
 
 impl JournalWriter {
@@ -134,56 +128,4 @@ impl Drop for Inner {
             let _ = thread.join();
         }
     }
-}
-
-fn serve(mut journal: Journal, incoming: &Receiver<Request>) {
-    while let Ok(first) = incoming.recv() {
-        let batch: Vec<Request> = std::iter::once(first)
-            .chain(incoming.try_iter().take(MAX_BATCH - 1))
-            .collect();
-
-        let (events, waiting) = assign(journal.anchors().head.seq, batch);
-
-        match journal.append_all(&events) {
-            Ok(_) => {
-                for (reply, seq) in waiting {
-                    let _ = reply.send(Ok(seq));
-                }
-            }
-            Err(error) => {
-                let error = Arc::new(error);
-
-                for (reply, _) in waiting {
-                    let _ = reply.send(Err(JournalError::Commit(Arc::clone(&error))));
-                }
-            }
-        }
-    }
-}
-
-type Waiting = (oneshot::Sender<Result<Seq, JournalError>>, Seq);
-
-fn assign(head: Seq, batch: Vec<Request>) -> (Vec<NewEvent>, Vec<Waiting>) {
-    let mut events = Vec::with_capacity(batch.len());
-    let mut waiting = Vec::with_capacity(batch.len());
-    let mut next = head.next();
-
-    for request in batch {
-        let first = next;
-
-        for (index, event) in request.events.into_iter().enumerate() {
-            let event = if request.opens_call && index > 0 {
-                event.call(first)
-            } else {
-                event
-            };
-
-            events.push(event);
-            next = next.next();
-        }
-
-        waiting.push((request.reply, first));
-    }
-
-    (events, waiting)
 }
