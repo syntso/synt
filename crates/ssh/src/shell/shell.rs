@@ -33,14 +33,10 @@ impl Shell {
                 0,
                 &[],
             )
-            .await
-            .map_err(|error| channel_error(&error))?;
+            .await?;
         await_reply(&mut reader, &mut early, "a terminal").await?;
 
-        writer
-            .request_shell(true)
-            .await
-            .map_err(|error| channel_error(&error))?;
+        writer.request_shell(true).await?;
         await_reply(&mut reader, &mut early, "a shell").await?;
 
         let output = ShellOutput::new(reader, early);
@@ -64,31 +60,26 @@ impl Shell {
     }
 
     pub async fn write(&self, data: Bytes) -> Result<(), SshError> {
-        self.writer
-            .data_bytes(data)
-            .await
-            .map_err(|error| channel_error(&error))
+        self.writer.data_bytes(data).await?;
+
+        Ok(())
     }
 
     pub async fn resize(&self, size: TerminalSize) -> Result<(), SshError> {
         self.writer
             .window_change(u32::from(size.columns), u32::from(size.rows), 0, 0)
-            .await
-            .map_err(|error| channel_error(&error))
+            .await?;
+
+        Ok(())
     }
 
     pub async fn hang_up(&self) -> Result<(), SshError> {
-        self.writer
-            .signal(Sig::HUP)
-            .await
-            .map_err(|error| channel_error(&error))
+        self.writer.signal(Sig::HUP).await?;
+
+        Ok(())
     }
 
     pub async fn close(&self) {
         let _ = self.writer.close().await;
     }
-}
-
-fn channel_error(error: &russh::Error) -> SshError {
-    SshError::Channel(error.to_string())
 }

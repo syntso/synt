@@ -230,10 +230,7 @@ impl Sftp {
         let lease = pool.acquire(target).await?;
         let channel = lease.open_session().await?;
 
-        channel
-            .request_subsystem(true, SUBSYSTEM)
-            .await
-            .map_err(|error| SshError::Channel(error.to_string()))?;
+        channel.request_subsystem(true, SUBSYSTEM).await?;
 
         let session = RawSftpSession::new(channel.into_stream());
         session.set_timeout(REQUEST_TIMEOUT_SECONDS);

@@ -76,10 +76,7 @@ async fn run(
 async fn start(lease: &Lease, command: &str) -> Result<Channel<Msg>, SshError> {
     let channel = lease.open_session().await?;
 
-    channel
-        .exec(true, command)
-        .await
-        .map_err(|error| SshError::Channel(error.to_string()))?;
+    channel.exec(true, command).await?;
 
     Ok(channel)
 }

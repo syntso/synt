@@ -53,10 +53,9 @@ impl Connection {
             return Ok(channel);
         }
 
-        self.handle
-            .channel_open_session()
-            .await
-            .map_err(|error| SshError::Channel(error.to_string()))
+        let channel = self.handle.channel_open_session().await?;
+
+        Ok(channel)
     }
 
     pub(crate) async fn open_direct(
@@ -65,15 +64,17 @@ impl Connection {
         port: u16,
         originator: SocketAddr,
     ) -> Result<Channel<Msg>, SshError> {
-        self.handle
+        let channel = self
+            .handle
             .channel_open_direct_tcpip(
                 host,
                 u32::from(port),
                 originator.ip().to_string(),
                 u32::from(originator.port()),
             )
-            .await
-            .map_err(|error| SshError::Channel(error.to_string()))
+            .await?;
+
+        Ok(channel)
     }
 
     pub(crate) async fn open_hop(&self, hop: &Target) -> Result<Channel<Msg>, russh::Error> {
