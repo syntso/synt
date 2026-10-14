@@ -3,7 +3,7 @@ mod decision;
 mod gate;
 mod scope;
 
-pub use access_request::AccessRequest;
-pub use decision::Decision;
-pub use gate::Gate;
-pub use scope::Scope;
+pub(crate) use access_request::AccessRequest;
+pub(crate) use decision::Decision;
+pub(crate) use gate::Gate;
+pub(crate) use scope::Scope;

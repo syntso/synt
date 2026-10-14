@@ -4,8 +4,8 @@ mod listing;
 mod resource;
 mod tunnel;
 
-pub use entry::ResourceEntry;
+pub(crate) use entry::ResourceEntry;
 pub use host::HostResource;
-pub use listing::ResourceListing;
+pub(crate) use listing::ResourceListing;
 pub use resource::Resource;
 pub use tunnel::TunnelResource;

@@ -7,18 +7,18 @@ use synt_journal::ResourceRef;
 use super::{Files, RemotePath};
 
 #[derive(Debug, Clone)]
-pub struct SftpRename {
+pub(crate) struct SftpRename {
     files: Files,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
-pub struct RenameParams {
+pub(crate) struct RenameParams {
     pub from: RemotePath,
     pub to: RemotePath,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Renamed {
+pub(crate) struct Renamed {
     pub from: String,
     pub to: String,
 }

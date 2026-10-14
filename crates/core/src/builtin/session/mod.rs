@@ -13,13 +13,14 @@ mod session_info;
 mod session_size;
 
 pub use attach::SessionAttach;
-pub use attached_session::AttachedSession;
+pub(crate) use attached_session::AttachedSession;
 pub use blocks::SessionBlocks;
 pub use close::SessionClose;
 pub use integration::SessionIntegration;
 pub use list::SessionList;
 pub use local_open::LocalSessionOpen;
-pub use open::{SessionOpenParams, SshSessionOpen};
+pub(crate) use open::SessionOpenParams;
+pub use open::SshSessionOpen;
 pub use resize::SessionResize;
-pub use session_info::SessionInfo;
-pub use session_size::SessionSize;
+pub(crate) use session_info::SessionInfo;
+pub(crate) use session_size::SessionSize;

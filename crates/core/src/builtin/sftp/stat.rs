@@ -5,7 +5,7 @@ use synt_journal::ResourceRef;
 use super::{FileInfo, Files, PathParams};
 
 #[derive(Debug, Clone)]
-pub struct SftpStat {
+pub(crate) struct SftpStat {
     files: Files,
 }
 

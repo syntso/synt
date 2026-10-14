@@ -13,12 +13,12 @@ use super::{Files, RemotePath};
 use crate::link::Inbound;
 
 #[derive(Debug, Clone)]
-pub struct SftpUpload {
+pub(crate) struct SftpUpload {
     files: Files,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
-pub struct UploadParams {
+pub(crate) struct UploadParams {
     pub path: RemotePath,
     #[schemars(with = "u32")]
     pub stream: StreamId,
@@ -29,7 +29,7 @@ pub struct UploadParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Uploaded {
+pub(crate) struct Uploaded {
     pub path: String,
     pub offset: u64,
     pub bytes: u64,

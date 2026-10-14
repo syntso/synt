@@ -4,4 +4,4 @@ mod session_kind;
 
 pub(crate) use console::Console;
 pub(crate) use console_output::ConsoleOutput;
-pub use session_kind::SessionKind;
+pub(crate) use session_kind::SessionKind;

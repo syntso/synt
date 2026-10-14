@@ -6,12 +6,12 @@ use synt_journal::ResourceRef;
 use super::{Files, PathParams};
 
 #[derive(Debug, Clone)]
-pub struct SftpRemove {
+pub(crate) struct SftpRemove {
     files: Files,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Removed {
+pub(crate) struct Removed {
     pub path: String,
     pub kind: &'static str,
 }

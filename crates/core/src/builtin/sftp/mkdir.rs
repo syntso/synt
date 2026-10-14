@@ -6,12 +6,12 @@ use synt_journal::ResourceRef;
 use super::{Files, PathParams};
 
 #[derive(Debug, Clone)]
-pub struct SftpMkdir {
+pub(crate) struct SftpMkdir {
     files: Files,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Made {
+pub(crate) struct Made {
     pub path: String,
 }
 

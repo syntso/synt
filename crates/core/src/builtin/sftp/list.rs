@@ -6,12 +6,12 @@ use synt_journal::ResourceRef;
 use super::{FileInfo, Files, PathParams};
 
 #[derive(Debug, Clone)]
-pub struct SftpList {
+pub(crate) struct SftpList {
     files: Files,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Listing {
+pub(crate) struct Listing {
     pub path: String,
     pub entries: Vec<FileInfo>,
     pub truncated: bool,

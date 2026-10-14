@@ -2,7 +2,7 @@ use serde::Serialize;
 use synt_ssh::FileEntry;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct FileInfo {
+pub(crate) struct FileInfo {
     pub name: String,
     pub kind: &'static str,
     pub size: Option<u64>,

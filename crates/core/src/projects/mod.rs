@@ -11,10 +11,11 @@ mod watch;
 
 use open_project::OpenProject;
 use personal::Personal;
-pub use problem::Problem;
+pub(crate) use problem::Problem;
 use project::Project;
-pub use project::ProjectInfo;
+pub(crate) use project::ProjectInfo;
 pub use projects::Projects;
 pub(crate) use resolved::Resolved;
-pub use resource::{HostResource, Resource, ResourceEntry, ResourceListing, TunnelResource};
+pub use resource::{HostResource, Resource, TunnelResource};
+pub(crate) use resource::{ResourceEntry, ResourceListing};
 use target_ref::TargetRef;

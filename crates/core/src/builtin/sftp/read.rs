@@ -9,12 +9,12 @@ use super::files::LARGEST_READ;
 use super::{Files, RemotePath};
 
 #[derive(Debug, Clone)]
-pub struct SftpRead {
+pub(crate) struct SftpRead {
     files: Files,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
-pub struct ReadParams {
+pub(crate) struct ReadParams {
     pub path: RemotePath,
 
     #[serde(default)]
@@ -25,7 +25,7 @@ pub struct ReadParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ReadResult {
+pub(crate) struct ReadResult {
     pub path: String,
     pub offset: u64,
     pub bytes: u64,

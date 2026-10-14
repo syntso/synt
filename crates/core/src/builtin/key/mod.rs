@@ -7,7 +7,7 @@ mod remove;
 
 pub use generate::KeyGenerate;
 pub use import::KeyImport;
-pub use key_kind::KeyKind;
-pub use key_name_params::KeyNameParams;
+pub(crate) use key_kind::KeyKind;
+pub(crate) use key_name_params::KeyNameParams;
 pub use list::KeyList;
 pub use remove::KeyRemove;

@@ -3,14 +3,14 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(try_from = "String")]
-pub struct RemotePath(String);
+pub(crate) struct RemotePath(String);
 
 impl RemotePath {
-    pub fn as_str(&self) -> &str {
+    pub(crate) fn as_str(&self) -> &str {
         &self.0
     }
 
-    pub fn into_string(self) -> String {
+    pub(crate) fn into_string(self) -> String {
         self.0
     }
 }

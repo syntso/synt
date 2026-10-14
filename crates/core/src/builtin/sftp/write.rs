@@ -14,12 +14,12 @@ const BASE64_GROUP: usize = 4;
 const BYTES_PER_GROUP: usize = 3;
 
 #[derive(Debug, Clone)]
-pub struct SftpWrite {
+pub(crate) struct SftpWrite {
     files: Files,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
-pub struct WriteParams {
+pub(crate) struct WriteParams {
     pub path: RemotePath,
 
     #[serde(default)]
@@ -35,7 +35,7 @@ pub struct WriteParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct WriteResult {
+pub(crate) struct WriteResult {
     pub path: String,
     pub offset: u64,
     pub bytes: u64,

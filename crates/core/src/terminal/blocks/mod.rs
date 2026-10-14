@@ -8,7 +8,7 @@ mod percent;
 mod scanner;
 mod sighting;
 
-pub use block::Block;
+pub(crate) use block::Block;
 pub(crate) use blocks::Blocks;
 use collector::Collector;
 use format_character::is_format_character;

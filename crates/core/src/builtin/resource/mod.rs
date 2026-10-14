@@ -8,4 +8,4 @@ pub use get::ResourceGet;
 pub use list::ResourceList;
 pub use put::ResourcePut;
 pub use remove::ResourceRemove;
-pub use resource_params::ResourceParams;
+pub(crate) use resource_params::ResourceParams;
