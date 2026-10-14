@@ -1,4 +1,4 @@
-use super::Namespaces;
+use crate::Namespaces;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ListQuery {

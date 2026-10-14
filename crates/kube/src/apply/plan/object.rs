@@ -1,7 +1,6 @@
 use serde::Serialize;
 
-use super::Change;
-use crate::ObjectRef;
+use crate::{Change, ObjectRef};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PlannedObject {
