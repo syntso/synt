@@ -33,6 +33,7 @@ pub struct Broker {
     apps: Arc<Apps>,
     waiting: Arc<Waiting>,
     next_id: AtomicU64,
+    patience: Duration,
 }
 
 impl Broker {
@@ -43,6 +44,7 @@ impl Broker {
             apps: Arc::new(Apps::default()),
             waiting: Arc::new(Waiting::default()),
             next_id: AtomicU64::new(1),
+            patience: PATIENCE,
         }
     }
 
@@ -51,6 +53,11 @@ impl Broker {
             always: Some(always),
             ..Self::new()
         }
+    }
+
+    #[must_use]
+    pub fn with_patience(self, patience: Duration) -> Self {
+        Self { patience, ..self }
     }
 
     pub(crate) fn hold(&self, grant: GrantId, stop: &CancellationToken) -> Option<Hold> {
@@ -119,7 +126,7 @@ impl Broker {
 
         let answered = tokio::select! {
             () = request.departed.cancelled() => return Err(REQUESTER_GONE),
-            answered = time::timeout(PATIENCE, question.answer()) => answered,
+            answered = time::timeout(self.patience, question.answer()) => answered,
         };
 
         answered.ok().flatten().ok_or(TIMED_OUT)

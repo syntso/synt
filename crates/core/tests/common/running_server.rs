@@ -1,4 +1,5 @@
 use std::io;
+use std::sync::Arc;
 use std::time::Duration;
 
 use synt_core::{Core, Server};
@@ -15,7 +16,7 @@ pub struct RunningServer {
 }
 
 impl RunningServer {
-    pub fn spawn(endpoint: &Endpoint, core: Core) -> io::Result<Self> {
+    pub fn spawn(endpoint: &Endpoint, core: impl Into<Arc<Core>>) -> io::Result<Self> {
         let server = Server::bind(endpoint, core, AppCheck::for_this_core().unwrap())?;
         let (shutdown, signal) = oneshot::channel::<()>();
 

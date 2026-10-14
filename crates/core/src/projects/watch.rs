@@ -21,12 +21,14 @@ pub(super) fn watch(
     })
     .map_err(cannot_watch)?;
 
-    watcher
-        .watch(path, RecursiveMode::NonRecursive)
+    let mut paths = watcher.paths_mut();
+    paths
+        .add(path, RecursiveMode::NonRecursive)
         .map_err(cannot_watch)?;
-    watcher
-        .watch(&path.join(RESOURCES), RecursiveMode::NonRecursive)
+    paths
+        .add(&path.join(RESOURCES), RecursiveMode::NonRecursive)
         .map_err(cannot_watch)?;
+    paths.commit().map_err(cannot_watch)?;
 
     Ok(watcher)
 }

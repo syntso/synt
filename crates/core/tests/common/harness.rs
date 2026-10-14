@@ -1,43 +1,53 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-use synt_actions::Registry;
 use synt_client::{Autostart, Client};
-use synt_core::{Broker, Core, Ping};
-use synt_journal::{Event, Filter, Journal, JournalWriter, MemoryKeyStore, Seq};
+use synt_core::{Broker, Core};
+use synt_journal::{Event, Filter, JournalWriter, Seq};
 use synt_platform::Endpoint;
 use synt_proto::{ClientKind, Hello, RequestSeq};
-use tempfile::TempDir;
 
-use super::{Failing, Panicking, RunningServer, Touch, app_hello};
+use super::{Approver, Grounds, RunningServer, app_hello};
 
 const PAGE: u32 = 100_000;
 
 pub struct Harness {
-    directory: TempDir,
+    grounds: Grounds,
     endpoint: Endpoint,
-    journal: JournalWriter,
-    touches: Arc<AtomicUsize>,
     server: Option<RunningServer>,
 }
 
 impl Harness {
     pub fn start() -> Self {
-        let directory = tempfile::tempdir().unwrap();
-        let endpoint = endpoint(&directory);
-        let journal = journal(&directory);
-        let touches = Arc::new(AtomicUsize::new(0));
+        Self::with_broker(Broker::new())
+    }
 
-        let core = Core::new(registry(&touches), journal.clone(), Broker::new());
+    pub fn with_broker(broker: Broker) -> Self {
+        let grounds = Grounds::new();
+        let core = Core::new(grounds.registry(), grounds.journal(), broker);
+
+        Self::serve(grounds, core)
+    }
+
+    pub fn serve(grounds: Grounds, core: impl Into<Arc<Core>>) -> Self {
+        let endpoint = grounds.endpoint();
         let server = RunningServer::spawn(&endpoint, core).unwrap();
 
         Self {
-            directory,
+            grounds,
             endpoint,
-            journal,
-            touches,
             server: Some(server),
         }
+    }
+
+    pub async fn restart(mut self, core: impl FnOnce(&Grounds) -> Core) -> Self {
+        self.stop().await;
+
+        let core = core(&self.grounds);
+        Self::serve(self.grounds, core)
+    }
+
+    pub fn grounds(&self) -> &Grounds {
+        &self.grounds
     }
 
     pub fn endpoint(&self) -> &Endpoint {
@@ -45,17 +55,25 @@ impl Harness {
     }
 
     pub fn journal(&self) -> JournalWriter {
-        self.journal.clone()
+        self.grounds.journal()
     }
 
     pub fn touches(&self) -> usize {
-        self.touches.load(Ordering::SeqCst)
+        self.grounds.touches()
+    }
+
+    pub fn runs(&self) -> usize {
+        self.grounds.runs()
     }
 
     pub async fn app(&self) -> Client {
         Client::connect(&self.endpoint, app_hello(), &Autostart::off())
             .await
             .unwrap()
+    }
+
+    pub async fn approver(&self) -> Approver {
+        Approver::new(self.app().await)
     }
 
     pub async fn agent(&self, name: &str) -> Client {
@@ -77,7 +95,7 @@ impl Harness {
     }
 
     pub fn matching(&self, filter: &Filter) -> Vec<Event> {
-        let reader = self.journal.reader().unwrap();
+        let reader = self.journal().reader().unwrap();
         reader.page(filter, None, PAGE).unwrap()
     }
 
@@ -86,7 +104,7 @@ impl Harness {
     }
 
     pub fn is_intact(&self) -> bool {
-        let reader = self.journal.reader().unwrap();
+        let reader = self.journal().reader().unwrap();
         reader.verify().unwrap().is_intact()
     }
 
@@ -95,27 +113,4 @@ impl Harness {
             server.stop().await;
         }
     }
-}
-
-fn endpoint(directory: &TempDir) -> Endpoint {
-    let unique = directory.path().file_name().unwrap().to_string_lossy();
-    Endpoint::named(directory.path(), &format!("synt-test-{unique}"))
-}
-
-fn journal(directory: &TempDir) -> JournalWriter {
-    let keys = Arc::new(MemoryKeyStore::new().unwrap());
-    let journal = Journal::create(directory.path().join("journal.sqlite"), keys).unwrap();
-
-    JournalWriter::spawn(journal).unwrap()
-}
-
-fn registry(touches: &Arc<AtomicUsize>) -> Registry {
-    let mut registry = Registry::new();
-
-    registry.register(Ping).unwrap();
-    registry.register(Touch::new(Arc::clone(touches))).unwrap();
-    registry.register(Failing).unwrap();
-    registry.register(Panicking).unwrap();
-
-    registry
 }
