@@ -17,7 +17,7 @@ impl Cluster {
         local_port: Option<u16>,
     ) -> Result<PortForward, KubeError> {
         let namespace = namespace.unwrap_or(self.namespace()).to_owned();
-        let pods: Api<Pod> = Api::namespaced(self.client().clone(), &namespace);
+        let pods = self.pods(Some(&namespace));
 
         let (pod, remote_port) = match target {
             ForwardTarget::Pod(name) => (name.clone(), port),
@@ -68,8 +68,10 @@ impl Cluster {
         service: &str,
         selector: &str,
     ) -> Result<Pod, KubeError> {
-        let pods: Api<Pod> = Api::namespaced(self.client().clone(), namespace);
-        let listed = pods.list(&ListParams::default().labels(selector)).await?;
+        let listed = self
+            .pods(Some(namespace))
+            .list(&ListParams::default().labels(selector))
+            .await?;
 
         listed
             .items

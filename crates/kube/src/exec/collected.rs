@@ -4,8 +4,8 @@ const CHUNK: usize = 32 * 1024;
 
 #[derive(Debug, Default)]
 pub(crate) struct Collected {
-    pub(crate) bytes: Vec<u8>,
-    pub(crate) truncated: bool,
+    bytes: Vec<u8>,
+    truncated: bool,
 }
 
 impl Collected {
@@ -32,6 +32,10 @@ impl Collected {
         String::from_utf8_lossy(&self.bytes).into_owned()
     }
 
+    pub(crate) fn truncated(&self) -> bool {
+        self.truncated
+    }
+
     fn keep(&mut self, data: &[u8], limit: usize) {
         let room = limit.saturating_sub(self.bytes.len());
 
@@ -52,7 +56,7 @@ mod tests {
         let collected = Collected::read(Some(&b"0123456789"[..]), 4).await;
 
         assert_eq!(collected.text(), "0123");
-        assert!(collected.truncated);
+        assert!(collected.truncated());
     }
 
     #[tokio::test]
@@ -60,6 +64,6 @@ mod tests {
         let collected = Collected::read(Some(&b"ok\n"[..]), 4).await;
 
         assert_eq!(collected.text(), "ok\n");
-        assert!(!collected.truncated);
+        assert!(!collected.truncated());
     }
 }

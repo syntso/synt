@@ -1,6 +1,8 @@
 use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 
+use k8s_openapi::api::core::v1::Pod;
+use kube::api::Api;
 use kube::config::KubeConfigOptions;
 use kube::{Client, Config};
 use tokio::sync::OnceCell;
@@ -60,6 +62,12 @@ impl Cluster {
 
     pub(crate) fn client(&self) -> &Client {
         &self.client
+    }
+
+    pub(crate) fn pods(&self, namespace: Option<&str>) -> Api<Pod> {
+        let namespace = namespace.unwrap_or(self.namespace());
+
+        Api::namespaced(self.client.clone(), namespace)
     }
 
     pub(crate) fn namespace_for(&self, kind: &Kind, namespace: Option<&str>) -> Option<String> {
