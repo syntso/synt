@@ -2,12 +2,12 @@ use std::path::PathBuf;
 
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_ssh::StoredKey;
 
-use crate::blocking::blocking;
+use crate::builtin::blocking::blocking;
 use crate::ssh_keys::{KeyInfo, KeyName, SshKeys};
 
 #[derive(Clone)]
@@ -54,7 +54,7 @@ impl Action for KeyImport {
     }
 
     fn summary(&self, output: &KeyInfo) -> Value {
-        json!({ "name": output.name, "kind": output.kind, "fingerprint": output.fingerprint })
+        output.summary()
     }
 
     async fn run(&self, _context: &Context, params: ImportParams) -> Result<KeyInfo, ActionError> {
@@ -66,8 +66,6 @@ impl Action for KeyImport {
 
         let keys = self.keys.clone();
 
-        blocking(move || keys.store(&name, &key))
-            .await
-            .map_err(|error| ActionError::Failed(error.to_string()))
+        blocking(move || keys.store(&name, &key)).await
     }
 }

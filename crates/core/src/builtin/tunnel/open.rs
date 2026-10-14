@@ -7,7 +7,7 @@ use synt_ssh::{Destination, SshError, Tunnels};
 use tokio_util::sync::CancellationToken;
 
 use super::TunnelInfo;
-use crate::builtin::ssh::{check_reach, failure, logs_in_as_root, resolve_any};
+use crate::builtin::ssh::{check_reach, failure, login_risk, resolve_any};
 use crate::projects::{Projects, Resolved};
 
 #[derive(Debug, Clone)]
@@ -53,11 +53,7 @@ impl Action for TunnelOpen {
     }
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &OpenParams) -> Risk {
-        if logs_in_as_root(&self.projects, target) {
-            return Risk::Privileged;
-        }
-
-        Risk::Write
+        login_risk(&self.projects, target, Self::RISK)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, params: &OpenParams) -> Option<String> {

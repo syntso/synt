@@ -1,12 +1,12 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_ssh::StoredKey;
 
 use super::KeyKind;
-use crate::blocking::blocking;
+use crate::builtin::blocking::blocking;
 use crate::ssh_keys::{KeyInfo, KeyName, SshKeys};
 
 const COMMENT_PREFIX: &str = "synt:";
@@ -52,7 +52,7 @@ impl Action for KeyGenerate {
     }
 
     fn summary(&self, output: &KeyInfo) -> Value {
-        json!({ "name": output.name, "kind": output.kind, "fingerprint": output.fingerprint })
+        output.summary()
     }
 
     async fn run(
@@ -73,6 +73,5 @@ impl Action for KeyGenerate {
             keys.store(&name, &key)
         })
         .await
-        .map_err(|error| ActionError::Failed(error.to_string()))
     }
 }

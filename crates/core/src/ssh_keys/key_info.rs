@@ -1,4 +1,5 @@
 use serde::Serialize;
+use serde_json::{Value, json};
 use synt_ssh::KeySummary;
 
 use super::KeyName;
@@ -23,5 +24,9 @@ impl KeyInfo {
             fingerprint: summary.fingerprint.clone(),
             created_at,
         }
+    }
+
+    pub(crate) fn summary(&self) -> Value {
+        json!({ "name": self.name, "kind": self.kind, "fingerprint": self.fingerprint })
     }
 }

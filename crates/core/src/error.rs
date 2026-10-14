@@ -1,6 +1,7 @@
 use std::io;
 use std::path::PathBuf;
 
+use synt_actions::ActionError;
 use synt_journal::{JournalError, JournalId};
 use synt_platform::{KeyPlace, PlatformError};
 use thiserror::Error;
@@ -67,4 +68,10 @@ pub enum CoreError {
          the core will not start a new journal over it"
     )]
     UnknownJournal { journal: PathBuf, place: KeyPlace },
+}
+
+impl From<CoreError> for ActionError {
+    fn from(error: CoreError) -> Self {
+        Self::Failed(error.to_string())
+    }
 }

@@ -10,7 +10,7 @@ use synt_ssh::{ExecLimits, ExecOutput, Pool};
 use tokio::sync::Semaphore;
 
 use super::privilege::escalates;
-use super::{destination, failure, logs_in_as_root, reach_host};
+use super::{destination, failure, login_risk, reach_host};
 use crate::projects::Projects;
 
 const LONGEST_TIMEOUT: Duration = Duration::from_hours(24);
@@ -63,11 +63,11 @@ impl Action for SshExec {
     type Output = ExecResult;
 
     fn risk(&self, target: Option<&ResourceRef>, params: &ExecParams) -> Risk {
-        if escalates(&params.command) || logs_in_as_root(&self.projects, target) {
+        if escalates(&params.command) {
             return Risk::Privileged;
         }
 
-        Risk::Write
+        login_risk(&self.projects, target, Self::RISK)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, _params: &ExecParams) -> Option<String> {

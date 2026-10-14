@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use crate::blocking::blocking;
+use crate::builtin::blocking::blocking;
 use crate::ssh_keys::{KeyInfo, SshKeys};
 
 #[derive(Clone)]
@@ -30,8 +30,6 @@ impl Action for KeyList {
     async fn run(&self, _context: &Context, (): ()) -> Result<Vec<KeyInfo>, ActionError> {
         let keys = self.keys.clone();
 
-        blocking(move || keys.list())
-            .await
-            .map_err(|error| ActionError::Failed(error.to_string()))
+        blocking(move || keys.list()).await
     }
 }

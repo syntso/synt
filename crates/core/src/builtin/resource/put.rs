@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use crate::blocking::blocking;
+use crate::builtin::blocking::blocking;
 use crate::projects::{Projects, Resource, ResourceEntry};
 
 #[derive(Debug, Clone)]
@@ -54,8 +54,6 @@ impl Action for ResourcePut {
         let admitted = context.destination().map(str::to_owned);
         let projects = self.projects.clone();
 
-        blocking(move || projects.put(target.as_str(), admitted.as_deref(), params.resource))
-            .await
-            .map_err(|error| ActionError::Failed(error.to_string()))
+        blocking(move || projects.put(target.as_str(), admitted.as_deref(), params.resource)).await
     }
 }

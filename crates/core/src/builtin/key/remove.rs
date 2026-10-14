@@ -1,10 +1,10 @@
-use serde_json::{Value, json};
+use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_ssh::Pool;
 
 use super::KeyNameParams;
-use crate::blocking::blocking;
+use crate::builtin::blocking::blocking;
 use crate::ssh_keys::{KeyInfo, SshKeys};
 
 #[derive(Clone)]
@@ -37,16 +37,14 @@ impl Action for KeyRemove {
     }
 
     fn summary(&self, output: &KeyInfo) -> Value {
-        json!({ "name": output.name, "kind": output.kind, "fingerprint": output.fingerprint })
+        output.summary()
     }
 
     async fn run(&self, _context: &Context, params: KeyNameParams) -> Result<KeyInfo, ActionError> {
         let name = params.key_name()?;
         let keys = self.keys.clone();
 
-        let removed = blocking(move || keys.remove(&name))
-            .await
-            .map_err(|error| ActionError::Failed(error.to_string()))?;
+        let removed = blocking(move || keys.remove(&name)).await?;
 
         self.pool.forget_vault_key(&removed.name);
 

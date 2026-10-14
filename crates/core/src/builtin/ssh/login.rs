@@ -3,18 +3,19 @@ use synt_journal::ResourceRef;
 use synt_ssh::Target;
 
 use super::privilege::is_root;
-use crate::blocking::blocking;
+use crate::builtin::blocking::blocking;
 use crate::projects::{Projects, Resolved};
 
-pub(crate) fn logs_in_as_root(projects: &Projects, target: Option<&ResourceRef>) -> bool {
-    let Some(target) = target else {
-        return false;
-    };
-
-    match projects.resolve(target.as_str()) {
-        Ok(resolved) => is_root(resolved.host().user()),
-        Err(_) => true,
+pub(crate) fn login_risk(
+    projects: &Projects,
+    target: Option<&ResourceRef>,
+    declared: Risk,
+) -> Risk {
+    if logs_in_as_root(projects, target) {
+        return Risk::Privileged;
     }
+
+    declared
 }
 
 pub(crate) fn destination(projects: &Projects, target: Option<&ResourceRef>) -> Option<String> {
@@ -66,9 +67,18 @@ pub(crate) async fn resolve_any(projects: &Projects, spec: &str) -> Result<Resol
     let projects = projects.clone();
     let spec = spec.to_owned();
 
-    blocking(move || projects.resolve(&spec))
-        .await
-        .map_err(|error| ActionError::Failed(error.to_string()))
+    blocking(move || projects.resolve(&spec)).await
+}
+
+fn logs_in_as_root(projects: &Projects, target: Option<&ResourceRef>) -> bool {
+    let Some(target) = target else {
+        return false;
+    };
+
+    match projects.resolve(target.as_str()) {
+        Ok(resolved) => is_root(resolved.host().user()),
+        Err(_) => true,
+    }
 }
 
 fn hidden_root(host: &ResourceRef) -> ActionError {

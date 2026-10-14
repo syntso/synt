@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::ResourceParams;
-use crate::blocking::blocking;
+use crate::builtin::blocking::blocking;
 use crate::projects::{Projects, ResourceEntry};
 
 #[derive(Debug, Clone)]
@@ -35,8 +35,6 @@ impl Action for ResourceGet {
     ) -> Result<ResourceEntry, ActionError> {
         let projects = self.projects.clone();
 
-        blocking(move || projects.resource(&params.project, &params.name))
-            .await
-            .map_err(|error| ActionError::Failed(error.to_string()))
+        blocking(move || projects.resource(&params.project, &params.name)).await
     }
 }

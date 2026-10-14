@@ -1,19 +1,15 @@
-use std::time::Duration;
-
 use schemars::JsonSchema;
 use serde::Deserialize;
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_ssh::{Pool, Shell, Target, TerminalSize};
-use tokio::time;
 
 use super::AttachedSession;
 use super::checks::{connection, term, terminal_size};
 use super::revocation::close_when_revoked;
-use crate::builtin::ssh::{destination, failure, logs_in_as_root, reach_host};
+use crate::builtin::ssh::{destination, failure, login_risk, reach_host, within_connect_limit};
 use crate::projects::Projects;
 use crate::terminal::{Console, ConsoleOutput, Origin, SessionId, Terminals};
-const CONNECT_LIMIT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone)]
 pub struct SshSessionOpen {
@@ -47,15 +43,7 @@ impl SshSessionOpen {
         term: &str,
         size: TerminalSize,
     ) -> Result<(Console, ConsoleOutput), ActionError> {
-        let lease = time::timeout(CONNECT_LIMIT, self.pool.acquire(target))
-            .await
-            .map_err(|_| {
-                ActionError::failed(format!(
-                    "could not connect within {} s",
-                    CONNECT_LIMIT.as_secs()
-                ))
-            })?
-            .map_err(|error| failure(&error))?;
+        let lease = within_connect_limit(self.pool.acquire(target)).await?;
 
         let (shell, output) = Shell::open(lease, term, size)
             .await
@@ -77,11 +65,7 @@ impl Action for SshSessionOpen {
     type Output = AttachedSession;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &SessionOpenParams) -> Risk {
-        if logs_in_as_root(&self.projects, target) {
-            return Risk::Privileged;
-        }
-
-        Risk::Write
+        login_risk(&self.projects, target, Self::RISK)
     }
 
     fn destination(

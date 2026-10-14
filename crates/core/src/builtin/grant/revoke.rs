@@ -70,11 +70,7 @@ impl Action for GrantRevoke {
     }
 
     async fn run(&self, context: &Context, params: RevokeParams) -> Result<Revoked, ActionError> {
-        let revoked = self
-            .grants
-            .revoke(params.id)
-            .await
-            .map_err(|error| ActionError::Failed(error.to_string()))?;
+        let revoked = self.grants.revoke(params.id).await?;
 
         let Some((grant, stopped)) = revoked else {
             return Err(ActionError::failed(format!(

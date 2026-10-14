@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use crate::blocking::blocking;
+use crate::builtin::blocking::blocking;
 use crate::projects::{Projects, ResourceListing};
 
 #[derive(Debug, Clone)]
@@ -45,8 +45,6 @@ impl Action for ResourceList {
     ) -> Result<ResourceListing, ActionError> {
         let projects = self.projects.clone();
 
-        blocking(move || projects.listing(&params.project))
-            .await
-            .map_err(|error| ActionError::Failed(error.to_string()))
+        blocking(move || projects.listing(&params.project)).await
     }
 }

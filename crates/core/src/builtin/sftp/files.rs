@@ -10,7 +10,7 @@ use super::{
     SftpDownload, SftpList, SftpMkdir, SftpRead, SftpRemove, SftpRename, SftpStat, SftpUpload,
     SftpWrite,
 };
-use crate::builtin::ssh::{destination, failure, logs_in_as_root, reach_host};
+use crate::builtin::ssh::{destination, failure, login_risk, reach_host};
 use crate::link::Link;
 use crate::projects::Projects;
 
@@ -74,11 +74,7 @@ impl Files {
     }
 
     pub(super) fn per_call_risk(&self, target: Option<&ResourceRef>, declared: Risk) -> Risk {
-        if logs_in_as_root(&self.projects, target) {
-            return Risk::Privileged;
-        }
-
-        declared
+        login_risk(&self.projects, target, declared)
     }
 
     pub(super) fn destination(&self, target: Option<&ResourceRef>) -> Option<String> {

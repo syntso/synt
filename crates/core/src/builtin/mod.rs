@@ -1,3 +1,4 @@
+mod blocking;
 mod grant;
 mod journal;
 mod key;
