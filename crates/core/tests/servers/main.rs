@@ -9,6 +9,7 @@ mod logins;
 mod memory_vault;
 mod person;
 mod refusal;
+mod runbooks;
 mod running_core;
 mod session;
 mod tunnel;
