@@ -1,7 +1,7 @@
 use k8s_openapi::api::core::v1::Event;
 use serde::Serialize;
 
-use super::ObjectRef;
+use crate::ObjectRef;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EventLine {

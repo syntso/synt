@@ -4,13 +4,13 @@ const SUCCESS: &str = "Success";
 const NON_ZERO_EXIT: &str = "NonZeroExitCode";
 const EXIT_CODE: &str = "ExitCode";
 
-pub(crate) enum ExitStatus {
+pub(super) enum ExitStatus {
     Exited(i32),
     Failed(String),
 }
 
 impl ExitStatus {
-    pub(crate) fn from_status(status: Option<Status>) -> Self {
+    pub(super) fn from_status(status: Option<Status>) -> Self {
         let Some(status) = status else {
             return Self::Failed("the cluster reported no exit status".to_owned());
         };

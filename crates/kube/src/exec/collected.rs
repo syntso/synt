@@ -3,13 +3,13 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 const CHUNK: usize = 32 * 1024;
 
 #[derive(Debug, Default)]
-pub(crate) struct Collected {
+pub(super) struct Collected {
     bytes: Vec<u8>,
     truncated: bool,
 }
 
 impl Collected {
-    pub(crate) async fn read(reader: Option<impl AsyncRead + Unpin>, limit: usize) -> Self {
+    pub(super) async fn read(reader: Option<impl AsyncRead + Unpin>, limit: usize) -> Self {
         let Some(mut reader) = reader else {
             return Self::default();
         };
@@ -28,11 +28,11 @@ impl Collected {
         collected
     }
 
-    pub(crate) fn text(&self) -> String {
+    pub(super) fn text(&self) -> String {
         String::from_utf8_lossy(&self.bytes).into_owned()
     }
 
-    pub(crate) fn truncated(&self) -> bool {
+    pub(super) fn truncated(&self) -> bool {
         self.truncated
     }
 

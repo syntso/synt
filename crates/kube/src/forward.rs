@@ -1,15 +1,20 @@
+mod backend;
 mod relay;
+mod request;
 mod status;
 mod target;
 mod traffic;
 
-pub(crate) use relay::Relay;
+use backend::Backend;
+use relay::Relay;
+pub use request::ForwardRequest;
 pub use status::ForwardStatus;
 pub use target::ForwardTarget;
 use traffic::ForwardTraffic;
 
 use std::fmt::{self, Debug, Formatter};
 use std::net::Ipv4Addr;
+use std::num::NonZeroU16;
 use std::sync::Arc;
 
 use tokio::net::TcpListener;
@@ -30,13 +35,13 @@ pub struct PortForward {
 }
 
 impl PortForward {
-    pub(crate) async fn start(
+    async fn start(
         target: String,
         namespace: String,
         relay: Relay,
-        local_port: Option<u16>,
+        local_port: Option<NonZeroU16>,
     ) -> Result<Self, KubeError> {
-        let listener = Self::listen(local_port.unwrap_or(ANY_PORT)).await?;
+        let listener = Self::listen(local_port.map_or(ANY_PORT, NonZeroU16::get)).await?;
         let local_port = listener.local_addr()?.port();
 
         let pod = relay.pod().to_owned();
