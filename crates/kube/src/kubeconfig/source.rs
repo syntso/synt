@@ -22,7 +22,7 @@ impl KubeconfigSource {
     pub fn paths(&self) -> Vec<PathBuf> {
         match self {
             Self::File(path) => vec![path.clone()],
-            Self::Default => default_paths(),
+            Self::Default => Self::default_paths(),
         }
     }
 
@@ -60,12 +60,12 @@ impl KubeconfigSource {
 
     pub fn contexts(&self) -> Result<Vec<ContextInfo>, KubeError> {
         let kubeconfig = self.load()?;
-        let current = kubeconfig.current_context.clone();
+        let current = kubeconfig.current_context.as_deref();
 
         let contexts = kubeconfig
             .contexts
             .iter()
-            .map(|named| ContextInfo::new(&kubeconfig, named, current.as_deref()))
+            .map(|named| ContextInfo::new(&kubeconfig, named, current))
             .collect();
 
         Ok(contexts)
@@ -76,6 +76,22 @@ impl KubeconfigSource {
             place: self.to_string(),
             reason: first_line(&reason),
         }
+    }
+
+    fn default_paths() -> Vec<PathBuf> {
+        if let Some(value) = env::var_os(VARIABLE) {
+            let listed: Vec<PathBuf> = env::split_paths(&value)
+                .filter(|path| !path.as_os_str().is_empty())
+                .collect();
+
+            if !listed.is_empty() {
+                return listed;
+            }
+        }
+
+        env::home_dir()
+            .map(|home| vec![home.join(".kube").join("config")])
+            .unwrap_or_default()
     }
 }
 
@@ -93,22 +109,6 @@ impl Display for KubeconfigSource {
 
         formatter.write_str(&paths.join(", "))
     }
-}
-
-fn default_paths() -> Vec<PathBuf> {
-    if let Some(value) = env::var_os(VARIABLE) {
-        let listed: Vec<PathBuf> = env::split_paths(&value)
-            .filter(|path| !path.as_os_str().is_empty())
-            .collect();
-
-        if !listed.is_empty() {
-            return listed;
-        }
-    }
-
-    env::home_dir()
-        .map(|home| vec![home.join(".kube").join("config")])
-        .unwrap_or_default()
 }
 
 #[cfg(test)]
