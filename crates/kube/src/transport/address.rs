@@ -53,7 +53,10 @@ mod tests {
     #[test]
     fn the_port_comes_from_the_url_or_its_scheme() {
         assert_eq!(address("https://k3s:6443"), at("k3s", 6443));
-        assert_eq!(address("https://api.example.com"), at("api.example.com", 443));
+        assert_eq!(
+            address("https://api.example.com"),
+            at("api.example.com", 443)
+        );
         assert_eq!(address("http://localhost"), at("localhost", 80));
     }
 
