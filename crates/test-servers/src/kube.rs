@@ -1,7 +1,6 @@
-use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
+use crate::run_folder::RunFolder;
 use crate::{HostKey, SshHome};
 
 const SWITCH: &str = "SYNT_KUBE_TESTS";
@@ -10,7 +9,7 @@ const START: &str = "tests/kube/up.sh";
 
 #[derive(Debug, Clone)]
 pub struct KubeServers {
-    run: PathBuf,
+    run: RunFolder,
     bastion_port: u16,
     bastion_key: HostKey,
 }
@@ -25,31 +24,21 @@ impl KubeServers {
     pub const USER: &'static str = "synt";
 
     pub fn running() -> Option<Self> {
-        if env::var(SWITCH).as_deref() != Ok("1") {
-            eprintln!("skipped: set {SWITCH}=1 after {START} to run tests against a cluster");
-            return None;
-        }
-
-        let run = Path::new(env!("CARGO_MANIFEST_DIR")).join(RUN_FOLDER);
-        let line = read(&run, "bastion/host_ed25519_key.pub");
+        let run = RunFolder::switched_on(SWITCH, START, RUN_FOLDER, "a cluster")?;
 
         Some(Self {
-            bastion_port: read(&run, "bastion_port")
-                .trim()
-                .parse()
-                .unwrap_or_else(|_| panic!("{START} wrote a bastion port that is not a number")),
-            bastion_key: HostKey::parse(&line)
-                .unwrap_or_else(|| panic!("the bastion host key from {START} is damaged")),
+            bastion_port: run.bastion_port(),
+            bastion_key: run.host_key("bastion"),
             run,
         })
     }
 
     pub fn kubeconfig(&self) -> PathBuf {
-        self.run.join("kubeconfig")
+        self.run.file("kubeconfig")
     }
 
     pub fn kubeconfig_text(&self) -> String {
-        read(&self.run, "kubeconfig")
+        self.run.read("kubeconfig")
     }
 
     pub fn bastion_port(&self) -> u16 {
@@ -57,7 +46,7 @@ impl KubeServers {
     }
 
     pub fn client_key(&self) -> PathBuf {
-        self.run.join("client_ed25519")
+        self.run.file("client_ed25519")
     }
 
     pub fn trusting_home(&self) -> SshHome {
@@ -72,17 +61,11 @@ impl KubeServers {
         text.lines()
             .find_map(|line| line.trim().strip_prefix("server: https://127.0.0.1:"))
             .and_then(|port| port.trim().parse().ok())
-            .unwrap_or_else(|| panic!("{START} wrote a kubeconfig without the direct server"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "{} wrote a kubeconfig without the direct server",
+                    self.run.start()
+                )
+            })
     }
-}
-
-fn read(run: &Path, name: &str) -> String {
-    let path = run.join(name);
-
-    fs::read_to_string(&path).unwrap_or_else(|error| {
-        panic!(
-            "{SWITCH}=1 but {} cannot be read ({error}); run {START} first",
-            path.display()
-        )
-    })
 }

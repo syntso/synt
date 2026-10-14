@@ -1,11 +1,12 @@
-mod db_servers;
+mod db;
+mod home;
 mod host_key;
-mod kube_servers;
-mod ssh_home;
-mod ssh_servers;
+mod kube;
+mod run_folder;
+mod ssh;
 
-pub use db_servers::DbServers;
+pub use db::DbServers;
+pub use home::SshHome;
 pub use host_key::HostKey;
-pub use kube_servers::KubeServers;
-pub use ssh_home::SshHome;
-pub use ssh_servers::SshServers;
+pub use kube::KubeServers;
+pub use ssh::SshServers;

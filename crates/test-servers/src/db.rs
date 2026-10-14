@@ -1,9 +1,8 @@
-use std::env;
-use std::fs;
-use std::path::Path;
+use crate::run_folder::RunFolder;
 
 const SWITCH: &str = "SYNT_DB_TESTS";
-const PORTS_FILE: &str = "../../tests/db/run/ports";
+const RUN_FOLDER: &str = "../../tests/db/run";
+const PORTS_FILE: &str = "ports";
 const START: &str = "tests/db/up.sh";
 
 #[derive(Debug, Clone)]
@@ -18,18 +17,8 @@ impl DbServers {
     pub const DATABASE: &'static str = "synt";
 
     pub fn running() -> Option<Self> {
-        if env::var(SWITCH).as_deref() != Ok("1") {
-            eprintln!("skipped: set {SWITCH}=1 after {START} to run tests against databases");
-            return None;
-        }
-
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(PORTS_FILE);
-        let ports = fs::read_to_string(&path).unwrap_or_else(|error| {
-            panic!(
-                "{SWITCH}=1 but {} cannot be read ({error}); run {START} first",
-                path.display()
-            )
-        });
+        let run = RunFolder::switched_on(SWITCH, START, RUN_FOLDER, "databases")?;
+        let ports = run.read(PORTS_FILE);
 
         Some(Self { ports })
     }
