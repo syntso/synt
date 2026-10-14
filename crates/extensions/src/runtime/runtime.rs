@@ -14,6 +14,7 @@ use crate::manifest::Api;
 
 const FUEL_PER_CALL: u64 = 10_000_000_000;
 const TIME_PER_CALL: Duration = Duration::from_secs(10);
+const INTERFACE_PREFIX: &str = "synt:extension/";
 
 #[derive(Clone)]
 pub struct Runtime {
@@ -49,6 +50,8 @@ impl Runtime {
     pub(crate) fn compile(&self, api: Api, bytes: &[u8]) -> Result<Compiled, ExtensionError> {
         let component =
             Component::new(&self.engine, bytes).map_err(|error| component_error(&error))?;
+        check_interface_version(&self.engine, &component, api)?;
+
         let instance = self
             .linker
             .instantiate_pre(&component)
@@ -95,6 +98,28 @@ impl Runtime {
         });
 
         Ok(store)
+    }
+}
+
+fn check_interface_version(
+    engine: &Engine,
+    component: &Component,
+    api: Api,
+) -> Result<(), ExtensionError> {
+    let version = format!("@{api}.0");
+    let component_type = component.component_type();
+
+    let other = component_type
+        .imports(engine)
+        .map(|(name, _)| name)
+        .filter(|name| name.starts_with(INTERFACE_PREFIX))
+        .find(|name| !name.ends_with(&version));
+
+    match other {
+        Some(name) => Err(ExtensionError::Component(format!(
+            "the component is not an extension for api {api}: it imports {name}"
+        ))),
+        None => Ok(()),
     }
 }
 
