@@ -6,12 +6,13 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 use synt_client::{Client, ClientError};
 use synt_core::{
-    Broker, Core, CoreCaller, CoreScreen, EventFeed, ProjectList, ProjectOpen, Projects,
-    SecretList, SecretPut, SecretRemove, Secrets,
+    Broker, Core, CoreCaller, CoreScreen, EventFeed, ExtensionMerger, ProjectList, ProjectOpen,
+    Projects, SecretList, SecretPut, SecretRemove, Secrets,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Event, EventKind, Filter, Seq};
 use synt_proto::{ActionCall, ActionOutcome, ApprovalDecision, Notice, Notification};
+use synt_sync::Syncer;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 
@@ -19,6 +20,7 @@ use super::EchoServer;
 use crate::common::{Approver, Grounds, Harness};
 
 pub const PROJECT: &str = "orders";
+const PROJECT_FILE: &str = "id = \"0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e\"\nname = \"Orders\"\n";
 
 const UNUSED_REGISTRY: &str = "http://127.0.0.1:9";
 const UNUSED_KEY: &str = "RWQOuk/x7vRoqs2E6Vxffy293iLd8y+C5Yo2oilreJ2V22RL3qFeV7f2";
@@ -81,6 +83,7 @@ pub struct Stage {
     pub echo: EchoServer,
     pub approver: Approver,
     pub project: PathBuf,
+    syncer: Syncer,
     _feed: [JoinHandle<()>; 2],
 }
 
@@ -88,7 +91,7 @@ impl Stage {
     pub async fn start() -> Self {
         let grounds = Grounds::new();
         let echo = EchoServer::start();
-        let (core, extensions, projects) = assemble(&grounds);
+        let (core, extensions, projects, syncer) = assemble(&grounds);
 
         extensions.connect(
             Arc::new(CoreCaller::new(&core)),
@@ -100,12 +103,14 @@ impl Stage {
         let approver = harness.approver().await;
         let project = harness.grounds().path().join(PROJECT);
         fs::create_dir(&project).unwrap();
+        fs::write(project.join("synt.toml"), PROJECT_FILE).unwrap();
 
         let mut stage = Self {
             harness,
             echo,
             approver,
             project,
+            syncer,
             _feed: feed,
         };
         stage.open_project().await;
@@ -175,6 +180,12 @@ impl Stage {
             .collect()
     }
 
+    pub async fn sync(&self) {
+        for report in self.syncer.sync_now().await {
+            assert_eq!(report.error, None, "a sync round failed");
+        }
+    }
+
     pub async fn put_secret(&self, name: &str, value: &str) {
         self.call("secret.put", json!({ "name": name, "value": value }))
             .await;
@@ -208,7 +219,7 @@ pub fn read<T: Notice>(notification: &Notification) -> Option<T> {
     notification.read::<T>().and_then(Result::ok)
 }
 
-fn assemble(grounds: &Grounds) -> (Arc<Core>, Extensions, Projects) {
+fn assemble(grounds: &Grounds) -> (Arc<Core>, Extensions, Projects, Syncer) {
     let projects = Projects::start(grounds.state()).unwrap();
     let secrets = Secrets::new(grounds.vault(), grounds.state());
 
@@ -234,11 +245,22 @@ fn assemble(grounds: &Grounds) -> (Arc<Core>, Extensions, Projects) {
     .unwrap()
     .with_secrets(Arc::new(secrets))
     .with_projects(Arc::new(projects.clone()));
+
+    let syncer = Syncer::builder(
+        &grounds.state_path(),
+        grounds.vault(),
+        Arc::new(projects.clone()),
+    )
+    .journal(grounds.journal())
+    .merger(Arc::new(ExtensionMerger::new(extensions.clone())))
+    .open()
+    .unwrap();
+    syncer.register(&mut registry).unwrap();
     extensions.register(&mut registry).unwrap();
 
     let core = Arc::new(Core::new(registry, grounds.journal(), Broker::new()));
 
-    (core, extensions, projects)
+    (core, extensions, projects, syncer)
 }
 
 fn fixture() -> Vec<u8> {

@@ -8,13 +8,13 @@ use std::time::Duration;
 
 use synt_actions::{ActionError, Registry};
 use synt_core::{
-    AlwaysGrants, Broker, Core, CoreCaller, CoreScreen, Databases, EventFeed, Files, GrantList,
-    GrantRevoke, IdleWatch, JournalPage, JournalVerify, KeyGenerate, KeyImport, KeyList, KeyRemove,
-    Kube, LocalSessionOpen, LoginCommand, Ping, ProjectClose, ProjectList, ProjectOpen, Projects,
-    ResourceGet, ResourceList, ResourcePut, ResourceRemove, Runbooks, SecretList, SecretPut,
-    SecretRemove, Secrets, Server, SessionAttach, SessionBlocks, SessionClose, SessionIntegration,
-    SessionList, SessionResize, SshConnections, SshExec, SshKeys, SshSessionOpen, SshWarm, Storage,
-    Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
+    AlwaysGrants, Broker, Core, CoreCaller, CoreScreen, Databases, EventFeed, ExtensionMerger,
+    Files, GrantList, GrantRevoke, IdleWatch, JournalPage, JournalVerify, KeyGenerate, KeyImport,
+    KeyList, KeyRemove, Kube, LocalSessionOpen, LoginCommand, Ping, ProjectClose, ProjectList,
+    ProjectOpen, Projects, ResourceGet, ResourceList, ResourcePut, ResourceRemove, Runbooks,
+    SecretList, SecretPut, SecretRemove, Secrets, Server, SessionAttach, SessionBlocks,
+    SessionClose, SessionIntegration, SessionList, SessionResize, SshConnections, SshExec, SshKeys,
+    SshSessionOpen, SshWarm, Storage, Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Journal, JournalWriter};
@@ -89,9 +89,6 @@ async fn run() -> Result<(), Box<dyn Error>> {
     Databases::new(pool.clone(), projects.clone(), secrets.clone()).register(&mut registry)?;
     runbooks.register(&mut registry)?;
 
-    let syncer = syncer(&storage, &projects, &journal)?;
-    syncer.register(&mut registry)?;
-
     let extensions = Extensions::open(
         &data,
         &storage.state_path(),
@@ -100,6 +97,10 @@ async fn run() -> Result<(), Box<dyn Error>> {
     )?
     .with_secrets(Arc::new(secrets))
     .with_projects(Arc::new(projects.clone()));
+
+    let syncer = syncer(&storage, &projects, &journal, &extensions)?;
+    syncer.register(&mut registry)?;
+
     extensions.register(&mut registry)?;
     load_extensions(&extensions).await?;
 
@@ -208,6 +209,7 @@ fn syncer(
     storage: &Storage,
     projects: &Projects,
     journal: &JournalWriter,
+    extensions: &Extensions,
 ) -> Result<Syncer, Box<dyn Error>> {
     let syncer = Syncer::builder(
         &storage.state_path(),
@@ -215,6 +217,7 @@ fn syncer(
         Arc::new(projects.clone()),
     )
     .journal(journal.clone())
+    .merger(Arc::new(ExtensionMerger::new(extensions.clone())))
     .open()?;
 
     Ok(syncer)

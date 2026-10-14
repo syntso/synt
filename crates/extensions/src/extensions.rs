@@ -125,6 +125,27 @@ impl Extensions {
             .count()
     }
 
+    pub fn merge_document(
+        &self,
+        extension: &str,
+        suffix: &str,
+        sides: (Option<&[u8]>, &[u8], &[u8]),
+    ) -> Result<Vec<u8>, ExtensionError> {
+        let guest = Arc::clone(&self.loaded(extension)?.guest);
+        let kind = guest.manifest().document_kind(suffix).ok_or_else(|| {
+            ExtensionError::Refused(format!(
+                "{extension} owns no document type with the suffix .{suffix}"
+            ))
+        })?;
+
+        guest.merge(&kind, sides)?.map_err(|error| {
+            ExtensionError::Refused(format!(
+                "the merge failed: {}: {}",
+                error.code, error.message
+            ))
+        })
+    }
+
     pub(crate) fn loaded(&self, id: &str) -> Result<Arc<Loaded>, ExtensionError> {
         read(&self.loaded)
             .get(id)

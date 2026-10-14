@@ -10,6 +10,7 @@ mod files;
 mod http;
 mod settings;
 mod stage;
+mod sync;
 mod timers;
 mod views;
 
