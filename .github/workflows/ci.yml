@@ -67,6 +67,31 @@ jobs:
       - if: always()
         run: tests/ssh/down.sh
 
+  extension-fixture:
+    runs-on: ubuntu-24.04
+    env:
+      FIXTURE: tests/extension/everything/Cargo.toml
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - run: rustup target add wasm32-wasip2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            .
+            tests/extension/everything
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-nextest
+      - run: cargo fmt --manifest-path "$FIXTURE" --check
+      - run: cargo clippy --manifest-path "$FIXTURE" --target wasm32-wasip2 --locked -- -D warnings
+      - run: cargo build --manifest-path "$FIXTURE" --target wasm32-wasip2 --release --locked
+      - run: cargo nextest run -p synt-extensions -p synt-core --test api --test everything
+        env:
+          SYNT_EVERYTHING_WASM: ${{ github.workspace }}/tests/extension/everything/target/wasm32-wasip2/release/everything.wasm
+
   fuzz:
     runs-on: ubuntu-24.04
     steps:
@@ -84,11 +109,12 @@ jobs:
 
   rust:
     if: always()
-    needs: [lint, test, ssh-integration, fuzz]
+    needs: [lint, test, ssh-integration, extension-fixture, fuzz]
     runs-on: ubuntu-24.04
     steps:
       - run: >-
           test "${{ needs.lint.result }}" = success &&
           test "${{ needs.test.result }}" = success &&
           test "${{ needs.ssh-integration.result }}" = success &&
+          test "${{ needs.extension-fixture.result }}" = success &&
           test "${{ needs.fuzz.result }}" = success
