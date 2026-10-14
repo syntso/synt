@@ -6,14 +6,15 @@ use sqlparser::ast::Statement;
 use sqlparser::parser::Parser;
 
 use self::single::SingleStatement;
-use crate::{Classification, Engine};
+use super::classification::Classification;
+use crate::Engine;
 
-pub(super) struct SqlText<'a> {
+pub(super) struct Sql<'a> {
     engine: Engine,
     text: &'a str,
 }
 
-impl<'a> SqlText<'a> {
+impl<'a> Sql<'a> {
     pub(super) fn new(engine: Engine, text: &'a str) -> Self {
         Self { engine, text }
     }
@@ -39,18 +40,18 @@ impl<'a> SqlText<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::SqlText;
-    use crate::{Classification, Effect, Engine};
+    use super::Sql;
+    use crate::{Classification, Effect, Engine, StatementKind};
 
     fn classify(engine: Engine, text: &str) -> Classification {
-        SqlText::new(engine, text).classification()
+        Sql::new(engine, text).classification()
     }
 
     fn effect(engine: Engine, text: &str) -> Effect {
         classify(engine, text).effect
     }
 
-    fn kind(engine: Engine, text: &str) -> String {
+    fn kind(engine: Engine, text: &str) -> StatementKind {
         classify(engine, text).kind
     }
 
@@ -178,7 +179,7 @@ mod tests {
         let classified = classify(Engine::Postgres, "SELECT 1; SELECT 2");
 
         assert_eq!(classified.effect, Effect::Privileged);
-        assert_eq!(classified.kind, "several statements");
+        assert_eq!(classified.kind, StatementKind::Several);
     }
 
     #[test]
@@ -193,7 +194,7 @@ mod tests {
         let classified = classify(Engine::Postgres, "SELEKT everything");
 
         assert_eq!(classified.effect, Effect::Privileged);
-        assert_eq!(classified.kind, "unparsable");
+        assert_eq!(classified.kind, StatementKind::Unparsable);
     }
 
     #[test]
@@ -211,9 +212,21 @@ mod tests {
 
     #[test]
     fn statements_are_named_by_what_they_do() {
-        assert_eq!(kind(Engine::Postgres, "select 1"), "select");
-        assert_eq!(kind(Engine::Postgres, "insert into t values (1)"), "insert");
-        assert_eq!(kind(Engine::Postgres, "drop table t"), "drop");
-        assert_eq!(kind(Engine::Mysql, "describe t"), "describe");
+        assert_eq!(
+            kind(Engine::Postgres, "select 1"),
+            StatementKind::named("select")
+        );
+        assert_eq!(
+            kind(Engine::Postgres, "insert into t values (1)"),
+            StatementKind::named("insert")
+        );
+        assert_eq!(
+            kind(Engine::Postgres, "drop table t"),
+            StatementKind::named("drop")
+        );
+        assert_eq!(
+            kind(Engine::Mysql, "describe t"),
+            StatementKind::named("describe")
+        );
     }
 }

@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
-use synt_db::{Classification, Effect, Engine};
+use synt_db::{Classification, Effect, Engine, StatementKind};
 use synt_journal::ResourceRef;
 
 use super::Databases;
@@ -30,7 +30,7 @@ pub(crate) struct ExplainParams {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(crate) struct ExplainResult {
-    pub kind: String,
+    pub kind: StatementKind,
     pub plan: Value,
     pub duration_ms: u64,
 }
@@ -119,7 +119,7 @@ fn one_statement(engine: Engine, sql: &str) -> Result<Classification, ActionErro
         )));
     }
 
-    if classified.kind == EXPLAIN {
+    if classified.kind.is(EXPLAIN) {
         return Err(ActionError::InvalidParams(
             "give the statement itself; db.explain adds EXPLAIN".to_owned(),
         ));

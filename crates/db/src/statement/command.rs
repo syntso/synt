@@ -1,220 +1,21 @@
-use crate::{Classification, Effect};
+mod words;
 
-const READ: [&str; 92] = [
-    "BITCOUNT",
-    "BITFIELD_RO",
-    "BITPOS",
-    "DBSIZE",
-    "DUMP",
-    "ECHO",
-    "EXISTS",
-    "EXPIRETIME",
-    "GEODIST",
-    "GEOHASH",
-    "GEOPOS",
-    "GEORADIUSBYMEMBER_RO",
-    "GEORADIUS_RO",
-    "GEOSEARCH",
-    "GET",
-    "GETBIT",
-    "GETRANGE",
-    "HEXISTS",
-    "HGET",
-    "HGETALL",
-    "HKEYS",
-    "HLEN",
-    "HMGET",
-    "HRANDFIELD",
-    "HSCAN",
-    "HSTRLEN",
-    "HVALS",
-    "INFO",
-    "KEYS",
-    "LASTSAVE",
-    "LCS",
-    "LINDEX",
-    "LLEN",
-    "LPOS",
-    "LRANGE",
-    "MGET",
-    "PEXPIRETIME",
-    "PFCOUNT",
-    "PING",
-    "PTTL",
-    "RANDOMKEY",
-    "SCAN",
-    "SCARD",
-    "SDIFF",
-    "SINTER",
-    "SINTERCARD",
-    "SISMEMBER",
-    "SMEMBERS",
-    "SMISMEMBER",
-    "SORT_RO",
-    "SRANDMEMBER",
-    "SSCAN",
-    "STRLEN",
-    "SUBSTR",
-    "SUNION",
-    "TIME",
-    "TOUCH",
-    "TTL",
-    "TYPE",
-    "XLEN",
-    "XPENDING",
-    "XRANGE",
-    "XREAD",
-    "XREVRANGE",
-    "ZCARD",
-    "ZCOUNT",
-    "ZDIFF",
-    "ZINTER",
-    "ZINTERCARD",
-    "ZLEXCOUNT",
-    "ZMSCORE",
-    "ZRANDMEMBER",
-    "ZRANGE",
-    "ZRANGEBYLEX",
-    "ZRANGEBYSCORE",
-    "ZRANK",
-    "ZREVRANGE",
-    "ZREVRANGEBYLEX",
-    "ZREVRANGEBYSCORE",
-    "ZREVRANK",
-    "ZSCAN",
-    "ZSCORE",
-    "ZUNION",
-    "HTTL",
-    "HPTTL",
-    "HEXPIRETIME",
-    "HPEXPIRETIME",
-    "LOLWUT",
-    "OBJECT ENCODING",
-    "OBJECT FREQ",
-    "OBJECT IDLETIME",
-    "OBJECT REFCOUNT",
-];
+use self::words::{CONTAINERS, READ, READ_CONTAINERS, WRITE};
+use super::classification::Classification;
+use super::kind::StatementKind;
+use crate::Effect;
 
-const READ_CONTAINERS: [&str; 5] = [
-    "MEMORY USAGE",
-    "XINFO STREAM",
-    "XINFO GROUPS",
-    "XINFO CONSUMERS",
-    "COMMAND COUNT",
-];
+const SUBCOMMANDS_THAT_WRITE: &str = "XGROUP ";
 
-const WRITE: [&str; 98] = [
-    "APPEND",
-    "BITFIELD",
-    "BITOP",
-    "BLMOVE",
-    "BLMPOP",
-    "BLPOP",
-    "BRPOP",
-    "BRPOPLPUSH",
-    "BZMPOP",
-    "BZPOPMAX",
-    "BZPOPMIN",
-    "COPY",
-    "DECR",
-    "DECRBY",
-    "DEL",
-    "EXPIRE",
-    "EXPIREAT",
-    "GEOADD",
-    "GEORADIUS",
-    "GEORADIUSBYMEMBER",
-    "GEOSEARCHSTORE",
-    "GETDEL",
-    "GETEX",
-    "GETSET",
-    "HDEL",
-    "HINCRBY",
-    "HINCRBYFLOAT",
-    "HMSET",
-    "HSET",
-    "HSETNX",
-    "INCR",
-    "INCRBY",
-    "INCRBYFLOAT",
-    "LINSERT",
-    "LMOVE",
-    "LMPOP",
-    "LPOP",
-    "LPUSH",
-    "LPUSHX",
-    "LREM",
-    "LSET",
-    "LTRIM",
-    "MSET",
-    "MSETNX",
-    "PERSIST",
-    "PEXPIRE",
-    "PEXPIREAT",
-    "PFADD",
-    "PFMERGE",
-    "PSETEX",
-    "PUBLISH",
-    "RENAME",
-    "RENAMENX",
-    "RPOP",
-    "RPOPLPUSH",
-    "RPUSH",
-    "RPUSHX",
-    "SADD",
-    "SDIFFSTORE",
-    "SET",
-    "SETBIT",
-    "SETEX",
-    "SETNX",
-    "SETRANGE",
-    "SINTERSTORE",
-    "SMOVE",
-    "SORT",
-    "SPOP",
-    "SREM",
-    "SUNIONSTORE",
-    "UNLINK",
-    "XACK",
-    "XADD",
-    "XAUTOCLAIM",
-    "XCLAIM",
-    "XDEL",
-    "XTRIM",
-    "XSETID",
-    "ZADD",
-    "ZDIFFSTORE",
-    "ZINCRBY",
-    "ZINTERSTORE",
-    "ZMPOP",
-    "ZPOPMAX",
-    "ZPOPMIN",
-    "ZRANGESTORE",
-    "ZREM",
-    "ZREMRANGEBYLEX",
-    "ZREMRANGEBYRANK",
-    "ZREMRANGEBYSCORE",
-    "ZUNIONSTORE",
-    "HEXPIRE",
-    "HPEXPIRE",
-    "HEXPIREAT",
-    "HPEXPIREAT",
-    "HPERSIST",
-    "HGETDEL",
-    "HGETEX",
-];
-
-const CONTAINERS: [&str; 5] = ["OBJECT", "MEMORY", "XINFO", "COMMAND", "XGROUP"];
-
-pub(super) struct RedisCommand {
+pub(super) struct Command {
     name: String,
     container: bool,
 }
 
-impl RedisCommand {
+impl Command {
     pub(super) fn parse<S: AsRef<str>>(words: &[S]) -> Option<Self> {
         let (first, rest) = words.split_first()?;
-        let name = first.as_ref().trim().to_ascii_uppercase();
+        let name = upper(first);
 
         if !CONTAINERS.contains(&name.as_str()) {
             return Some(Self {
@@ -224,7 +25,7 @@ impl RedisCommand {
         }
 
         let name = match rest.first() {
-            Some(sub) => format!("{name} {}", sub.as_ref().trim().to_ascii_uppercase()),
+            Some(subcommand) => format!("{name} {}", upper(subcommand)),
             None => name,
         };
 
@@ -235,33 +36,45 @@ impl RedisCommand {
     }
 
     pub(super) fn classification(&self) -> Classification {
-        Classification::new(self.effect(), self.name.to_ascii_lowercase())
+        let kind = StatementKind::named(self.name.to_ascii_lowercase());
+
+        Classification::new(self.effect(), kind)
     }
 
     fn effect(&self) -> Effect {
-        let name = self.name.as_str();
-
-        if READ.contains(&name) || (self.container && READ_CONTAINERS.contains(&name)) {
+        if self.reads() {
             return Effect::Read;
         }
 
-        let writes = if self.container {
-            name.starts_with("XGROUP ")
-        } else {
-            WRITE.contains(&name)
-        };
-
-        if writes {
+        if self.writes() {
             return Effect::Write;
         }
 
         Effect::Privileged
     }
+
+    fn reads(&self) -> bool {
+        let name = self.name.as_str();
+
+        READ.contains(&name) || (self.container && READ_CONTAINERS.contains(&name))
+    }
+
+    fn writes(&self) -> bool {
+        if self.container {
+            return self.name.starts_with(SUBCOMMANDS_THAT_WRITE);
+        }
+
+        WRITE.contains(&self.name.as_str())
+    }
+}
+
+fn upper<S: AsRef<str>>(word: &S) -> String {
+    word.as_ref().trim().to_ascii_uppercase()
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{Classification, Effect};
+    use crate::{Classification, Effect, StatementKind};
 
     fn classify(words: &[&str]) -> Classification {
         Classification::of_command(words)
@@ -315,7 +128,7 @@ mod tests {
         assert_eq!(effect(&["MEMORY", "PURGE"]), Effect::Privileged);
         assert_eq!(
             classify(&["object", "encoding", "k"]).kind,
-            "object encoding"
+            StatementKind::named("object encoding")
         );
     }
 

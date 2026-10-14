@@ -86,7 +86,10 @@ mod tests {
     fn a_direct_place_dials_its_own_host() {
         let place = network();
 
-        assert_eq!(place.dial(), Some(Endpoint::new("orders-db.internal", 3306)));
+        assert_eq!(
+            place.dial(),
+            Some(Endpoint::new("orders-db.internal", 3306))
+        );
         assert!(!place.is_tunneled());
     }
 

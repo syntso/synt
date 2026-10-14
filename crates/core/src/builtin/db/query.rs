@@ -4,7 +4,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
-use synt_db::{Access, Classification, Database, DbError, Effect, Engine, Page, Query, Rows};
+use synt_db::{
+    Access, Classification, Database, DbError, Effect, Engine, Page, Query, Rows, StatementKind,
+};
 use synt_journal::ResourceRef;
 
 use super::Databases;
@@ -50,7 +52,7 @@ pub(crate) struct QueryParams {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(crate) struct QueryResult {
-    pub kind: String,
+    pub kind: StatementKind,
     pub effect: Effect,
 
     #[serde(flatten)]
