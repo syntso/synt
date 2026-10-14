@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use super::Cluster;
 use crate::apply::{hide_secret_values, metadata_text, object_ref, text, unified};
-use crate::objects::{tidy, without_noise};
+use crate::objects::without_noise;
 use crate::{AppliedObject, Change, Kind, KubeError, Manifest, ObjectRef, Plan, PlannedObject};
 
 const FIELD_MANAGER: &str = "synt";
@@ -99,8 +99,8 @@ impl Cluster {
             .await
             .map_err(|error| refused(&placed.object, error))?;
 
-        let before = live.map(|live| without_noise(tidy(live, &placed.kind)));
-        let after = without_noise(tidy(dry_run, &placed.kind));
+        let before = live.map(|live| without_noise(placed.kind.tidy(live)));
+        let after = without_noise(placed.kind.tidy(dry_run));
 
         Ok((before, after))
     }

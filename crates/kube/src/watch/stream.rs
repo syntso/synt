@@ -6,7 +6,6 @@ use futures_util::stream::BoxStream;
 use kube::api::{Api, DynamicObject, ListParams, WatchEvent, WatchParams};
 
 use super::{NoticeKind, WatchNotice};
-use crate::objects::tidy;
 use crate::{Kind, KubeError};
 
 const WATCH_SECONDS: u32 = 290;
@@ -71,7 +70,7 @@ impl Watch {
             for object in page.items {
                 self.pending.push_back(WatchNotice::about(
                     NoticeKind::Existing,
-                    tidy(object, &self.kind),
+                    self.kind.tidy(object),
                 ));
             }
 
@@ -129,7 +128,7 @@ impl Watch {
         }
 
         self.pending
-            .push_back(WatchNotice::about(kind, tidy(object, &self.kind)));
+            .push_back(WatchNotice::about(kind, self.kind.tidy(object)));
     }
 
     fn list_params(&self) -> ListParams {

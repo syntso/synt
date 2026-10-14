@@ -3,7 +3,6 @@ use kube::api::{Api, ListParams};
 use serde_json::Value;
 
 use super::Cluster;
-use crate::objects::tidy;
 use crate::{EventLine, Kind, KubeError, ListQuery, Listing, Namespaces};
 
 const LARGEST_PAGE: u32 = 500;
@@ -30,7 +29,7 @@ impl Cluster {
             items: list
                 .items
                 .into_iter()
-                .map(|object| tidy(object, kind))
+                .map(|object| kind.tidy(object))
                 .collect(),
             continue_token,
         })
@@ -48,7 +47,7 @@ impl Cluster {
         );
         let object = api.get(name).await?;
 
-        Ok(tidy(object, kind))
+        Ok(kind.tidy(object))
     }
 
     pub async fn events(

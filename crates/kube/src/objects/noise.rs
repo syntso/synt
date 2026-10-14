@@ -1,7 +1,4 @@
-use kube::api::{DynamicObject, TypeMeta};
 use serde_json::{Map, Value};
-
-use crate::Kind;
 
 const NOISE: [&str; 5] = [
     "managedFields",
@@ -10,16 +7,6 @@ const NOISE: [&str; 5] = [
     "uid",
     "creationTimestamp",
 ];
-
-pub(crate) fn tidy(mut object: DynamicObject, kind: &Kind) -> Value {
-    object.types = Some(TypeMeta {
-        api_version: kind.api_version().to_owned(),
-        kind: kind.name().to_owned(),
-    });
-    object.metadata.managed_fields = None;
-
-    serde_json::to_value(object).unwrap_or(Value::Null)
-}
 
 pub(crate) fn without_noise(mut object: Value) -> Value {
     if let Some(fields) = object.as_object_mut() {

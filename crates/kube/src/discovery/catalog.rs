@@ -1,5 +1,5 @@
 use kube::Client;
-use kube::discovery::{ApiCapabilities, ApiGroup, ApiResource, Discovery, Scope};
+use kube::discovery::{ApiGroup, Discovery};
 
 use super::Kind;
 use super::short_names::plural_of;
@@ -22,7 +22,7 @@ impl Kinds {
         let found = discovery
             .groups()
             .flat_map(ApiGroup::recommended_resources)
-            .map(|(resource, capabilities)| kind(resource, &capabilities));
+            .map(|(resource, capabilities)| Kind::discovered(resource, &capabilities));
 
         Ok(Self::from_kinds(found))
     }
@@ -45,7 +45,7 @@ impl Kinds {
         self.kinds
             .iter()
             .filter(|kind| group.is_none_or(|group| kind.group() == group))
-            .find(|kind| names(kind, name, plural))
+            .find(|kind| kind.is_named(name, plural))
             .cloned()
             .ok_or_else(|| KubeError::UnknownKind(text.to_owned()))
     }
@@ -59,33 +59,9 @@ impl Kinds {
         self.kinds
             .iter()
             .find(|kind| kind.group() == group && kind.name() == kind_name)
-            .map(|kind| with_version(kind, version))
+            .map(|kind| kind.with_version(version))
             .ok_or_else(|| KubeError::UnknownKind(format!("{kind_name} in {api_version}")))
     }
-}
-
-fn kind(resource: ApiResource, capabilities: &ApiCapabilities) -> Kind {
-    let namespaced = matches!(capabilities.scope, Scope::Namespaced);
-
-    Kind::new(resource, namespaced)
-}
-
-fn names(kind: &Kind, name: &str, plural: &str) -> bool {
-    let lowered = kind.name().to_lowercase();
-
-    lowered == name || kind.plural() == name || kind.plural() == plural
-}
-
-fn with_version(kind: &Kind, version: &str) -> Kind {
-    let mut resource: ApiResource = kind.resource().clone();
-    version.clone_into(&mut resource.version);
-    resource.api_version = if resource.group.is_empty() {
-        version.to_owned()
-    } else {
-        format!("{}/{version}", resource.group)
-    };
-
-    Kind::new(resource, kind.is_namespaced())
 }
 
 fn group_rank(group: &str) -> usize {
