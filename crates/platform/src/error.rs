@@ -15,7 +15,7 @@ pub enum PlatformError {
 
     #[cfg(windows)]
     #[error("credential manager: {0}")]
-    Credentials(String),
+    Credentials(#[from] keyring_core::Error),
 
     #[error(
         "the journal key would be kept in {place}, and {}; a release build refuses that \

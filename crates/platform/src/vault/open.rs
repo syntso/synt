@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use super::vault::Vault;
-use super::weak_vault::{WEAK_VAULT_FLAG, WeakVault};
+use super::Vault;
+use super::{WEAK_VAULT_FLAG, WeakVault};
 use crate::PlatformError;
 
 #[cfg(any(target_os = "macos", windows))]

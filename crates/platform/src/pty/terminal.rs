@@ -30,15 +30,12 @@ impl Pty {
     pub fn open(term: &str, columns: u16, rows: u16) -> Result<(Self, PtyOutput), PlatformError> {
         let pair = native_pty_system()
             .openpty(size(columns, rows))
-            .map_err(|error| pty_error(&error))?;
+            .map_err(pty_error)?;
 
         let command = login_command(term);
         let program = command.get_shell();
 
-        let child = pair
-            .slave
-            .spawn_command(command)
-            .map_err(|error| pty_error(&error))?;
+        let child = pair.slave.spawn_command(command).map_err(pty_error)?;
         drop(pair.slave);
 
         let mut killer = child.clone_killer();
@@ -81,9 +78,7 @@ impl Pty {
             return Err(PlatformError::Pty("the terminal is closed".to_owned()));
         };
 
-        master
-            .resize(size(columns, rows))
-            .map_err(|error| pty_error(&error))
+        master.resize(size(columns, rows)).map_err(pty_error)
     }
 
     pub fn hang_up(&self) -> Result<(), PlatformError> {
@@ -110,10 +105,8 @@ fn start_pipes(
     master: &(dyn MasterPty + Send),
     child: Box<dyn Child + Send + Sync>,
 ) -> Result<(mpsc::Sender<Vec<u8>>, PtyOutput), PlatformError> {
-    let reader = master
-        .try_clone_reader()
-        .map_err(|error| pty_error(&error))?;
-    let writer = master.take_writer().map_err(|error| pty_error(&error))?;
+    let reader = master.try_clone_reader().map_err(pty_error)?;
+    let writer = master.take_writer().map_err(pty_error)?;
 
     let (input, typed) = mpsc::channel(INPUT_BACKLOG);
     let (shown, data) = mpsc::channel(OUTPUT_BACKLOG);
@@ -163,6 +156,6 @@ fn size(columns: u16, rows: u16) -> PtySize {
     }
 }
 
-fn pty_error(error: &impl ToString) -> PlatformError {
+fn pty_error(error: impl ToString) -> PlatformError {
     PlatformError::Pty(error.to_string())
 }
