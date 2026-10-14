@@ -6,7 +6,7 @@ use kube::{Client, Config};
 use tower::{BoxError, ServiceBuilder};
 
 use crate::KubeError;
-use crate::dial::{DialedConnector, Dialer};
+use crate::transport::{DialedConnector, Dialer};
 
 pub(super) fn client_through(
     config: &Config,

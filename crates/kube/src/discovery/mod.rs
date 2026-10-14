@@ -1,6 +1,6 @@
+mod catalog;
 mod kind;
-mod kinds;
 mod short_names;
 
+pub use catalog::Kinds;
 pub use kind::Kind;
-pub use kinds::Kinds;
