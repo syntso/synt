@@ -28,6 +28,7 @@ pub(crate) struct ShellScript<'a> {
     reference: &'a str,
     runbook: &'a Runbook,
     text: String,
+    indent: &'static str,
 }
 
 impl<'a> ShellScript<'a> {
@@ -36,6 +37,7 @@ impl<'a> ShellScript<'a> {
             reference,
             runbook,
             text: String::new(),
+            indent: "",
         }
     }
 
@@ -46,6 +48,7 @@ impl<'a> ShellScript<'a> {
         self.rollback();
 
         for (index, step) in self.runbook.steps.iter().enumerate() {
+            self.blank();
             self.step(index + 1, step, &tail(step.on_failure));
         }
 
@@ -68,13 +71,14 @@ impl<'a> ShellScript<'a> {
         self.line("# Targets run through ssh, so a project target such as @project/host must");
         self.line("# be a name ssh knows, for example a Host in ~/.ssh/config.");
         self.line("set -u");
-        self.blank();
     }
 
     fn params(&mut self) {
         if self.runbook.params.is_empty() {
             return;
         }
+
+        self.blank();
 
         for spec in &self.runbook.params {
             let name = &spec.name;
@@ -85,21 +89,19 @@ impl<'a> ShellScript<'a> {
 
             self.line(&line);
         }
-
-        self.blank();
     }
 
     fn helpers(&mut self) {
         let steps = || self.runbook.steps.iter().chain(&self.runbook.rollback);
 
         if steps().any(|step| step.retry().attempts > 1) {
-            self.text.push_str(RETRY);
             self.blank();
+            self.text.push_str(RETRY);
         }
 
         if steps().any(|step| exit_wanted(step) != 0) {
-            self.text.push_str(EXPECT_EXIT);
             self.blank();
+            self.text.push_str(EXPECT_EXIT);
         }
     }
 
@@ -110,14 +112,20 @@ impl<'a> ShellScript<'a> {
 
         let runbook = self.runbook;
 
+        self.blank();
         self.line("rollback() {");
+        self.indent = "  ";
 
-        for (index, step) in runbook.rollback.iter().enumerate().rev() {
+        for (position, (index, step)) in runbook.rollback.iter().enumerate().rev().enumerate() {
+            if position > 0 {
+                self.blank();
+            }
+
             self.step(index + 1, step, "|| true");
         }
 
+        self.indent = "";
         self.line("}");
-        self.blank();
     }
 
     fn step(&mut self, number: usize, step: &Step, tail: &str) {
@@ -132,13 +140,11 @@ impl<'a> ShellScript<'a> {
                     step.action
                 ))
             ));
-            self.blank();
             return;
         };
 
         let command = wrapped(step, command);
         self.line(&format!("{command} {tail}"));
-        self.blank();
     }
 
     fn unchecked(&mut self, step: &Step) {
@@ -159,7 +165,7 @@ impl<'a> ShellScript<'a> {
     }
 
     fn line(&mut self, line: &str) {
-        let _ = writeln!(self.text, "{line}");
+        let _ = writeln!(self.text, "{}{line}", self.indent);
     }
 
     fn blank(&mut self) {
@@ -336,5 +342,65 @@ params = { command = "sudo systemctl start {service}-previous" }
             "# 3. Note the release\n\
              echo 'step 3 (sftp.write) is not a shell command; run it in Synt' >&2\n"
         ));
+    }
+
+    #[test]
+    fn a_small_runbook_exports_to_a_readable_script() {
+        let runbook = Runbook::from_toml(
+            r#"
+name = "Rotate logs"
+
+[[params]]
+name = "host"
+kind = "target"
+default = "web-1"
+
+[[steps]]
+title = "Rotate"
+action = "ssh.exec"
+target = "{host}"
+params = { command = "logrotate -f /etc/logrotate.conf" }
+on_failure = "rollback"
+
+[[rollback]]
+title = "Say so"
+action = "ssh.exec"
+target = "{host}"
+params = { command = "logger rotation failed" }
+
+[[rollback]]
+title = "Keep the old log"
+action = "ssh.exec"
+target = "{host}"
+params = { command = "cp /var/log/app.log.1 /var/log/app.log" }
+"#,
+        )
+        .unwrap();
+
+        let script = ShellScript::new("@ops/rotate", &runbook).render();
+
+        assert_eq!(
+            script,
+            "#!/bin/sh\n\
+             # Rotate logs\n\
+             #\n\
+             # Exported from the Synt runbook @ops/rotate.\n\
+             # Targets run through ssh, so a project target such as @project/host must\n\
+             # be a name ssh knows, for example a Host in ~/.ssh/config.\n\
+             set -u\n\
+             \n\
+             : \"${host:=web-1}\"\n\
+             \n\
+             rollback() {\n\
+             \x20 # 2. Keep the old log\n\
+             \x20 ssh -- \"${host}\" 'cp /var/log/app.log.1 /var/log/app.log' || true\n\
+             \n\
+             \x20 # 1. Say so\n\
+             \x20 ssh -- \"${host}\" 'logger rotation failed' || true\n\
+             }\n\
+             \n\
+             # 1. Rotate\n\
+             ssh -- \"${host}\" 'logrotate -f /etc/logrotate.conf' || { rollback; exit 1; }\n"
+        );
     }
 }

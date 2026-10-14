@@ -101,8 +101,8 @@ mod tests {
 
     #[test]
     fn unknown_params_are_refused() {
-        let error =
-            Values::resolve(&specs(), &given(&json!({ "attempts": 1, "force": true }))).unwrap_err();
+        let error = Values::resolve(&specs(), &given(&json!({ "attempts": 1, "force": true })))
+            .unwrap_err();
 
         assert_eq!(error, "the runbook has no param force");
     }
