@@ -1,4 +1,3 @@
-use data_encoding::HEXLOWER;
 use sha2::{Digest, Sha256};
 use synt_proto::Credit;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
@@ -41,8 +40,5 @@ pub(crate) async fn receive<W: AsyncWrite + Unpin>(
 
     sink.flush().await?;
 
-    Ok(Transferred {
-        bytes: received,
-        sha256: HEXLOWER.encode(&hasher.finalize()),
-    })
+    Ok(Transferred::hashed(received, hasher))
 }

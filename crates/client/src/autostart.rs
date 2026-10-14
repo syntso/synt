@@ -26,8 +26,7 @@ impl Autostart {
     pub fn off() -> Self {
         Self {
             enabled: false,
-            program: None,
-            arguments: Vec::new(),
+            ..Self::core()
         }
     }
 

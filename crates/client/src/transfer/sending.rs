@@ -1,5 +1,4 @@
 use bytes::BytesMut;
-use data_encoding::HEXLOWER;
 use sha2::{Digest, Sha256};
 use synt_proto::Credit;
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -36,10 +35,7 @@ pub(crate) async fn send<R: AsyncRead + Unpin>(
             .await?;
     }
 
-    Ok(Transferred {
-        bytes: sent,
-        sha256: HEXLOWER.encode(&hasher.finalize()),
-    })
+    Ok(Transferred::hashed(sent, hasher))
 }
 
 async fn next_credit(stream: &mut StreamReceiver) -> Result<u64, ClientError> {
