@@ -9,9 +9,9 @@ use std::time::Duration;
 use synt_actions::{ActionError, Registry};
 use synt_core::{
     AlwaysGrants, Broker, Core, CoreCaller, CoreScreen, EventFeed, Files, GrantList, GrantRevoke,
-    IdleWatch, JournalPage, JournalVerify, KeyGenerate, KeyImport, KeyList, KeyRemove,
+    IdleWatch, JournalPage, JournalVerify, KeyGenerate, KeyImport, KeyList, KeyRemove, Kube,
     LocalSessionOpen, LoginCommand, Ping, ProjectClose, ProjectList, ProjectOpen, Projects,
-    ResourceGet, ResourceList, ResourcePut, ResourceRemove, Runbooks, Runs, SecretList, SecretPut,
+    ResourceGet, ResourceList, ResourcePut, ResourceRemove, Runbooks, SecretList, SecretPut,
     SecretRemove, Secrets, Server, SessionAttach, SessionBlocks, SessionClose, SessionIntegration,
     SessionList, SessionResize, SshConnections, SshExec, SshKeys, SshSessionOpen, SshWarm, Storage,
     Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
@@ -77,9 +77,11 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let tunnels = Tunnels::new(pool.clone());
     let terminals = Terminals::new(journal.clone());
     let runbooks = Runbooks::new(projects.clone(), journal.clone(), terminals.clone());
+    let kube = Kube::new(pool.clone(), projects.clone(), journal.clone());
 
     let mut registry = Registry::new();
     register_hosts(&mut registry, &pool, &projects, &tunnels)?;
+    kube.register(&mut registry)?;
     register_sessions(&mut registry, &pool, &projects, &terminals)?;
     register_records(&mut registry, &journal, &projects, &always)?;
     register_keys(&mut registry, &keys, &pool)?;
@@ -119,8 +121,12 @@ async fn run() -> Result<(), Box<dyn Error>> {
         endpoint.address().to_string_lossy()
     );
 
-    let runs = runbooks.runs();
-    serve(server, arguments.idle, terminals, tunnels, runs).await;
+    let idle = IdleWatch::new(arguments.idle)
+        .watch(terminals.clone())
+        .watch(tunnels)
+        .watch(runbooks.runs())
+        .watch(kube);
+    serve(server, idle, terminals).await;
 
     Ok(())
 }
@@ -213,18 +219,8 @@ fn syncer(
     Ok(syncer)
 }
 
-async fn serve(
-    server: Server,
-    idle: Option<Duration>,
-    terminals: Terminals,
-    tunnels: Tunnels,
-    runs: Runs,
-) {
-    let idle = IdleWatch::new(idle)
-        .watch(server.activity())
-        .watch(terminals.clone())
-        .watch(tunnels)
-        .watch(runs);
+async fn serve(server: Server, idle: IdleWatch, terminals: Terminals) {
+    let idle = idle.watch(server.activity());
 
     let stopping = async {
         tokio::select! {

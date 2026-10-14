@@ -1,9 +1,12 @@
+mod cluster;
 mod entry;
 mod host;
 mod listing;
 mod resource;
 mod tunnel;
 
+pub use cluster::ClusterResource;
+pub(crate) use cluster::is_namespace;
 pub(crate) use entry::ResourceEntry;
 pub use host::HostResource;
 pub(crate) use listing::ResourceListing;

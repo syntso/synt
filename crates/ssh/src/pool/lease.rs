@@ -1,16 +1,17 @@
 use std::fmt::{self, Debug, Formatter};
 use std::future::Future;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::pin::Pin;
 use std::sync::Arc;
 
 use russh::Channel;
 use russh::client::Msg;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::runtime;
 
 use super::{ConnectionState, Slot};
 use crate::session::Connection;
-use crate::{Algorithms, SshError, Target};
+use crate::{Algorithms, Destination, SshError, Target};
 
 type Connecting<'a> = Pin<Box<dyn Future<Output = Result<Connection, SshError>> + Send + 'a>>;
 
@@ -35,6 +36,18 @@ impl Lease {
 
     pub fn algorithms(&self) -> Option<Algorithms> {
         self.slot.algorithms()
+    }
+
+    pub async fn open_stream(
+        &self,
+        destination: &Destination,
+    ) -> Result<impl AsyncRead + AsyncWrite + Send + Unpin + 'static, SshError> {
+        let originator = SocketAddr::from((Ipv4Addr::LOCALHOST, 0));
+        let channel = self
+            .open_direct(destination.host(), destination.port(), originator)
+            .await?;
+
+        Ok(channel.into_stream())
     }
 
     pub(crate) fn connection(&self) -> Connecting<'_> {

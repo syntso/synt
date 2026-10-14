@@ -1,3 +1,4 @@
+mod local_path;
 mod names;
 mod open_project;
 mod personal;
@@ -21,7 +22,8 @@ pub(crate) use project::ProjectInfo;
 pub use project_change::ProjectChange;
 pub(crate) use project_place::ProjectPlace;
 pub use projects::Projects;
-pub(crate) use resolved::Resolved;
-pub use resource::{HostResource, Resource, TunnelResource};
+pub(crate) use resolved::{Resolved, login_label};
+pub(crate) use resource::is_namespace;
+pub use resource::{ClusterResource, HostResource, Resource, TunnelResource};
 pub(crate) use resource::{ResourceEntry, ResourceListing};
 use target_ref::TargetRef;

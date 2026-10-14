@@ -16,6 +16,7 @@ synt-actions = { path = "crates/actions" }
 synt-client = { path = "crates/client" }
 synt-extensions = { path = "crates/extensions" }
 synt-journal = { path = "crates/journal" }
+synt-kube = { path = "crates/kube" }
 synt-platform = { path = "crates/platform" }
 synt-proto = { path = "crates/proto" }
 synt-ssh = { path = "crates/ssh" }
@@ -32,26 +33,34 @@ futures-util = { version = "0.3.34", default-features = false, features = ["sink
 getrandom = "0.4.3"
 hkdf = "0.13.0"
 hmac = "0.13.0"
+http = "1.5.0"
+hyper = { version = "1.12.0", features = ["client", "http1"] }
+hyper-util = { version = "0.1.21", features = ["client-legacy", "http1", "tokio"] }
 interprocess = { version = "2.4.5", features = ["tokio"] }
+jiff = "0.2.38"
+k8s-openapi = { version = "0.28.0", features = ["v1_32"] }
 keyring-core = "1.0.1"
+kube = { version = "4.2.0", default-features = false, features = ["client", "config", "ring", "rustls-tls", "ws"] }
 minisign = "0.10.0"
 minisign-verify = "0.3.0"
 nix = { version = "0.31.3", default-features = false, features = ["signal", "socket", "user"] }
 notify = "8.2.0"
 portable-pty = "0.9.0"
 proptest = "1.12.0"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
 russh = { version = "0.64.1", default-features = false, features = ["ring"] }
 russh-sftp = "3.0.1"
-rusqlite = { version = "0.40.2", features = ["bundled"] }
 rustls = { version = "0.23.45", default-features = false, features = ["ring", "std"] }
 rustls-native-certs = "0.8.5"
 schemars = "1.2.3"
-semver = "1.0.28"
 security-framework = { version = "3.7.0", features = ["OSX_10_15"] }
+semver = "1.0.28"
 serde = { version = "1.0.229", features = ["derive"] }
+serde-saphyr = "0.0.29"
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 sha1 = "0.11.0"
 sha2 = "0.11.1"
+similar = "3.2.0"
 ssh2-config = "0.8.2"
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 tempfile = "3.27.0"
@@ -59,6 +68,7 @@ thiserror = "2.0.21"
 tokio = "1.53.2"
 tokio-util = { version = "0.7.20", features = ["codec"] }
 toml = "1.1.8"
+tower = { version = "0.5.3", features = ["util"] }
 ureq = { version = "3.4.2", default-features = false, features = ["rustls-no-provider"] }
 vte = { version = "0.15.0", default-features = false }
 wasmtime = { version = "49.0.2", default-features = false, features = ["component-model", "cranelift", "runtime", "std"] }

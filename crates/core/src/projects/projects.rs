@@ -3,6 +3,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use synt_kube::KubeconfigSource;
 use synt_ssh::Target;
 use tokio::sync::broadcast;
 
@@ -25,14 +26,20 @@ pub struct Projects {
     state: State,
     opened: Arc<Mutex<Opened>>,
     changes: broadcast::Sender<ProjectChange>,
+    personal: Personal,
 }
 
 impl Projects {
     pub fn start(state: State) -> Result<Self, CoreError> {
+        Self::start_with(state, KubeconfigSource::Default)
+    }
+
+    pub fn start_with(state: State, kubeconfig: KubeconfigSource) -> Result<Self, CoreError> {
         let projects = Self {
             state,
             opened: Arc::default(),
             changes: broadcast::channel(CHANGES_KEPT).0,
+            personal: Personal::new(kubeconfig),
         };
 
         for path in projects.state.open_projects()? {
@@ -120,7 +127,7 @@ impl Projects {
     }
 
     pub(crate) fn list(&self) -> Result<Vec<ProjectInfo>, CoreError> {
-        let mut infos = vec![Personal::info()?];
+        let mut infos = vec![self.personal.info()?];
 
         infos.extend(self.lock().values().map(|open| open.lock().info()));
 
@@ -141,7 +148,7 @@ impl Projects {
 
     pub(crate) fn listing(&self, project: &str) -> Result<ResourceListing, CoreError> {
         if is_personal(project) {
-            return Personal::listing();
+            return self.personal.listing();
         }
 
         self.with_project(project, |project| Ok(project.listing()))
@@ -149,7 +156,7 @@ impl Projects {
 
     pub(crate) fn resource(&self, project: &str, name: &str) -> Result<ResourceEntry, CoreError> {
         if is_personal(project) {
-            return Personal::resource(name);
+            return self.personal.resource(name);
         }
 
         self.with_project(project, |project| project.resource(name))
@@ -223,12 +230,32 @@ impl Projects {
         let reference = reference.map_err(CoreError::Project)?;
 
         if is_personal(reference.project) {
-            return Personal::resolve(reference.resource);
+            return self.personal.resolve(reference.resource);
         }
 
         self.with_project(reference.project, |project| {
             project.resolve(reference.resource)
         })
+    }
+
+    pub(crate) fn resolve_cluster(&self, text: &str) -> Result<Resolved, CoreError> {
+        let resolved = match TargetRef::parse(text) {
+            Some(_) => self.resolve(text)?,
+            None => self.personal.context(text),
+        };
+
+        if !matches!(resolved, Resolved::Cluster { .. }) {
+            return Err(CoreError::Project(format!(
+                "{text} is a {}, not a cluster",
+                resolved.kind()
+            )));
+        }
+
+        Ok(resolved)
+    }
+
+    pub(crate) fn personal_kubeconfig(&self) -> &KubeconfigSource {
+        self.personal.kubeconfig()
     }
 
     pub(crate) fn destination(&self, text: &str, resolved: &Resolved) -> String {

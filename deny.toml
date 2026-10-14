@@ -21,6 +21,10 @@ unused-allowed-license = "allow"
 crate = "option-ext"
 allow = ["MPL-2.0"]
 
+[[licenses.exceptions]]
+crate = "webpki-root-certs"
+allow = ["CDLA-Permissive-2.0"]
+
 [licenses.private]
 ignore = true
 

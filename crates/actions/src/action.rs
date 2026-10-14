@@ -43,6 +43,10 @@ pub trait Action: Send + Sync + 'static {
         None
     }
 
+    fn finishes_later(&self, _params: &Self::Params) -> bool {
+        Self::FINISHES_LATER
+    }
+
     fn summary(&self, _output: &Self::Output) -> Value {
         Value::Null
     }

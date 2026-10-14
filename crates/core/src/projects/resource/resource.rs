@@ -1,13 +1,14 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{HostResource, TunnelResource};
+use super::{ClusterResource, HostResource, TunnelResource};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Resource {
     Host(HostResource),
     Tunnel(TunnelResource),
+    Cluster(ClusterResource),
 }
 
 impl Resource {
@@ -26,6 +27,15 @@ impl Resource {
         match self {
             Self::Host(host) => host.check(),
             Self::Tunnel(tunnel) => tunnel.check(),
+            Self::Cluster(cluster) => cluster.check(),
+        }
+    }
+
+    pub(crate) fn kind(&self) -> &'static str {
+        match self {
+            Self::Host(_) => "host",
+            Self::Tunnel(_) => "tunnel",
+            Self::Cluster(_) => "cluster",
         }
     }
 }

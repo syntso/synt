@@ -30,10 +30,10 @@ mod terminal;
 pub use broker::Broker;
 pub use builtin::{
     Files, GrantList, GrantRevoke, JournalPage, JournalVerify, KeyGenerate, KeyImport, KeyList,
-    KeyRemove, LocalSessionOpen, Ping, Pong, ProjectClose, ProjectList, ProjectOpen, ResourceGet,
-    ResourceList, ResourcePut, ResourceRemove, SecretList, SecretPut, SecretRemove, SessionAttach,
-    SessionBlocks, SessionClose, SessionIntegration, SessionList, SessionResize, SshConnections,
-    SshExec, SshSessionOpen, SshWarm, TunnelClose, TunnelList, TunnelOpen,
+    KeyRemove, Kube, LocalSessionOpen, Ping, Pong, ProjectClose, ProjectList, ProjectOpen,
+    ResourceGet, ResourceList, ResourcePut, ResourceRemove, SecretList, SecretPut, SecretRemove,
+    SessionAttach, SessionBlocks, SessionClose, SessionIntegration, SessionList, SessionResize,
+    SshConnections, SshExec, SshSessionOpen, SshWarm, TunnelClose, TunnelList, TunnelOpen,
 };
 pub use core::{Core, VERSION};
 pub use error::CoreError;
@@ -41,7 +41,9 @@ pub use extensions::{CoreCaller, CoreScreen, EventFeed};
 pub use grants::{AlwaysGrants, GrantSeal};
 pub use idle::{Activity, IdleWatch};
 pub use login::LoginCommand;
-pub use projects::{HostResource, ProjectChange, Projects, Resource, TunnelResource};
+pub use projects::{
+    ClusterResource, HostResource, ProjectChange, Projects, Resource, TunnelResource,
+};
 pub use runbooks::{Runbooks, Runs};
 pub use secrets::{SecretInfo, SecretName, Secrets};
 pub use server::Server;
