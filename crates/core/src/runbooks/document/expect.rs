@@ -4,6 +4,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::runbooks::param::Values;
+use crate::runbooks::template::TextTemplate;
+
 const EXIT: &str = "exit";
 const STDOUT: &str = "stdout";
 
@@ -44,6 +47,24 @@ impl Expect {
         Ok(())
     }
 
+    pub(crate) fn render(&self, values: &Values) -> Result<Self, String> {
+        let contains = self
+            .contains
+            .as_deref()
+            .map(|text| TextTemplate::parse(text).render_text(values))
+            .transpose()?;
+
+        Ok(Self {
+            exit: self.exit,
+            contains,
+            fields: self.fields.clone(),
+        })
+    }
+
+    pub(crate) fn exit_wanted(&self) -> i64 {
+        self.exit.unwrap_or(0)
+    }
+
     fn judge_exit(&self, result: &Value) -> Result<(), String> {
         let carried = result.get(EXIT);
 
@@ -54,7 +75,7 @@ impl Expect {
                     "expected exit {wanted}, but the result has no exit"
                 ));
             }
-            (wanted, Some(_)) => wanted.unwrap_or(0),
+            (_, Some(_)) => self.exit_wanted(),
         };
 
         match carried.and_then(Value::as_i64) {

@@ -25,8 +25,8 @@ impl Plan {
     ) -> Result<Self, String> {
         let values = Values::resolve(&runbook.params, given)?;
 
-        let steps = planned(&runbook.steps, &values, lookup, "step")?;
-        let rollback = planned(&runbook.rollback, &values, lookup, "rollback step")?;
+        let steps = Self::plan_steps(&runbook.steps, &values, lookup, "step")?;
+        let rollback = Self::plan_steps(&runbook.rollback, &values, lookup, "rollback step")?;
 
         Ok(Self {
             runbook: reference,
@@ -53,24 +53,24 @@ impl Plan {
             "rollback": self.rollback,
         })
     }
-}
 
-fn planned(
-    steps: &[Step],
-    values: &Values,
-    lookup: &impl Fn(&ActionId) -> Option<Handle>,
-    what: &str,
-) -> Result<Vec<PlannedStep>, String> {
-    steps
-        .iter()
-        .enumerate()
-        .map(|(index, step)| {
-            let number = index + 1;
+    fn plan_steps(
+        steps: &[Step],
+        values: &Values,
+        lookup: &impl Fn(&ActionId) -> Option<Handle>,
+        what: &str,
+    ) -> Result<Vec<PlannedStep>, String> {
+        steps
+            .iter()
+            .enumerate()
+            .map(|(index, step)| {
+                let number = index + 1;
 
-            PlannedStep::make(number, step, values, lookup)
-                .map_err(|reason| format!("{what} {number}: {reason}"))
-        })
-        .collect()
+                PlannedStep::make(number, step, values, lookup)
+                    .map_err(|reason| format!("{what} {number}: {reason}"))
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]

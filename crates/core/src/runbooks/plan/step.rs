@@ -41,22 +41,30 @@ impl PlannedStep {
         let target = step
             .target
             .as_deref()
-            .map(|target| rendered_target(target, values))
+            .map(|target| Self::render_target(target, values))
             .transpose()?;
         let params = Value::Object(step.params.render(values)?);
 
         let handle = lookup(&action).ok_or_else(|| format!("there is no action {action}"))?;
-        let (risk, destination) = judge(&handle, target.as_ref(), &params)?;
+        let (risk, destination) = Self::judge(&handle, target.as_ref(), &params)?;
+
+        let title = TextTemplate::parse(&step.title).render_text(values)?;
+        let expect = step
+            .expect
+            .as_ref()
+            .map(|expect| expect.render(values))
+            .transpose()?
+            .unwrap_or_default();
 
         Ok(Self {
             number,
-            title: TextTemplate::parse(&step.title).render_text(values)?,
+            title,
             action,
             target,
             params,
             risk,
             destination,
-            expect: rendered_expect(step.expect.as_ref(), values)?,
+            expect,
             retry: step.retry(),
             on_failure: step.on_failure,
         })
@@ -67,58 +75,45 @@ impl PlannedStep {
             .as_ref()
             .map(|target| target.as_str().to_owned())
     }
-}
 
-fn rendered_target(target: &str, values: &Values) -> Result<ResourceRef, String> {
-    let text = TextTemplate::parse(target).render_text(values)?;
-    let checked = ParamKind::Target.accept(&Value::from(text.as_str()))?;
+    fn render_target(target: &str, values: &Values) -> Result<ResourceRef, String> {
+        let text = TextTemplate::parse(target).render_text(values)?;
+        let checked = ParamKind::Target.accept(&Value::from(text))?;
 
-    ResourceRef::new(checked.as_str().unwrap_or_default()).map_err(|error| error.to_string())
-}
-
-fn rendered_expect(expect: Option<&Expect>, values: &Values) -> Result<Expect, String> {
-    let Some(expect) = expect else {
-        return Ok(Expect::default());
-    };
-
-    let contains = expect
-        .contains
-        .as_deref()
-        .map(|text| TextTemplate::parse(text).render_text(values))
-        .transpose()?;
-
-    Ok(Expect {
-        contains,
-        ..expect.clone()
-    })
-}
-
-fn judge(
-    handle: &Handle,
-    target: Option<&ResourceRef>,
-    params: &Value,
-) -> Result<(Risk, Option<String>), String> {
-    let action = handle.id();
-
-    if handle.person_only() {
-        return Err(format!(
-            "{action} is for the person only, so a runbook cannot run it"
-        ));
+        ResourceRef::new(checked.as_str().unwrap_or_default()).map_err(|error| error.to_string())
     }
 
-    match (handle.takes_target(), target) {
-        (true, None) => return Err(format!("{action} needs a target")),
-        (false, Some(_)) => return Err(format!("{action} takes no target")),
-        _ => {}
+    fn judge(
+        handle: &Handle,
+        target: Option<&ResourceRef>,
+        params: &Value,
+    ) -> Result<(Risk, Option<String>), String> {
+        Self::admit(handle, target)?;
+
+        let prepared = handle
+            .prepare(target, params.clone())
+            .map_err(|error| error.to_string())?;
+
+        if let Some(target) = target.filter(|_| prepared.destination().is_none()) {
+            return Err(format!("{target} does not name a host this core can reach"));
+        }
+
+        Ok((prepared.risk(), prepared.destination().map(str::to_owned)))
     }
 
-    let prepared = handle
-        .prepare(target, params.clone())
-        .map_err(|error| error.to_string())?;
+    fn admit(handle: &Handle, target: Option<&ResourceRef>) -> Result<(), String> {
+        let action = handle.id();
 
-    if let Some(target) = target.filter(|_| prepared.destination().is_none()) {
-        return Err(format!("{target} does not name a host this core can reach"));
+        if handle.person_only() {
+            return Err(format!(
+                "{action} is for the person only, so a runbook cannot run it"
+            ));
+        }
+
+        match (handle.takes_target(), target) {
+            (true, None) => Err(format!("{action} needs a target")),
+            (false, Some(_)) => Err(format!("{action} takes no target")),
+            _ => Ok(()),
+        }
     }
-
-    Ok((prepared.risk(), prepared.destination().map(str::to_owned)))
 }
