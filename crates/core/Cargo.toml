@@ -23,6 +23,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 synt-actions.workspace = true
+synt-db.workspace = true
 synt-extensions.workspace = true
 synt-journal.workspace = true
 synt-platform.workspace = true

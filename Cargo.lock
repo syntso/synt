@@ -3866,6 +3866,7 @@ dependencies = [
  "sha2 0.11.1",
  "synt-actions",
  "synt-client",
+ "synt-db",
  "synt-extensions",
  "synt-journal",
  "synt-platform",

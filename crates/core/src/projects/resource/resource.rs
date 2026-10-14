@@ -1,13 +1,14 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{HostResource, TunnelResource};
+use super::{DatabaseResource, HostResource, TunnelResource};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Resource {
     Host(HostResource),
     Tunnel(TunnelResource),
+    Database(DatabaseResource),
 }
 
 impl Resource {
@@ -22,10 +23,19 @@ impl Resource {
         toml::to_string(self).map_err(|error| error.to_string())
     }
 
+    pub(crate) fn kind(&self) -> &'static str {
+        match self {
+            Self::Host(_) => "host",
+            Self::Tunnel(_) => "tunnel",
+            Self::Database(_) => "database",
+        }
+    }
+
     pub(crate) fn check(&self) -> Result<(), String> {
         match self {
             Self::Host(host) => host.check(),
             Self::Tunnel(tunnel) => tunnel.check(),
+            Self::Database(database) => database.check(),
         }
     }
 }
