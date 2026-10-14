@@ -1,4 +1,5 @@
 use super::Visit;
+use crate::call::FailureCode;
 use crate::interface::GuestError;
 use crate::manifest::FileAccess;
 use crate::picked::Picked;
@@ -38,7 +39,7 @@ impl Visit {
             .pick(self.id(), handle)?
             .ok_or_else(|| {
                 GuestError::new(
-                    "unknown_file",
+                    FailureCode::UnknownFile,
                     format!("the person picked no file {handle} for {}", self.id()),
                 )
             })?;

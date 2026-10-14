@@ -2,9 +2,10 @@ use super::path::DocumentPath;
 use super::place::{DocumentPlace, LARGEST_DOCUMENT};
 use super::walk::Walk;
 use super::{Document, DocumentInfo, Merger, ProjectFolder, ProjectFolders, Written};
-use crate::digest::sha256;
+use crate::call::FailureCode;
 use crate::interface::GuestError;
 use crate::manifest::Manifest;
+use crate::sha256::Sha256;
 use crate::shelf::{Shelf, StoredRevision};
 
 pub(crate) struct DocumentStore<'a> {
@@ -15,7 +16,7 @@ pub(crate) struct DocumentStore<'a> {
 
 struct Pending {
     body: Vec<u8>,
-    parents: Vec<String>,
+    parents: Vec<Sha256>,
     merged: bool,
 }
 
@@ -74,7 +75,7 @@ impl<'a> DocumentStore<'a> {
 
         let pending = match place.read()? {
             Some(current) => self.onto_current(&place, &current, body, base, merger)?,
-            None => Pending::plain(body, base.map(str::to_owned)),
+            None => Pending::plain(body, base.map(Sha256::recorded)),
         };
 
         place.write(&pending.body)?;
@@ -106,7 +107,7 @@ impl<'a> DocumentStore<'a> {
     ) -> Result<Pending, GuestError> {
         self.note_outside_change(place, current)?;
 
-        let revision = sha256(current);
+        let revision = Sha256::of(current);
         if base == Some(revision.as_str()) {
             return Ok(Pending::plain(incoming, Some(revision)));
         }
@@ -119,7 +120,7 @@ impl<'a> DocumentStore<'a> {
         place: &DocumentPlace,
         base: Option<&str>,
         current: &[u8],
-        current_revision: String,
+        current_revision: Sha256,
         incoming: &[u8],
         merger: &impl Merger,
     ) -> Result<Pending, GuestError> {
@@ -130,7 +131,8 @@ impl<'a> DocumentStore<'a> {
         let body = merger.merge(place.kind(), (base_body.as_deref(), current, incoming))?;
         check_size(body.len())?;
 
-        let incoming = StoredRevision::new(incoming, base.map(str::to_owned).into_iter().collect());
+        let incoming =
+            StoredRevision::new(incoming, base.map(Sha256::recorded).into_iter().collect());
         self.remember(place, &incoming)?;
 
         Ok(Pending {
@@ -141,10 +143,10 @@ impl<'a> DocumentStore<'a> {
     }
 
     fn note_outside_change(&self, place: &DocumentPlace, body: &[u8]) -> Result<(), GuestError> {
-        let revision = sha256(body);
+        let revision = Sha256::of(body);
         let head = self.shelf.head(place.project_id(), &place.history_key())?;
 
-        if head.as_deref() == Some(revision.as_str()) {
+        if head.as_ref() == Some(&revision) {
             return Ok(());
         }
 
@@ -160,7 +162,7 @@ impl<'a> DocumentStore<'a> {
 
         stored.map(|stored| stored.body).ok_or_else(|| {
             GuestError::new(
-                "conflict",
+                FailureCode::Conflict,
                 format!(
                     "{} changed and its base revision {revision} is no longer known; \
                      read it again",
@@ -193,12 +195,12 @@ impl<'a> DocumentStore<'a> {
 
         self.folders
             .folder(project)
-            .map_err(|reason| GuestError::new("unknown_project", reason))
+            .map_err(|reason| GuestError::new(FailureCode::UnknownProject, reason))
     }
 
     fn place(&self, project: ProjectFolder, path: &str) -> Result<DocumentPlace, GuestError> {
-        let path =
-            DocumentPath::parse(path).map_err(|reason| GuestError::new("invalid_path", reason))?;
+        let path = DocumentPath::parse(path)
+            .map_err(|reason| GuestError::new(FailureCode::InvalidPath, reason))?;
 
         let kind = self.manifest.document_kind(path.suffix()).ok_or_else(|| {
             GuestError::not_allowed(format!(
@@ -213,7 +215,7 @@ impl<'a> DocumentStore<'a> {
 }
 
 impl Pending {
-    fn plain(body: &[u8], parent: Option<String>) -> Self {
+    fn plain(body: &[u8], parent: Option<Sha256>) -> Self {
         Self {
             body: body.to_vec(),
             parents: parent.into_iter().collect(),
@@ -228,7 +230,7 @@ fn check_size(size: usize) -> Result<(), GuestError> {
     }
 
     Err(GuestError::new(
-        "too_large",
+        FailureCode::TooLarge,
         format!("a document holds at most {LARGEST_DOCUMENT} bytes"),
     ))
 }

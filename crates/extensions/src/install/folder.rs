@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use super::package::{COMPONENT_FILE, MANIFEST_FILE};
 use super::{InstalledFiles, Package};
 use crate::ExtensionError;
-use crate::digest::sha256;
 use crate::manifest::Manifest;
+use crate::sha256::Sha256;
 
 const STAGING: &str = ".staging";
 
@@ -22,7 +22,7 @@ impl InstallFolder {
         Ok(Self { root })
     }
 
-    pub(crate) fn store(&self, package: &Package) -> Result<String, ExtensionError> {
+    pub(crate) fn store(&self, package: &Package) -> Result<Sha256, ExtensionError> {
         let staging = self.root.join(STAGING).join(&package.manifest.id);
         clear(&staging)?;
         fs::create_dir_all(&staging)?;
@@ -35,7 +35,7 @@ impl InstallFolder {
         clear(&place)?;
         fs::rename(&staging, &place)?;
 
-        Ok(sha256(manifest.as_bytes()))
+        Ok(Sha256::of(manifest.as_bytes()))
     }
 
     pub(crate) fn read(&self, id: &str) -> Result<InstalledFiles, ExtensionError> {
@@ -47,7 +47,7 @@ impl InstallFolder {
 
         Ok(InstalledFiles {
             manifest,
-            manifest_sha256: sha256(text.as_bytes()),
+            manifest_sha256: Sha256::of(text.as_bytes()),
             wasm,
         })
     }

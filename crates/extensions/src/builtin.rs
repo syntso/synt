@@ -1,17 +1,17 @@
-mod blocking;
+mod calling_actor;
 mod contributed;
 mod contributions;
 mod document;
+mod extension_params;
 mod file;
-mod guard;
 mod http;
 mod lifecycle;
 mod panel;
-mod params;
 mod registration;
 mod settings;
 mod view;
 
+pub(crate) use calling_actor::CallingActor;
 pub(crate) use http::ExtensionHttp;
 pub(crate) use lifecycle::{ExtensionInfo, SearchHit};
 pub(crate) use registration::register;

@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::listed::ListedDocument;
-use crate::builtin::blocking::blocking;
+use crate::blocking::Blocking;
 use crate::documents::DocumentStore;
 use crate::{ExtensionError, Extensions};
 
@@ -73,6 +73,6 @@ impl Action for ExtensionDocuments {
     ) -> Result<Vec<ListedDocument>, ActionError> {
         let action = self.clone();
 
-        blocking(move || action.listed(&params.project)).await
+        Blocking::run(move || action.listed(&params.project)).await
     }
 }

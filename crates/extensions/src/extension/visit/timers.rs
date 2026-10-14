@@ -1,4 +1,5 @@
 use super::Visit;
+use crate::call::FailureCode;
 use crate::interface::GuestError;
 
 impl Visit {
@@ -8,7 +9,7 @@ impl Visit {
         self.guest
             .timers()
             .set(name, every_seconds)
-            .map_err(|reason| GuestError::new("invalid_timer", reason))
+            .map_err(|reason| GuestError::new(FailureCode::InvalidTimer, reason))
     }
 
     pub(super) fn disarm_timer(&self, name: &str) {

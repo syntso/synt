@@ -8,7 +8,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use super::asset_file::AssetFile;
 use super::mime::mime_of;
 use crate::Extensions;
-use crate::builtin::guard::refuse_extensions;
+use crate::builtin::CallingActor;
 use crate::extension::on_guest_thread;
 use crate::manifest::is_asset_path;
 
@@ -58,7 +58,7 @@ impl Action for ExtensionPanelAsset {
     }
 
     async fn run(&self, context: &Context, params: AssetParams) -> Result<AssetFile, ActionError> {
-        refuse_extensions(context)?;
+        context.refuse_extensions("reach the views, panels or actions of an extension")?;
 
         let mime = params.mime()?;
         let guest = Arc::clone(&self.extensions.loaded(&params.extension)?.guest);

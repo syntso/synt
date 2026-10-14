@@ -33,8 +33,8 @@ impl ExtensionImports for Sandbox {
 impl From<GuestError> for Error {
     fn from(error: GuestError) -> Self {
         Self {
-            code: error.code,
-            message: error.message,
+            code: error.code().to_string(),
+            message: error.message().to_owned(),
         }
     }
 }

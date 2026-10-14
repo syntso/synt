@@ -1,10 +1,12 @@
 use serde_json::Value;
 use synt_actions::Action;
 use synt_journal::Name;
+use synt_proto::ActionCall;
 
 use super::Visit;
 use crate::builtin::ExtensionHttp;
 use crate::call::ExtensionCall;
+use crate::call::FailureCode;
 use crate::http::{HttpRequest, HttpResponse};
 use crate::interface::GuestError;
 
@@ -32,11 +34,11 @@ impl Visit {
         self.allowed(!self.manifest().capabilities.http.is_empty(), "http hosts")?;
 
         let params = serde_json::to_value(request)
-            .map_err(|error| GuestError::new("invalid_request", error.to_string()))?;
+            .map_err(|error| GuestError::new(FailureCode::InvalidRequest, error.to_string()))?;
         let answer = self.dispatch(ExtensionHttp::ID.to_owned(), None, params)?;
 
         serde_json::from_value(answer)
-            .map_err(|error| GuestError::new("failed", format!("the response: {error}")))
+            .map_err(|error| GuestError::new(FailureCode::Failed, format!("the response: {error}")))
     }
 
     fn dispatch(
@@ -47,20 +49,22 @@ impl Visit {
     ) -> Result<Value, GuestError> {
         let Some(outside) = &self.outside else {
             return Err(GuestError::new(
-                "unavailable",
+                FailureCode::Unavailable,
                 "the core cannot be reached from here; only actions, views, panels, timers \
                  and events may call it",
             ));
         };
 
         let extension = Name::new(self.id())
-            .map_err(|reason| GuestError::new("internal", reason.to_string()))?;
-        let call = ExtensionCall {
+            .map_err(|reason| GuestError::new(FailureCode::Internal, reason.to_string()))?;
+        let call = ExtensionCall::new(
             extension,
-            action,
-            target,
-            params,
-        };
+            ActionCall {
+                action,
+                target,
+                params,
+            },
+        );
 
         outside
             .runtime
@@ -75,6 +79,9 @@ fn parse_params(params: &str) -> Result<Value, GuestError> {
     }
 
     serde_json::from_str(params).map_err(|reason| {
-        GuestError::new("invalid_params", format!("params are not JSON: {reason}"))
+        GuestError::new(
+            FailureCode::InvalidParams,
+            format!("params are not JSON: {reason}"),
+        )
     })
 }

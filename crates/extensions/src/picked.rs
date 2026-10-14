@@ -7,6 +7,7 @@ use serde::Serialize;
 use synt_platform::{read_plain_file, replace_file};
 
 use crate::ExtensionError;
+use crate::call::FailureCode;
 use crate::interface::GuestError;
 use crate::manifest::FileAccess;
 
@@ -52,7 +53,7 @@ impl Picked {
     pub(crate) fn write(&self, body: &[u8]) -> Result<(), GuestError> {
         if u64::try_from(body.len()).unwrap_or(u64::MAX) > LARGEST_FILE {
             return Err(GuestError::new(
-                "too_large",
+                FailureCode::TooLarge,
                 format!("a picked file holds at most {LARGEST_FILE} bytes"),
             ));
         }

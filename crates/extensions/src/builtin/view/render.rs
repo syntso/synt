@@ -8,7 +8,7 @@ use synt_journal::ResourceRef;
 
 use super::rendered::Rendered;
 use crate::Extensions;
-use crate::builtin::guard::refuse_extensions;
+use crate::builtin::CallingActor;
 use crate::extension::{Guest, on_guest_thread};
 use crate::runtime::GuestCall;
 use crate::view::ViewCheck;
@@ -63,7 +63,7 @@ impl Action for ExtensionViewRender {
     }
 
     async fn run(&self, context: &Context, params: RenderParams) -> Result<Rendered, ActionError> {
-        refuse_extensions(context)?;
+        context.refuse_extensions("reach the views, panels or actions of an extension")?;
 
         let loaded = self.extensions.loaded(&params.extension)?;
         let contributed = loaded

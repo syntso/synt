@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use serde_json::Value;
 use synt_actions::{ActionError, Context, DynamicAction, Risk};
-use synt_journal::{Actor, ResourceRef};
+use synt_journal::ResourceRef;
 
 use super::{ActionSpec, Guest, on_guest_thread};
+use crate::builtin::CallingActor;
 use crate::runtime::GuestCall;
 
 pub(crate) struct ExtensionAction {
@@ -45,11 +46,7 @@ impl DynamicAction for ExtensionAction {
         target: Option<ResourceRef>,
         params: Value,
     ) -> Result<Value, ActionError> {
-        if matches!(context.actor(), Actor::Plugin(_)) {
-            return Err(ActionError::failed(
-                "an extension cannot run the actions of an extension",
-            ));
-        }
+        context.refuse_extensions("run the actions of an extension")?;
 
         let call = GuestCall {
             action: self.spec.id.as_str().to_owned(),

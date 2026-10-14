@@ -5,7 +5,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
 use super::entry::FileEntry;
-use crate::builtin::blocking::blocking;
+use crate::blocking::Blocking;
 use crate::manifest::FileAccess;
 use crate::picked::Picked;
 use crate::{ExtensionError, Extensions};
@@ -87,6 +87,6 @@ impl Action for ExtensionFilePick {
         let wanted = params.access()?;
         let action = self.clone();
 
-        blocking(move || action.pick(&params, wanted)).await
+        Blocking::run(move || action.pick(&params, wanted)).await
     }
 }

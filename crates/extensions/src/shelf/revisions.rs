@@ -2,6 +2,7 @@ use rusqlite::{OptionalExtension, Row};
 
 use super::{Shelf, StoredRevision};
 use crate::ExtensionError;
+use crate::sha256::Sha256;
 
 const KEPT_REVISIONS: i64 = 32;
 
@@ -25,7 +26,7 @@ impl Shelf {
         Ok(found)
     }
 
-    pub(crate) fn head(&self, project: &str, path: &str) -> Result<Option<String>, ExtensionError> {
+    pub(crate) fn head(&self, project: &str, path: &str) -> Result<Option<Sha256>, ExtensionError> {
         let found = self
             .lock()
             .query_row(
@@ -61,7 +62,7 @@ impl Shelf {
                 project,
                 path,
                 &revision.revision,
-                revision.parents.join(","),
+                joined(&revision.parents),
                 &revision.body,
                 last + 1,
             ),
@@ -93,20 +94,27 @@ fn stored(row: &Row<'_>) -> rusqlite::Result<StoredRevision> {
         parents: parents
             .split(',')
             .filter(|parent| !parent.is_empty())
-            .map(str::to_owned)
+            .map(Sha256::recorded)
             .collect(),
         body: row.get("body")?,
     })
 }
 
+fn joined(parents: &[Sha256]) -> String {
+    let parents: Vec<&str> = parents.iter().map(Sha256::as_str).collect();
+
+    parents.join(",")
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::sha256::Sha256;
     use crate::shelf::{Shelf, StoredRevision};
 
     fn revision(name: &str, parents: &[&str]) -> StoredRevision {
         StoredRevision {
-            revision: name.to_owned(),
-            parents: parents.iter().map(|parent| (*parent).to_owned()).collect(),
+            revision: Sha256::recorded(name),
+            parents: parents.iter().copied().map(Sha256::recorded).collect(),
             body: name.as_bytes().to_vec(),
         }
     }
@@ -127,14 +135,17 @@ mod tests {
                 .unwrap();
         }
 
-        assert_eq!(shelf.head("p", "a.uml").unwrap().as_deref(), Some("r39"));
+        assert_eq!(
+            shelf.head("p", "a.uml").unwrap(),
+            Some(Sha256::recorded("r39"))
+        );
         assert_eq!(
             shelf
                 .revision("p", "a.uml", "r39")
                 .unwrap()
                 .unwrap()
                 .parents,
-            ["r38"]
+            [Sha256::recorded("r38")]
         );
         assert!(shelf.revision("p", "a.uml", "r0").unwrap().is_none());
         assert!(shelf.revision("p", "a.uml", "r8").unwrap().is_some());

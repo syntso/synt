@@ -4,7 +4,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use super::ExtensionInfo;
 use super::params::IdParams;
 use crate::Extensions;
-use crate::builtin::blocking::blocking;
+use crate::blocking::Blocking;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionDisable {
@@ -37,6 +37,6 @@ impl Action for ExtensionDisable {
     ) -> Result<ExtensionInfo, ActionError> {
         let extensions = self.extensions.clone();
 
-        blocking(move || extensions.disable(&params.id)).await
+        Blocking::run(move || extensions.disable(&params.id)).await
     }
 }

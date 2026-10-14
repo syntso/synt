@@ -37,10 +37,7 @@ impl Visit {
             return Ok(());
         }
 
-        Err(GuestError::not_allowed(format!(
-            "{} has no {missing} in its capabilities",
-            self.id()
-        )))
+        Err(GuestError::missing_capability(self.id(), missing))
     }
 }
 

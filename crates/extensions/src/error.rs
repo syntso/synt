@@ -48,6 +48,9 @@ pub enum ExtensionError {
     #[error("the registry has no extension {0}")]
     NotListed(String),
 
+    #[error("{0:?} is not a sha256 digest")]
+    NotSha256(String),
+
     #[error("{0}")]
     Refused(String),
 }

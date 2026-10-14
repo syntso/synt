@@ -6,7 +6,7 @@ use synt_journal::ResourceRef;
 
 use super::ExtensionInfo;
 use crate::Extensions;
-use crate::builtin::blocking::blocking;
+use crate::blocking::Blocking;
 use crate::extension::Candidate;
 
 #[derive(Clone)]
@@ -64,6 +64,6 @@ impl Action for ExtensionInstall {
             .ok_or_else(|| ActionError::failed("the extension was not checked before install"))?;
         let extensions = self.extensions.clone();
 
-        blocking(move || extensions.install(candidate)).await
+        Blocking::run(move || extensions.install(candidate)).await
     }
 }

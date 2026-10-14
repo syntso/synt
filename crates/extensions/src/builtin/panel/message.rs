@@ -7,7 +7,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
 use crate::Extensions;
-use crate::builtin::guard::refuse_extensions;
+use crate::builtin::CallingActor;
 use crate::extension::on_guest_thread;
 use crate::manifest::Panel;
 
@@ -57,7 +57,7 @@ impl Action for ExtensionPanelMessage {
     }
 
     async fn run(&self, context: &Context, params: MessageParams) -> Result<Value, ActionError> {
-        refuse_extensions(context)?;
+        context.refuse_extensions("reach the views, panels or actions of an extension")?;
 
         let loaded = self.extensions.loaded(&params.extension)?;
         let is_web = loaded

@@ -4,7 +4,7 @@ use super::sealed::Sealed;
 use super::{IndexSeal, Listing};
 use crate::ExtensionError;
 use crate::clock::now;
-use crate::digest::sha256;
+use crate::sha256::Sha256;
 
 const MILLIS_PER_SECOND: u64 = 1000;
 
@@ -50,7 +50,7 @@ impl TrustedKey {
     }
 
     pub(crate) fn check(&self, wasm: &[u8], listing: &Listing) -> Result<(), ExtensionError> {
-        let found = sha256(wasm);
+        let found = Sha256::of(wasm);
         if found != listing.sha256 {
             return Err(ExtensionError::Signature(format!(
                 "the download has sha256 {found}, the index says {}",

@@ -4555,6 +4555,7 @@ dependencies = [
  "synt-actions",
  "synt-journal",
  "synt-platform",
+ "synt-proto",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",

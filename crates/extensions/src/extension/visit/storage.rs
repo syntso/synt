@@ -1,5 +1,6 @@
 use super::Visit;
 use crate::ExtensionError;
+use crate::call::FailureCode;
 use crate::interface::{GuestError, Level};
 
 const LONGEST_KEY: usize = 256;
@@ -25,7 +26,7 @@ impl Visit {
 
         if key.is_empty() || key.len() > LONGEST_KEY {
             return Err(GuestError::new(
-                "invalid_key",
+                FailureCode::InvalidKey,
                 format!("a key holds 1 to {LONGEST_KEY} bytes"),
             ));
         }
@@ -87,7 +88,9 @@ impl Visit {
 
 fn storage_error(failure: &ExtensionError) -> GuestError {
     match failure {
-        ExtensionError::Refused(reason) => GuestError::new("storage_full", reason.clone()),
-        other => GuestError::new("storage_failed", other.to_string()),
+        ExtensionError::Refused(reason) => {
+            GuestError::new(FailureCode::StorageFull, reason.clone())
+        }
+        other => GuestError::new(FailureCode::StorageFailed, other.to_string()),
     }
 }

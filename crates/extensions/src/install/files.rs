@@ -1,11 +1,12 @@
 use super::Package;
 use crate::ExtensionError;
 use crate::manifest::Manifest;
+use crate::sha256::Sha256;
 use crate::shelf::Installed;
 
 pub(crate) struct InstalledFiles {
     pub(crate) manifest: Manifest,
-    pub(super) manifest_sha256: String,
+    pub(super) manifest_sha256: Sha256,
     pub(super) wasm: Vec<u8>,
 }
 

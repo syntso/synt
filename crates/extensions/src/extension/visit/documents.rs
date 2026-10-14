@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use super::Visit;
+use crate::call::FailureCode;
 use crate::documents::{Document, DocumentInfo, DocumentStore, Merger, Written};
 use crate::extension::Guest;
 use crate::interface::GuestError;
@@ -35,7 +36,7 @@ impl Visit {
         let services = self.guest.services();
         let folders = services.folders.get().ok_or_else(|| {
             GuestError::new(
-                "unavailable",
+                FailureCode::Unavailable,
                 "the core has no projects to keep documents in",
             )
         })?;
@@ -52,8 +53,9 @@ impl Merger for Arc<Guest> {
         kind: &str,
         sides: (Option<&[u8]>, &[u8], &[u8]),
     ) -> Result<Vec<u8>, GuestError> {
-        let conflict =
-            |reason: String| GuestError::new("conflict", format!("the merge failed: {reason}"));
+        let conflict = |reason: String| {
+            GuestError::new(FailureCode::Conflict, format!("the merge failed: {reason}"))
+        };
 
         match Guest::merge(self, kind, sides) {
             Ok(Ok(merged)) => Ok(merged),

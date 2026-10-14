@@ -4,8 +4,8 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::blocking::blocking;
-use super::guard::calling_extension;
+use super::CallingActor;
+use crate::blocking::Blocking;
 use crate::http::{Exchange, HttpRequest, HttpResponse, RecordedParams, SecretAccess};
 use crate::{ExtensionError, Extensions};
 
@@ -57,7 +57,13 @@ impl Action for ExtensionHttp {
         context: &Context,
         params: HttpRequest,
     ) -> Result<HttpResponse, ActionError> {
-        let extension = calling_extension(context)?;
+        let extension = context
+            .calling_extension()
+            .ok_or_else(|| {
+                ActionError::failed("only an extension sends requests through extension.http")
+            })?
+            .as_str()
+            .to_owned();
         let capabilities = self
             .extensions
             .loaded(&extension)?
@@ -68,7 +74,7 @@ impl Action for ExtensionHttp {
         let secrets = self.extensions.services().secrets.get().cloned();
         let exchange = Arc::clone(&self.exchange);
 
-        blocking(move || {
+        Blocking::run(move || {
             let access = secrets
                 .as_deref()
                 .map(|source| SecretAccess::new(source, &extension));

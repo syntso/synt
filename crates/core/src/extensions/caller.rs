@@ -2,9 +2,9 @@ use std::sync::{Arc, Weak};
 
 use serde_json::Value;
 use synt_actions::Context;
-use synt_extensions::{CallFailure, CallFuture, Caller, ExtensionCall};
+use synt_extensions::{CallFailure, CallFuture, Caller, ExtensionCall, FailureCode};
 use synt_journal::Actor;
-use synt_proto::{ActionCall, ActionOutcome, ErrorCode, RpcError};
+use synt_proto::{ActionCall, ActionOutcome, RpcError};
 
 use crate::core::Core;
 use crate::link::Link;
@@ -29,14 +29,10 @@ impl CoreCaller {
         let core = self
             .core
             .upgrade()
-            .ok_or_else(|| CallFailure::new("unavailable", "the core is stopping"))?;
+            .ok_or_else(|| CallFailure::new(FailureCode::Unavailable, "the core is stopping"))?;
 
-        let actor = Actor::Plugin(call.extension);
-        let request = ActionCall {
-            action: call.action,
-            target: call.target,
-            params: call.params,
-        };
+        let actor = Actor::Plugin(call.extension().clone());
+        let request = call.into_request();
 
         let answer = match origin {
             Some(origin) => Self::on_behalf(&core, &actor, origin, request).await?,
@@ -45,7 +41,7 @@ impl CoreCaller {
 
         answer
             .map(|outcome| outcome.value)
-            .map_err(|error| CallFailure::new(code_name(error.code), error.message))
+            .map_err(|error| CallFailure::new(error.code.into(), error.message))
     }
 
     async fn on_behalf(
@@ -54,9 +50,12 @@ impl CoreCaller {
         origin: &Context,
         request: ActionCall,
     ) -> Result<Result<ActionOutcome, RpcError>, CallFailure> {
-        let link = origin
-            .connection::<Link>()
-            .ok_or_else(|| CallFailure::new("unavailable", "the call came without a connection"))?;
+        let link = origin.connection::<Link>().ok_or_else(|| {
+            CallFailure::new(
+                FailureCode::Unavailable,
+                "the call came without a connection",
+            )
+        })?;
 
         let behalf = OnBehalf {
             actor: origin.actor(),
@@ -75,16 +74,5 @@ impl CoreCaller {
 impl Caller for CoreCaller {
     fn call<'a>(&'a self, call: ExtensionCall, origin: Option<&'a Context>) -> CallFuture<'a> {
         Box::pin(self.dispatch(call, origin))
-    }
-}
-
-fn code_name(code: ErrorCode) -> &'static str {
-    match code {
-        ErrorCode::DENIED => "denied",
-        ErrorCode::UNKNOWN_ACTION => "unknown_action",
-        ErrorCode::INVALID_PARAMS => "invalid_params",
-        ErrorCode::ACTION_FAILED => "failed",
-        ErrorCode::JOURNAL_UNAVAILABLE => "journal_unavailable",
-        _ => "internal",
     }
 }

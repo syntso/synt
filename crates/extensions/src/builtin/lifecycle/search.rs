@@ -5,7 +5,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::SearchHit;
 use crate::Extensions;
-use crate::builtin::blocking::blocking;
+use crate::blocking::Blocking;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionSearch {
@@ -43,6 +43,6 @@ impl Action for ExtensionSearch {
     ) -> Result<Vec<SearchHit>, ActionError> {
         let extensions = self.extensions.clone();
 
-        blocking(move || extensions.search(params.query.as_deref())).await
+        Blocking::run(move || extensions.search(params.query.as_deref())).await
     }
 }

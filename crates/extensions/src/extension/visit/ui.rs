@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 use super::Visit;
+use crate::call::FailureCode;
 use crate::interface::GuestError;
 use crate::manifest::Panel;
 use crate::ui::ScreenUpdate;
@@ -12,7 +13,7 @@ impl Visit {
     pub(super) fn send_patch(&self, view: &str, patch: &str) -> Result<(), GuestError> {
         if !self.manifest().contributes.views().contains(view) {
             return Err(GuestError::new(
-                "unknown_view",
+                FailureCode::UnknownView,
                 format!("{} contributes no view {view}", self.id()),
             ));
         }
@@ -21,7 +22,7 @@ impl Visit {
         let owns = |action: &str| self.guest.owns_action(action);
         ViewPatch::new(&owns)
             .check(&patch)
-            .map_err(|reason| GuestError::new("invalid_patch", reason))?;
+            .map_err(|reason| GuestError::new(FailureCode::InvalidPatch, reason))?;
 
         self.show(ScreenUpdate::ViewPatched {
             extension: self.id().to_owned(),
@@ -41,7 +42,7 @@ impl Visit {
 
         if !is_web_panel {
             return Err(GuestError::new(
-                "unknown_panel",
+                FailureCode::UnknownPanel,
                 format!("{} contributes no web panel {panel}", self.id()),
             ));
         }
@@ -67,11 +68,11 @@ impl Visit {
 fn parse_message(text: &str) -> Result<Value, GuestError> {
     if text.len() > LARGEST_MESSAGE {
         return Err(GuestError::new(
-            "too_large",
+            FailureCode::TooLarge,
             format!("a message to the app holds at most {LARGEST_MESSAGE} bytes"),
         ));
     }
 
     serde_json::from_str(text)
-        .map_err(|error| GuestError::new("invalid_message", format!("not JSON: {error}")))
+        .map_err(|error| GuestError::new(FailureCode::InvalidMessage, format!("not JSON: {error}")))
 }

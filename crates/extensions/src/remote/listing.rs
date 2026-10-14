@@ -2,9 +2,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::ExtensionError;
 use crate::manifest::{Api, Capabilities, Contributions, Manifest};
+use crate::sha256::Sha256;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Listing {
+pub(crate) struct Listing {
     pub id: String,
     pub name: String,
     pub version: String,
@@ -17,7 +18,7 @@ pub struct Listing {
     pub repository: Option<String>,
 
     pub file: String,
-    pub sha256: String,
+    pub sha256: Sha256,
     pub signature: String,
 
     #[serde(default)]

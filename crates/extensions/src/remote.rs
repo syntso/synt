@@ -8,6 +8,6 @@ mod trusted_key;
 
 pub(crate) use index::Index;
 pub(crate) use index_seal::IndexSeal;
-pub use listing::Listing;
+pub(crate) use listing::Listing;
 pub use registry::Remote;
 pub(crate) use trusted_key::TrustedKey;

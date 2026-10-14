@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 
 use crate::extension::Loaded;
 use crate::manifest::{Api, Capabilities, Manifest};
+use crate::sha256::Sha256;
 use crate::shelf::Installed;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -15,7 +16,7 @@ pub(crate) struct ExtensionInfo {
     pub signed: bool,
     pub enabled: bool,
     pub loaded: bool,
-    pub sha256: String,
+    pub sha256: Sha256,
     pub capabilities: Option<Capabilities>,
     pub actions: Vec<String>,
     pub problem: Option<String>,

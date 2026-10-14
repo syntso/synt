@@ -1,5 +1,5 @@
-use crate::digest::sha256;
 use crate::manifest::Manifest;
+use crate::sha256::Sha256;
 
 pub(super) const MANIFEST_FILE: &str = "extension.toml";
 pub(super) const COMPONENT_FILE: &str = "extension.wasm";
@@ -8,13 +8,13 @@ pub(super) const COMPONENT_FILE: &str = "extension.wasm";
 pub(crate) struct Package {
     pub(crate) manifest: Manifest,
     pub(crate) wasm: Vec<u8>,
-    pub(crate) sha256: String,
+    pub(crate) sha256: Sha256,
     pub(crate) signed: bool,
 }
 
 impl Package {
     pub(crate) fn new(manifest: Manifest, wasm: Vec<u8>, signed: bool) -> Self {
-        let sha256 = sha256(&wasm);
+        let sha256 = Sha256::of(&wasm);
 
         Self {
             manifest,

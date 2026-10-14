@@ -203,7 +203,7 @@ impl From<DocumentInfo> for documents::DocumentInfo {
             project: info.project,
             path: info.path,
             kind: info.kind,
-            revision: info.revision,
+            revision: info.revision.into(),
             size: info.size,
         }
     }
@@ -245,8 +245,8 @@ impl From<Picked> for files::Picked {
 impl From<GuestError> for Error {
     fn from(error: GuestError) -> Self {
         Self {
-            code: error.code,
-            message: error.message,
+            code: error.code().to_string(),
+            message: error.message().to_owned(),
         }
     }
 }

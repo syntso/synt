@@ -3,13 +3,14 @@ use semver::Version;
 
 use super::database::unsigned_number;
 use crate::ExtensionError;
+use crate::sha256::Sha256;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Installed {
     pub id: String,
     pub version: String,
-    pub sha256: String,
-    pub manifest_sha256: String,
+    pub sha256: Sha256,
+    pub manifest_sha256: Sha256,
     pub signed: bool,
     pub enabled: bool,
     pub added_at: u64,

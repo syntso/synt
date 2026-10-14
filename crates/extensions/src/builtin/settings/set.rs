@@ -5,7 +5,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::check::SettingsCheck;
 use super::values::SettingsValues;
-use crate::builtin::blocking::blocking;
+use crate::blocking::Blocking;
 use crate::{ExtensionError, Extensions};
 
 #[derive(Clone)]
@@ -69,7 +69,7 @@ impl Action for ExtensionSettingsSet {
     ) -> Result<SettingsValues, ActionError> {
         let action = self.clone();
 
-        blocking(move || action.save(&params)).await
+        Blocking::run(move || action.save(&params)).await
     }
 }
 

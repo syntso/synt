@@ -5,7 +5,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::info::PanelInfo;
 use crate::Extensions;
-use crate::builtin::guard::refuse_extensions;
+use crate::builtin::CallingActor;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionPanelOpen {
@@ -38,7 +38,7 @@ impl Action for ExtensionPanelOpen {
     }
 
     async fn run(&self, context: &Context, params: PanelParams) -> Result<PanelInfo, ActionError> {
-        refuse_extensions(context)?;
+        context.refuse_extensions("reach the views, panels or actions of an extension")?;
 
         let loaded = self.extensions.loaded(&params.extension)?;
         let web_panel = loaded

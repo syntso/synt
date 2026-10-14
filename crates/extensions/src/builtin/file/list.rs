@@ -3,8 +3,8 @@ use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::entry::FileEntry;
 use crate::Extensions;
-use crate::builtin::blocking::blocking;
-use crate::builtin::params::ExtensionParams;
+use crate::blocking::Blocking;
+use crate::builtin::extension_params::ExtensionParams;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionFileList {
@@ -37,7 +37,7 @@ impl Action for ExtensionFileList {
     ) -> Result<Vec<FileEntry>, ActionError> {
         let extensions = self.extensions.clone();
 
-        blocking(move || {
+        Blocking::run(move || {
             let picks = extensions.services().shelf.picks(&params.extension)?;
 
             Ok(picks

@@ -2,6 +2,7 @@ use serde::Deserialize;
 
 use super::Listing;
 use crate::manifest::Capabilities;
+use crate::sha256::Sha256;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub(super) struct Sealed {
@@ -10,7 +11,7 @@ pub(super) struct Sealed {
     version: String,
     description: String,
     repository: Option<String>,
-    sha256: String,
+    sha256: Sha256,
     capabilities: Capabilities,
 }
 

@@ -6,8 +6,9 @@ use synt_platform::{read_plain_file, replace_file};
 
 use super::path::DocumentPath;
 use super::{DocumentInfo, ProjectFolder};
-use crate::digest::sha256;
+use crate::call::FailureCode;
 use crate::interface::GuestError;
+use crate::sha256::Sha256;
 
 const FOLDER: &str = "extensions";
 
@@ -61,7 +62,7 @@ impl DocumentPlace {
             project: self.project.id.clone(),
             path: self.path.as_str().to_owned(),
             kind: self.kind.clone(),
-            revision: sha256(body),
+            revision: Sha256::of(body),
             size: u64::try_from(body.len()).unwrap_or(u64::MAX),
         }
     }
@@ -97,7 +98,7 @@ impl DocumentPlace {
 
     pub(super) fn not_found(&self) -> GuestError {
         GuestError::new(
-            "not_found",
+            FailureCode::NotFound,
             format!("there is no document {}", self.path.as_str()),
         )
     }

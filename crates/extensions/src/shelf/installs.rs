@@ -94,6 +94,7 @@ impl Shelf {
 
 #[cfg(test)]
 mod tests {
+    use crate::sha256::Sha256;
     use crate::shelf::{Installed, Shelf};
 
     fn shelf() -> (tempfile::TempDir, Shelf) {
@@ -107,8 +108,8 @@ mod tests {
         Installed {
             id: "hello".to_owned(),
             version: "0.1.0".to_owned(),
-            sha256: "00".to_owned(),
-            manifest_sha256: "11".to_owned(),
+            sha256: Sha256::of(b"wasm"),
+            manifest_sha256: Sha256::of(b"toml"),
             signed: false,
             enabled: true,
             added_at: 7,
