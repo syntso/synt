@@ -13,6 +13,8 @@ use crate::reader::JournalReader;
 use crate::store::WriteDb;
 use crate::verify::{Damage, Verification, Walk};
 
+const SCRATCH_BYTES: usize = 512;
+
 pub struct Journal {
     id: JournalId,
     path: PathBuf,
@@ -67,7 +69,7 @@ impl Journal {
             clock,
             anchors,
             last_at: Timestamp::EPOCH,
-            scratch: Vec::with_capacity(512),
+            scratch: Vec::with_capacity(SCRATCH_BYTES),
             _lock: lock,
         })
     }
@@ -106,7 +108,7 @@ impl Journal {
             clock,
             anchors,
             last_at: tail.map_or(Timestamp::EPOCH, |(_, at)| at),
-            scratch: Vec::with_capacity(512),
+            scratch: Vec::with_capacity(SCRATCH_BYTES),
             _lock: lock,
         })
     }
