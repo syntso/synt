@@ -103,13 +103,17 @@ impl Device {
     }
 
     pub async fn sync(&self) -> RoundReport {
-        let mut reports = self.syncer.sync_now().await;
-        assert_eq!(reports.len(), 1, "one project syncs");
-
-        let report = reports.remove(0);
+        let report = self.round().await;
         assert_eq!(report.error, None, "the round failed");
 
         report
+    }
+
+    pub async fn round(&self) -> RoundReport {
+        let mut reports = self.syncer.sync_now().await;
+        assert_eq!(reports.len(), 1, "one project syncs");
+
+        reports.remove(0)
     }
 
     pub async fn history(&self, path: &str) -> Result<Vec<RevisionInfo>, SyncError> {

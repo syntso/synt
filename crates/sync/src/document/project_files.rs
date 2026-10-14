@@ -9,6 +9,7 @@ use super::DocumentPath;
 use super::document_path::{EXTENSIONS, MOST_EXTENSION_PARTS, PROJECT_FILE, RESOURCES, RUNBOOKS};
 use super::revision::LARGEST_BODY;
 use crate::SyncError;
+use crate::id::ProjectId;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ProjectFiles {
@@ -20,6 +21,25 @@ impl ProjectFiles {
         Self {
             root: root.to_owned(),
         }
+    }
+
+    pub(crate) fn check_root(&self, project: &ProjectId) -> Result<(), SyncError> {
+        if !is_folder(&self.root)? {
+            return Err(SyncError::Project(format!(
+                "{} is not a plain folder any more; the round is skipped until the project is back",
+                self.root.display()
+            )));
+        }
+
+        let found = self.project_file_id()?;
+        if found.as_deref() == Some(project.get()) {
+            return Ok(());
+        }
+
+        Err(SyncError::Project(format!(
+            "{} does not hold the project file of project {project} any more; the round is skipped until it is back",
+            self.root.display()
+        )))
     }
 
     pub(crate) fn paths(&self) -> Result<BTreeSet<DocumentPath>, SyncError> {
@@ -70,6 +90,22 @@ impl ProjectFiles {
             Err(error) if error.kind() != io::ErrorKind::NotFound => Err(SyncError::Io(error)),
             _ => Ok(()),
         }
+    }
+
+    fn project_file_id(&self) -> Result<Option<String>, SyncError> {
+        let Some(bytes) = self.read(&DocumentPath::parse(PROJECT_FILE)?)? else {
+            return Ok(None);
+        };
+
+        let table = std::str::from_utf8(&bytes)
+            .ok()
+            .and_then(|text| text.parse::<toml::Table>().ok());
+
+        Ok(table
+            .as_ref()
+            .and_then(|table| table.get("id"))
+            .and_then(toml::Value::as_str)
+            .map(str::to_owned))
     }
 
     fn documents_in(&self, folder: &str) -> Result<Vec<DocumentPath>, SyncError> {

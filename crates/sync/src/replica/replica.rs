@@ -5,12 +5,14 @@ use super::conflicts::is_conflicted;
 use super::{Outcome, Recorded, Settled};
 use crate::SyncError;
 use crate::clock::unix_millis;
-use crate::document::{DocumentPath, Draft, ProjectFiles, Revision};
+use crate::document::{DocumentKind, DocumentPath, Draft, ProjectFiles, Revision};
 use crate::history::{History, StoredDocument};
 use crate::id::{MemberId, ProjectId, RevisionId};
 use crate::merge::{DocumentGraph, DocumentMerger, merge_heads};
 use crate::report::{Applied, RevisionInfo};
 use crate::seal::Naming;
+
+const EVERYTHING_AT_LEAST: usize = 2;
 
 pub(crate) struct Replica {
     history: History,
@@ -46,17 +48,32 @@ impl Replica {
     }
 
     pub(crate) fn record_edits(&self) -> Result<Recorded, SyncError> {
+        self.files.check_root(&self.project)?;
+
         let known = self.known_documents()?;
         let mut paths: BTreeSet<DocumentPath> = self.files.paths()?;
         paths.extend(known.keys().cloned());
 
         let mut recorded = Recorded::default();
+        let mut edits = Vec::new();
+        let mut live = 0;
 
         for path in paths {
-            match self.record_edit(&path, known.get(&path)) {
-                Ok(true) => recorded.edits += 1,
-                Ok(false) => {}
+            match self.look_at(&path, known.get(&path)) {
+                Ok((was_live, edit)) => {
+                    live += usize::from(was_live && path.kind() != &DocumentKind::Project);
+                    edits.extend(edit);
+                }
                 Err(error) => recorded.problems.push(format!("{path}: {error}")),
+            }
+        }
+
+        refuse_removing_everything(live, &edits)?;
+
+        for edit in edits {
+            match self.record(&edit) {
+                Ok(()) => recorded.edits += 1,
+                Err(error) => recorded.problems.push(format!("{}: {error}", edit.path)),
             }
         }
 
@@ -140,20 +157,23 @@ impl Replica {
             .collect())
     }
 
-    fn record_edit(
+    fn look_at(
         &self,
         path: &DocumentPath,
         stored: Option<&StoredDocument>,
-    ) -> Result<bool, SyncError> {
+    ) -> Result<(bool, Option<Revision>), SyncError> {
         let current = self.files.read(path)?;
         let on_disk = self.on_disk(stored)?;
+        let was_live = on_disk
+            .as_ref()
+            .is_some_and(|revision| !revision.is_removal());
 
         let unchanged = match &on_disk {
             Some(revision) => revision.body == current,
             None => current.is_none(),
         };
         if unchanged {
-            return Ok(false);
+            return Ok((was_live, None));
         }
 
         let edit = Revision::new(
@@ -168,10 +188,12 @@ impl Replica {
             },
         );
 
-        self.history.insert(&self.project, &edit, false)?;
-        self.history.set_on_disk(&self.project, &edit)?;
+        Ok((was_live, Some(edit)))
+    }
 
-        Ok(true)
+    fn record(&self, edit: &Revision) -> Result<(), SyncError> {
+        self.history.insert(&self.project, edit, false)?;
+        self.history.set_on_disk(&self.project, edit)
     }
 
     fn settle_document(&self, stored: &StoredDocument) -> Result<Outcome, SyncError> {
@@ -281,6 +303,23 @@ impl Replica {
 
         Ok(graph.get(on_disk).cloned())
     }
+}
+
+fn refuse_removing_everything(live: usize, edits: &[Revision]) -> Result<(), SyncError> {
+    let removals = edits
+        .iter()
+        .filter(|edit| edit.is_removal() && !edit.parents.is_empty())
+        .count();
+
+    if removals < EVERYTHING_AT_LEAST || removals < live {
+        return Ok(());
+    }
+
+    Err(SyncError::Project(format!(
+        "every one of the {removals} documents of the project is missing from its folder; \
+         the round is skipped so the other members keep them. Put the files back, remove them \
+         a few at a time, or run sync.disable to stop syncing this project"
+    )))
 }
 
 fn applied_change(revision: &Revision) -> Applied {
