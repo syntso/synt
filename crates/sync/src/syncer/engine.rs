@@ -59,7 +59,7 @@ impl Engine {
             && &synced.place != place
         {
             return Err(SyncError::invalid(format!(
-                "project {} already syncs through {:?}; run sync.disable first",
+                "project {} already syncs through {}; run sync.disable first",
                 folder.id, synced.place
             )));
         }

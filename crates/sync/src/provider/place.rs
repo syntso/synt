@@ -1,3 +1,4 @@
+use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -16,6 +17,14 @@ impl Place {
     pub fn connect(&self) -> Result<Arc<dyn SyncProvider>, SyncError> {
         match self {
             Self::Folder(path) => Ok(Arc::new(FolderProvider::open(path)?)),
+        }
+    }
+}
+
+impl fmt::Display for Place {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Folder(path) => write!(formatter, "the folder {}", path.display()),
         }
     }
 }
