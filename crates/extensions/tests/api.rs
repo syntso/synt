@@ -2,11 +2,10 @@
 
 mod common;
 
-use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use common::{Harness, SAMPLE_MANIFEST};
+use common::{Harness, SAMPLE_MANIFEST, everything_component as everything};
 use serde_json::json;
 use synt_actions::{ActionError, Risk};
 
@@ -20,14 +19,6 @@ api = "0.2"
 call = ["core.ping"]
 storage = true
 "#;
-
-fn everything() -> Vec<u8> {
-    fs::read(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/extension/everything.wasm"
-    ))
-    .unwrap()
-}
 
 fn build(harness: &Harness, name: &str, manifest: &str, wasm: &[u8]) -> PathBuf {
     let build = harness.folder.path().join(name);

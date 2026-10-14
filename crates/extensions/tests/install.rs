@@ -5,7 +5,7 @@ mod common;
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use common::{FileServer, Harness, SAMPLE_MANIFEST, Signer};
+use common::{FileServer, Harness, SAMPLE_MANIFEST, Signer, everything_component};
 use serde_json::{Value, json};
 use synt_actions::ActionError;
 use synt_extensions::{Remote, Runtime};
@@ -434,11 +434,7 @@ async fn an_edited_manifest_is_not_loaded() {
 #[tokio::test(flavor = "multi_thread")]
 async fn installs_a_signed_api_0_2_extension_with_its_contributions() {
     let signer = Signer::new();
-    let every = fs::read(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/extension/everything.wasm"
-    ))
-    .unwrap();
+    let every = everything_component();
     let capabilities = json!({ "call": ["core.ping"], "storage": true, "timers": true });
     let mut listing = signer.listing_for(
         "0.2",

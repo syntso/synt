@@ -1,3 +1,4 @@
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -24,6 +25,7 @@ storage = true
 "#;
 
 const UNUSED_REGISTRY: &str = "http://127.0.0.1:9";
+const BUILT_FIXTURE: &str = "SYNT_EVERYTHING_WASM";
 const UNUSED_KEY: &str = "RWQOuk/x7vRoqs2E6Vxffy293iLd8y+C5Yo2oilreJ2V22RL3qFeV7f2";
 
 pub struct Harness {
@@ -139,4 +141,13 @@ impl Harness {
 
 pub fn sample_component() -> Vec<u8> {
     wat::parse_str(include_str!("../fixtures/sample.wat")).unwrap()
+}
+
+pub fn everything_component() -> Vec<u8> {
+    let path = env::var_os(BUILT_FIXTURE).map_or_else(
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/extension/everything.wasm"),
+        PathBuf::from,
+    );
+
+    fs::read(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
 }
