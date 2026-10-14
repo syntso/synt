@@ -55,7 +55,6 @@ thiserror = "2.0.21"
 tokio = "1.53.2"
 tokio-util = { version = "0.7.20", features = ["codec"] }
 toml = "1.1.8"
-uniffi = { version = "0.32.2", default-features = false, features = ["tokio"] }
 ureq = { version = "3.4.2", default-features = false, features = ["rustls-no-provider"] }
 vte = { version = "0.15.0", default-features = false }
 wasmtime = { version = "49.0.2", default-features = false, features = ["component-model", "cranelift", "runtime", "std"] }

@@ -76,26 +76,8 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  swift:
-    needs: version
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        with:
-          persist-credentials: false
-      - run: rustup toolchain install
-      - run: scripts/build-swift.sh
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: swift
-          path: |
-            target/swift/SyntClient.xcframework.zip
-            target/swift/SyntClient.xcframework.zip.checksum
-            target/swift/SyntClient-swift.zip
-          if-no-files-found: error
-
   publish:
-    needs: [core, swift]
+    needs: core
     runs-on: ubuntu-24.04
     permissions:
       contents: write
