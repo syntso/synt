@@ -6,7 +6,7 @@ use synt_journal::ResourceRef;
 use synt_kube::{Namespaces, WatchRequest};
 use synt_proto::StreamId;
 
-use super::names::{check_kind, check_namespace};
+use super::names::{check_kind, check_namespaces};
 use super::streams::{Pump, StreamStarted};
 use super::{KindFacts, Kube};
 
@@ -58,15 +58,7 @@ impl Action for K8sWatch {
         params: &WatchParams,
     ) -> Result<(), ActionError> {
         check_kind(&params.kind)?;
-        check_namespace(params.namespace.as_deref())?;
-
-        if params.all_namespaces && params.namespace.is_some() {
-            return Err(ActionError::InvalidParams(
-                "give a namespace or all_namespaces, not both".to_owned(),
-            ));
-        }
-
-        Ok(())
+        check_namespaces(params.namespace.as_deref(), params.all_namespaces)
     }
 
     fn inspect(

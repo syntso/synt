@@ -32,6 +32,18 @@ pub(crate) fn check_namespace(namespace: Option<&str>) -> Result<(), ActionError
     }
 }
 
+pub(crate) fn check_namespaces(namespace: Option<&str>, all: bool) -> Result<(), ActionError> {
+    check_namespace(namespace)?;
+
+    if all && namespace.is_some() {
+        return Err(ActionError::InvalidParams(
+            "give a namespace or all_namespaces, not both".to_owned(),
+        ));
+    }
+
+    Ok(())
+}
+
 pub(crate) fn check_kind(kind: &str) -> Result<(), ActionError> {
     let usable = !kind.trim().is_empty()
         && kind
@@ -49,7 +61,7 @@ pub(crate) fn check_kind(kind: &str) -> Result<(), ActionError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{check_kind, check_namespace, check_object_name};
+    use super::{check_kind, check_namespace, check_namespaces, check_object_name};
 
     #[test]
     fn ordinary_names_pass() {
@@ -77,5 +89,13 @@ mod tests {
         }
         assert!(check_kind("pods/exec").is_err());
         assert!(check_namespace(Some("Orders")).is_err());
+    }
+
+    #[test]
+    fn a_namespace_and_all_namespaces_do_not_go_together() {
+        assert!(check_namespaces(Some("orders"), false).is_ok());
+        assert!(check_namespaces(None, true).is_ok());
+        assert!(check_namespaces(Some("orders"), true).is_err());
+        assert!(check_namespaces(Some("Orders"), false).is_err());
     }
 }

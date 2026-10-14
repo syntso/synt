@@ -6,7 +6,7 @@ use synt_journal::ResourceRef;
 use synt_kube::{ListQuery, Listing, Namespaces};
 
 use super::failure::failed;
-use super::names::{check_kind, check_namespace};
+use super::names::{check_kind, check_namespaces};
 use super::{KindFacts, Kube};
 
 #[derive(Debug, Clone)]
@@ -55,15 +55,7 @@ impl Action for K8sList {
 
     fn check(&self, _target: Option<&ResourceRef>, params: &ListParams) -> Result<(), ActionError> {
         check_kind(&params.kind)?;
-        check_namespace(params.namespace.as_deref())?;
-
-        if params.all_namespaces && params.namespace.is_some() {
-            return Err(ActionError::InvalidParams(
-                "give a namespace or all_namespaces, not both".to_owned(),
-            ));
-        }
-
-        Ok(())
+        check_namespaces(params.namespace.as_deref(), params.all_namespaces)
     }
 
     fn inspect(
