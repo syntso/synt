@@ -1,3 +1,4 @@
+mod checked_resolver;
 mod destination;
 mod exchange;
 mod header;
@@ -7,6 +8,7 @@ mod revealed;
 mod secret_header;
 mod secret_source;
 
+pub(crate) use checked_resolver::CheckedResolver;
 pub(crate) use destination::Destination;
 pub(crate) use exchange::Exchange;
 pub(crate) use header::Header;

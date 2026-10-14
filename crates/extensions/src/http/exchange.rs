@@ -1,9 +1,12 @@
 use std::time::Duration;
 
 use ureq::http::{HeaderName, HeaderValue, Method, Request, Response};
+use ureq::unversioned::transport::DefaultConnector;
 use ureq::{Agent, AsSendBody, Body, RequestExt};
 
-use super::{Destination, Header, HttpRequest, HttpResponse, Revealed, SecretSource};
+use super::{
+    CheckedResolver, Destination, Header, HttpRequest, HttpResponse, Revealed, SecretSource,
+};
 use crate::manifest::Capabilities;
 use crate::tls::trusted_tls;
 
@@ -27,13 +30,14 @@ pub(crate) struct Exchange {
 
 impl Exchange {
     pub(crate) fn new() -> Self {
-        let agent = Agent::config_builder()
+        let config = Agent::config_builder()
             .tls_config(trusted_tls())
             .max_redirects(0)
             .http_status_as_error(false)
             .proxy(None)
-            .build()
-            .new_agent();
+            .build();
+
+        let agent = Agent::with_parts(config, DefaultConnector::new(), CheckedResolver::new());
 
         Self { agent }
     }
