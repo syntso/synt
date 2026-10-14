@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use synt_actions::Registry;
 use synt_client::{Autostart, Client, ClientError};
 use synt_core::{
-    Broker, Core, Files, HostResource, ProjectOpen, Projects, Resource, SessionBlocks,
+    Broker, Core, Files, HostResource, ProjectOpen, Projects, Resource, Runbooks, SessionBlocks,
     SessionClose, SessionList, SshConnections, SshExec, SshKeys, SshSessionOpen, State, Terminals,
     TunnelClose, TunnelOpen, TunnelResource,
 };
@@ -165,10 +165,14 @@ impl Lab {
             .ssh_directory(home.path())
             .grace(grace)
             .build();
-        let registry = registry(&pool, &projects, &journal);
+        let terminals = Terminals::new(journal.clone());
+        let runbooks = Runbooks::new(projects.clone(), journal.clone(), terminals.clone());
+        let mut registry = registry(&pool, &projects, &terminals);
+        runbooks.register(&mut registry).unwrap();
 
         let endpoint = endpoint(directory.path());
-        let core = Core::new(registry, journal.clone(), Broker::new());
+        let core = Arc::new(Core::new(registry, journal.clone(), Broker::new()));
+        runbooks.connect(&core);
         let running = RunningCore::spawn(&endpoint, core);
         let client = Client::connect(&endpoint, app_hello(), &Autostart::off())
             .await
@@ -192,9 +196,8 @@ impl Lab {
     }
 }
 
-fn registry(pool: &Pool, projects: &Projects, journal: &JournalWriter) -> Registry {
+fn registry(pool: &Pool, projects: &Projects, terminals: &Terminals) -> Registry {
     let mut registry = Registry::new();
-    let terminals = Terminals::new(journal.clone());
     let tunnels = Tunnels::new(pool.clone());
 
     registry
@@ -223,7 +226,9 @@ fn registry(pool: &Pool, projects: &Projects, journal: &JournalWriter) -> Regist
     registry
         .register(SessionClose::new(terminals.clone()))
         .unwrap();
-    registry.register(SessionList::new(terminals)).unwrap();
+    registry
+        .register(SessionList::new(terminals.clone()))
+        .unwrap();
     Files::new(pool.clone(), projects.clone())
         .register(&mut registry)
         .unwrap();

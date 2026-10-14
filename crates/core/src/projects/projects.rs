@@ -9,8 +9,8 @@ use tokio::sync::broadcast;
 use super::personal::PERSONAL;
 use super::project::is_project_id;
 use super::{
-    OpenProject, Personal, Project, ProjectChange, ProjectInfo, Resolved, Resource, ResourceEntry,
-    ResourceListing, TargetRef,
+    OpenProject, Personal, Project, ProjectChange, ProjectInfo, ProjectPlace, Resolved, Resource,
+    ResourceEntry, ResourceListing, TargetRef,
 };
 use crate::CoreError;
 use crate::locked::locked;
@@ -192,6 +192,24 @@ impl Projects {
             Ok(ResourceEntry {
                 name: name.to_owned(),
                 resource,
+            })
+        })
+    }
+
+    pub(crate) fn place(&self, project: &str) -> Result<ProjectPlace, CoreError> {
+        if is_personal(project) {
+            return Err(CoreError::Project(
+                "the Personal project is ~/.ssh/config and holds no files of its own; \
+                 open a project folder"
+                    .to_owned(),
+            ));
+        }
+
+        self.with_project(project, |project| {
+            Ok(ProjectPlace {
+                id: project.id().to_owned(),
+                slug: project.slug().to_owned(),
+                path: project.path().to_owned(),
             })
         })
     }

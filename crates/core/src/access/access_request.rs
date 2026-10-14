@@ -12,5 +12,6 @@ pub struct AccessRequest<'a> {
     pub target: Option<&'a ResourceRef>,
     pub destination: Option<&'a str>,
     pub params: &'a Value,
+    pub run_approved: bool,
     pub departed: &'a CancellationToken,
 }

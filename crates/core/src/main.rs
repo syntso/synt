@@ -11,10 +11,10 @@ use synt_core::{
     AlwaysGrants, Broker, Core, CoreCaller, CoreScreen, EventFeed, Files, GrantList, GrantRevoke,
     IdleWatch, JournalPage, JournalVerify, KeyGenerate, KeyImport, KeyList, KeyRemove,
     LocalSessionOpen, LoginCommand, Ping, ProjectClose, ProjectList, ProjectOpen, Projects,
-    ResourceGet, ResourceList, ResourcePut, ResourceRemove, SecretList, SecretPut, SecretRemove,
-    Secrets, Server, SessionAttach, SessionBlocks, SessionClose, SessionIntegration, SessionList,
-    SessionResize, SshConnections, SshExec, SshKeys, SshSessionOpen, SshWarm, Storage, Terminals,
-    TunnelClose, TunnelList, TunnelOpen, VERSION,
+    ResourceGet, ResourceList, ResourcePut, ResourceRemove, Runbooks, Runs, SecretList, SecretPut,
+    SecretRemove, Secrets, Server, SessionAttach, SessionBlocks, SessionClose, SessionIntegration,
+    SessionList, SessionResize, SshConnections, SshExec, SshKeys, SshSessionOpen, SshWarm, Storage,
+    Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Journal, JournalWriter};
@@ -76,6 +76,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let pool = Pool::builder().key_vault(Arc::new(keys.clone())).build();
     let tunnels = Tunnels::new(pool.clone());
     let terminals = Terminals::new(journal.clone());
+    let runbooks = Runbooks::new(projects.clone(), journal.clone(), terminals.clone());
 
     let mut registry = Registry::new();
     register_hosts(&mut registry, &pool, &projects, &tunnels)?;
@@ -83,6 +84,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     register_records(&mut registry, &journal, &projects, &always)?;
     register_keys(&mut registry, &keys, &pool)?;
     register_secrets(&mut registry, &secrets)?;
+    runbooks.register(&mut registry)?;
 
     let syncer = syncer(&storage, &projects, &journal)?;
     syncer.register(&mut registry)?;
@@ -107,6 +109,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         Arc::new(CoreCaller::new(&core)),
         Arc::new(CoreScreen::new(&core)),
     );
+    runbooks.connect(&core);
     let _feed = EventFeed::start(&extensions, &journal, &projects);
     let server = Server::bind(&endpoint, core, apps()?)?;
     let _sync: SyncLoop = syncer.start(SYNC_EVERY);
@@ -116,7 +119,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
         endpoint.address().to_string_lossy()
     );
 
-    serve(server, arguments.idle, terminals, tunnels).await;
+    let runs = runbooks.runs();
+    serve(server, arguments.idle, terminals, tunnels, runs).await;
 
     Ok(())
 }
@@ -209,11 +213,18 @@ fn syncer(
     Ok(syncer)
 }
 
-async fn serve(server: Server, idle: Option<Duration>, terminals: Terminals, tunnels: Tunnels) {
+async fn serve(
+    server: Server,
+    idle: Option<Duration>,
+    terminals: Terminals,
+    tunnels: Tunnels,
+    runs: Runs,
+) {
     let idle = IdleWatch::new(idle)
         .watch(server.activity())
         .watch(terminals.clone())
-        .watch(tunnels);
+        .watch(tunnels)
+        .watch(runs);
 
     let stopping = async {
         tokio::select! {

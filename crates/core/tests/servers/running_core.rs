@@ -15,9 +15,9 @@ pub struct RunningCore {
 }
 
 impl RunningCore {
-    pub fn spawn(endpoint: &Endpoint, core: Core) -> Self {
+    pub fn spawn(endpoint: &Endpoint, core: Arc<Core>) -> Self {
         let apps = AppCheck::for_this_core().unwrap();
-        let server = Server::bind(endpoint, Arc::new(core), apps).unwrap();
+        let server = Server::bind(endpoint, core, apps).unwrap();
         let (shutdown, signal) = oneshot::channel::<()>();
 
         let task = tokio::spawn(server.run(async move {

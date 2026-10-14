@@ -5,6 +5,7 @@ mod key;
 mod ping;
 mod project;
 mod resource;
+mod runbook;
 mod secret;
 mod session;
 mod sftp;
@@ -17,6 +18,10 @@ pub use key::{KeyGenerate, KeyImport, KeyList, KeyRemove};
 pub use ping::{Ping, Pong};
 pub use project::{ProjectClose, ProjectList, ProjectOpen};
 pub use resource::{ResourceGet, ResourceList, ResourcePut, ResourceRemove};
+pub use runbook::{
+    RunbookExport, RunbookFromBlocks, RunbookFromJournal, RunbookGet, RunbookList, RunbookPut,
+    RunbookRun, RunbookStop,
+};
 pub use secret::{SecretList, SecretPut, SecretRemove};
 pub use session::{
     LocalSessionOpen, SessionAttach, SessionBlocks, SessionClose, SessionIntegration, SessionList,

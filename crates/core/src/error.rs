@@ -39,6 +39,9 @@ pub enum CoreError {
     Grant(String),
 
     #[error("{0}")]
+    Runbook(String),
+
+    #[error("{0}")]
     SshKey(String),
 
     #[error("{0}")]
@@ -75,6 +78,9 @@ pub enum CoreError {
 
 impl From<CoreError> for ActionError {
     fn from(error: CoreError) -> Self {
-        Self::Failed(error.to_string())
+        match error {
+            CoreError::Runbook(reason) => Self::InvalidParams(reason),
+            other => Self::Failed(other.to_string()),
+        }
     }
 }

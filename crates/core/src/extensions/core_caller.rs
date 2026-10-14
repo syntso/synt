@@ -68,6 +68,8 @@ async fn on_behalf(
     let behalf = OnBehalf {
         actor: origin.actor(),
         request: origin.request(),
+        approved: false,
+        stop: Some(origin.stop()),
     };
 
     Ok(core
