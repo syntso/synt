@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
+use super::log_allowance::LogAllowance;
 use crate::documents::{Document, DocumentInfo, Written};
-use crate::extension::log_allowance::LogAllowance;
 use crate::extension::{Guest, Outside};
-use crate::files::Picked;
 use crate::http::{HttpRequest, HttpResponse};
 use crate::interface::{GuestError, Level};
 use crate::manifest::Manifest;
+use crate::picked::Picked;
 use crate::runtime::Imports;
 
 pub(crate) struct Visit {

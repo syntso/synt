@@ -3,10 +3,8 @@ use std::sync::Arc;
 use serde_json::Value;
 use synt_actions::{ActionError, Context, DynamicAction, Risk};
 use synt_journal::{Actor, ResourceRef};
-use tokio::runtime::Handle;
-use tokio::task;
 
-use super::{ActionSpec, Guest};
+use super::{ActionSpec, Guest, on_guest_thread};
 use crate::runtime::GuestCall;
 
 pub(crate) struct ExtensionAction {
@@ -58,26 +56,11 @@ impl DynamicAction for ExtensionAction {
             target: target.map(|target| target.as_str().to_owned()),
             params: params.to_string(),
         };
-
         let guest = Arc::clone(&self.guest);
         let context = context.clone();
-        let runtime = Handle::current();
 
-        let ran = task::spawn_blocking(move || guest.run(&call, context, runtime))
-            .await
-            .map_err(|_| ActionError::failed("the extension stopped unexpectedly"))?;
+        let text = on_guest_thread(move |runtime| guest.run(&call, context, runtime)).await?;
 
-        match ran {
-            Ok(Ok(text)) => Ok(output(text)),
-            Ok(Err(error)) => Err(ActionError::failed(format!(
-                "{}: {}",
-                error.code, error.message
-            ))),
-            Err(error) => Err(ActionError::failed(error.to_string())),
-        }
+        Ok(serde_json::from_str(&text).unwrap_or(Value::String(text)))
     }
-}
-
-fn output(text: String) -> Value {
-    serde_json::from_str(&text).unwrap_or(Value::String(text))
 }

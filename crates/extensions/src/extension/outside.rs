@@ -3,7 +3,7 @@ use std::sync::Arc;
 use synt_actions::Context;
 use tokio::runtime::Handle;
 
-use crate::caller::Caller;
+use crate::call::Caller;
 
 pub(crate) struct Outside {
     pub(crate) caller: Arc<dyn Caller>,

@@ -1,18 +1,21 @@
+mod action;
 mod action_spec;
 mod candidate;
-mod extension_action;
 mod guest;
+mod guest_thread;
 mod loaded;
-mod log_allowance;
 mod outside;
+mod roster;
 mod services;
 mod visit;
 
+pub(crate) use action::ExtensionAction;
 pub(crate) use action_spec::ActionSpec;
 pub(crate) use candidate::Candidate;
-pub(crate) use extension_action::ExtensionAction;
 pub(crate) use guest::{Answer, Guest};
+pub(crate) use guest_thread::on_guest_thread;
 pub(crate) use loaded::Loaded;
 pub(crate) use outside::Outside;
+pub(crate) use roster::Roster;
 pub(crate) use services::Services;
 pub(crate) use visit::Visit;

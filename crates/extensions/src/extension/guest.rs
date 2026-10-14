@@ -11,7 +11,7 @@ use crate::ExtensionError;
 use crate::background::{Timers, Wake};
 use crate::interface::GuestError;
 use crate::manifest::Manifest;
-use crate::runtime::{Compiled, GuestCall, Instance, Runtime, Sandbox};
+use crate::runtime::{Compiled, Exports, GuestCall, Runtime, Sandbox};
 
 const MOST_ACTIONS: usize = 64;
 
@@ -61,10 +61,23 @@ impl Guest {
             .is_some_and(|actions| actions.contains(action))
     }
 
+    pub(crate) fn check_contributed_actions(&self) -> Result<(), ExtensionError> {
+        let missing = self
+            .manifest
+            .contributes
+            .actions()
+            .find(|action| !self.owns_action(action));
+
+        match missing {
+            Some(action) => Err(ExtensionError::Component(format!(
+                "the manifest contributes {action}, which the extension does not describe"
+            ))),
+            None => Ok(()),
+        }
+    }
+
     pub(crate) fn describe(self: &Arc<Self>) -> Result<Vec<ActionSpec>, ExtensionError> {
-        let described = self.enter(None, CancellationToken::new(), |store, instance| {
-            instance.describe(store)
-        })?;
+        let described = self.enter_alone(|store, exports| exports.describe(store))?;
 
         if described.is_empty() || described.len() > MOST_ACTIONS {
             return Err(ExtensionError::Component(format!(
@@ -79,12 +92,9 @@ impl Guest {
             .collect::<Result<Vec<_>, _>>()?;
 
         check_unique(&specs)?;
-        let _ = self.actions.set(
-            specs
-                .iter()
-                .map(|spec| spec.id.as_str().to_owned())
-                .collect(),
-        );
+
+        let ids = specs.iter().map(|spec| spec.id.as_str().to_owned());
+        let _ = self.actions.set(ids.collect());
 
         Ok(specs)
     }
@@ -95,12 +105,7 @@ impl Guest {
         context: Context,
         runtime: Handle,
     ) -> Answer<String> {
-        let stop = context.stop().clone();
-        let outside = self.outside(Some(context), runtime)?;
-
-        self.enter(Some(outside), stop, |store, instance| {
-            instance.run(store, call)
-        })
+        self.enter_for(context, runtime, |store, exports| exports.run(store, call))
     }
 
     pub(crate) fn render(
@@ -110,12 +115,10 @@ impl Guest {
         context: Context,
         runtime: Handle,
     ) -> Answer<String> {
-        let stop = context.stop().clone();
-        let outside = self.outside(Some(context), runtime)?;
         let target = call.target.as_deref();
 
-        self.enter(Some(outside), stop, |store, instance| {
-            instance.render(store, view, target, &call.params)
+        self.enter_for(context, runtime, |store, exports| {
+            exports.render(store, view, target, &call.params)
         })
     }
 
@@ -126,18 +129,13 @@ impl Guest {
         context: Context,
         runtime: Handle,
     ) -> Answer<String> {
-        let stop = context.stop().clone();
-        let outside = self.outside(Some(context), runtime)?;
-
-        self.enter(Some(outside), stop, |store, instance| {
-            instance.panel_message(store, panel, message)
+        self.enter_for(context, runtime, |store, exports| {
+            exports.panel_message(store, panel, message)
         })
     }
 
     pub(crate) fn asset(self: &Arc<Self>, path: &str) -> Result<Option<Vec<u8>>, ExtensionError> {
-        self.enter(None, CancellationToken::new(), |store, instance| {
-            instance.asset(store, path)
-        })
+        self.enter_alone(|store, exports| exports.asset(store, path))
     }
 
     pub(crate) fn merge(
@@ -145,9 +143,7 @@ impl Guest {
         kind: &str,
         sides: (Option<&[u8]>, &[u8], &[u8]),
     ) -> Answer<Vec<u8>> {
-        self.enter(None, CancellationToken::new(), |store, instance| {
-            instance.merge(store, kind, sides)
-        })
+        self.enter_alone(|store, exports| exports.merge(store, kind, sides))
     }
 
     pub(crate) fn wake(
@@ -158,12 +154,12 @@ impl Guest {
     ) -> Answer<()> {
         let outside = self.outside(None, runtime)?;
 
-        self.enter(Some(outside), stop, |store, instance| match wake {
-            Wake::Start => instance.start(store),
-            Wake::Timer(name) => instance.on_timer(store, name),
+        self.enter(Some(outside), stop, |store, exports| match wake {
+            Wake::Start => exports.start(store),
+            Wake::Timer(name) => exports.on_timer(store, name),
             Wake::Event(event) => {
                 let payload = event.payload.to_string();
-                instance.on_event(store, event.topic.as_str(), &payload)
+                exports.on_event(store, event.topic.as_str(), &payload)
             }
         })
     }
@@ -180,11 +176,30 @@ impl Guest {
         })
     }
 
+    fn enter_for<T>(
+        self: &Arc<Self>,
+        context: Context,
+        runtime: Handle,
+        work: impl FnOnce(&mut Store<Sandbox>, &dyn Exports) -> wasmtime::Result<T>,
+    ) -> Result<T, ExtensionError> {
+        let stop = context.stop().clone();
+        let outside = self.outside(Some(context), runtime)?;
+
+        self.enter(Some(outside), stop, work)
+    }
+
+    fn enter_alone<T>(
+        self: &Arc<Self>,
+        work: impl FnOnce(&mut Store<Sandbox>, &dyn Exports) -> wasmtime::Result<T>,
+    ) -> Result<T, ExtensionError> {
+        self.enter(None, CancellationToken::new(), work)
+    }
+
     fn enter<T>(
         self: &Arc<Self>,
         outside: Option<Outside>,
         stop: CancellationToken,
-        work: impl FnOnce(&mut Store<Sandbox>, &Instance) -> wasmtime::Result<T>,
+        work: impl FnOnce(&mut Store<Sandbox>, &dyn Exports) -> wasmtime::Result<T>,
     ) -> Result<T, ExtensionError> {
         let visit = Visit::new(Arc::clone(self), outside);
 
