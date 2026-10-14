@@ -1,5 +1,5 @@
+mod approvals;
 mod apps;
-mod broker;
 mod grant;
 mod grants;
 mod notice;
@@ -8,6 +8,6 @@ mod registration;
 mod rule;
 mod waiting;
 
-pub use broker::Broker;
+pub use approvals::Broker;
 pub(crate) use notice::{requester, risk_level};
 pub(crate) use registration::Registration;

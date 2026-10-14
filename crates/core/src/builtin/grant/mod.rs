@@ -1,7 +1,7 @@
-mod grant_info;
+mod info;
 mod list;
 mod revoke;
 
-pub(crate) use grant_info::GrantInfo;
+pub(crate) use info::GrantInfo;
 pub use list::GrantList;
 pub use revoke::GrantRevoke;

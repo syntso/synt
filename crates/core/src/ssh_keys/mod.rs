@@ -1,7 +1,7 @@
-mod key_info;
-mod key_name;
-mod ssh_keys;
+mod info;
+mod name;
+mod store;
 
-pub(crate) use key_info::KeyInfo;
-pub use key_name::KeyName;
-pub use ssh_keys::SshKeys;
+pub(crate) use info::KeyInfo;
+pub use name::KeyName;
+pub use store::SshKeys;

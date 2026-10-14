@@ -1,8 +1,8 @@
 mod list;
+mod name_params;
 mod put;
 mod put_params;
 mod remove;
-mod secret_name_params;
 
 pub use list::SecretList;
 pub use put::SecretPut;

@@ -1,19 +1,19 @@
-mod block;
-mod blocks;
 mod collector;
+mod finished;
 mod format_character;
+mod history;
 mod mark;
-mod open_block;
+mod open;
 mod percent;
 mod scanner;
 mod sighting;
 
-pub(crate) use block::Block;
-pub(crate) use blocks::Blocks;
 use collector::Collector;
+pub(crate) use finished::Block;
 use format_character::is_format_character;
+pub(crate) use history::Blocks;
 use mark::Mark;
-use open_block::OpenBlock;
+use open::OpenBlock;
 use percent::percent_decode;
 pub(crate) use scanner::Scanner;
 use sighting::Sighting;

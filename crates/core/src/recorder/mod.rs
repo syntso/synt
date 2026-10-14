@@ -1,5 +1,5 @@
 mod call;
-mod recorder;
+mod writer;
 
 pub(crate) use call::Call;
-pub(crate) use recorder::Recorder;
+pub(crate) use writer::Recorder;

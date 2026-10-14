@@ -1,5 +1,5 @@
 mod activity;
-mod idle_watch;
+mod watch;
 
 pub use activity::Activity;
-pub use idle_watch::IdleWatch;
+pub use watch::IdleWatch;

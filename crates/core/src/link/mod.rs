@@ -1,11 +1,11 @@
+mod client;
 mod delivery;
 mod inbound;
-mod link;
 mod outbound;
 mod route;
 
+pub(crate) use client::Link;
 use delivery::Delivery;
 pub(crate) use inbound::Inbound;
-pub(crate) use link::Link;
 pub(crate) use outbound::Outbound;
 use route::Route;
