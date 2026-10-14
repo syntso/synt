@@ -1,8 +1,9 @@
 use serde::Serialize;
 use serde_json::Value;
-use synt_actions::{Handle, Risk};
+use synt_actions::{Handle, Prepared, Risk};
 use synt_journal::{ActionId, ResourceRef};
 
+use crate::runbooks::RunbookError;
 use crate::runbooks::document::{Expect, OnFailure, Retry, Step};
 use crate::runbooks::param::{ParamKind, Values};
 use crate::runbooks::template::{JsonTemplate, TextTemplate};
@@ -10,24 +11,24 @@ use crate::runbooks::template::{JsonTemplate, TextTemplate};
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(crate) struct PlannedStep {
     #[serde(rename = "step")]
-    pub(crate) number: usize,
-    pub(crate) title: String,
-    pub(crate) action: ActionId,
-    pub(crate) target: Option<ResourceRef>,
-    pub(crate) params: Value,
-    pub(crate) risk: Risk,
+    number: usize,
+    title: String,
+    action: ActionId,
+    target: Option<ResourceRef>,
+    params: Value,
+    risk: Risk,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) destination: Option<String>,
+    destination: Option<String>,
 
     #[serde(skip)]
-    pub(crate) expect: Expect,
+    expect: Expect,
 
     #[serde(skip)]
-    pub(crate) retry: Retry,
+    retry: Retry,
 
     #[serde(skip)]
-    pub(crate) on_failure: OnFailure,
+    on_failure: OnFailure,
 }
 
 impl PlannedStep {
@@ -36,38 +37,89 @@ impl PlannedStep {
         step: &Step,
         values: &Values,
         lookup: &impl Fn(&ActionId) -> Option<Handle>,
-    ) -> Result<Self, String> {
-        let action = ActionId::new(&step.action).map_err(|error| error.to_string())?;
-        let target = step
-            .target
-            .as_deref()
-            .map(|target| Self::render_target(target, values))
-            .transpose()?;
-        let params = Value::Object(step.params.render(values)?);
+    ) -> Result<Self, RunbookError> {
+        let action = step.action().id().clone();
+        let target = Self::render_target(step.target(), values)?;
+        let params = Value::Object(step.params().render(values)?);
 
-        let handle = lookup(&action).ok_or_else(|| format!("there is no action {action}"))?;
-        let (risk, destination) = Self::judge(&handle, target.as_ref(), &params)?;
-
-        let title = TextTemplate::parse(&step.title).render_text(values)?;
-        let expect = step
-            .expect
-            .as_ref()
-            .map(|expect| expect.render(values))
-            .transpose()?
-            .unwrap_or_default();
+        let handle = lookup(&action).ok_or_else(|| RunbookError::NoAction(action.clone()))?;
+        let prepared = Self::prepare(&handle, target.as_ref(), &params)?;
 
         Ok(Self {
             number,
-            title,
+            title: TextTemplate::parse(step.title().as_str()).render_text(values)?,
             action,
             target,
             params,
-            risk,
-            destination,
-            expect,
+            risk: prepared.risk(),
+            destination: prepared.destination().map(str::to_owned),
+            expect: Self::render_expect(step.expect(), values)?,
             retry: step.retry(),
-            on_failure: step.on_failure,
+            on_failure: step.on_failure(),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn sample(number: usize, title: &str) -> Self {
+        Self {
+            number,
+            title: title.to_owned(),
+            action: ActionId::new(Step::SHELL_ACTION).unwrap(),
+            target: None,
+            params: Value::Object(serde_json::Map::new()),
+            risk: Risk::Write,
+            destination: None,
+            expect: Expect::default(),
+            retry: Retry::ONCE,
+            on_failure: OnFailure::Stop,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_retry(self, retry: Retry) -> Self {
+        Self { retry, ..self }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_on_failure(self, on_failure: OnFailure) -> Self {
+        Self { on_failure, ..self }
+    }
+
+    pub(crate) fn number(&self) -> usize {
+        self.number
+    }
+
+    pub(crate) fn title(&self) -> &str {
+        &self.title
+    }
+
+    pub(crate) fn action(&self) -> &ActionId {
+        &self.action
+    }
+
+    pub(crate) fn params(&self) -> &Value {
+        &self.params
+    }
+
+    pub(crate) fn destination(&self) -> Option<&str> {
+        self.destination.as_deref()
+    }
+
+    pub(crate) fn expect(&self) -> &Expect {
+        &self.expect
+    }
+
+    pub(crate) fn retry(&self) -> Retry {
+        self.retry
+    }
+
+    pub(crate) fn on_failure(&self) -> OnFailure {
+        self.on_failure
+    }
+
+    #[cfg(test)]
+    pub(crate) fn risk(&self) -> Risk {
+        self.risk
     }
 
     pub(crate) fn target_text(&self) -> Option<String> {
@@ -76,43 +128,55 @@ impl PlannedStep {
             .map(|target| target.as_str().to_owned())
     }
 
-    fn render_target(target: &str, values: &Values) -> Result<ResourceRef, String> {
+    fn render_target(
+        target: Option<&str>,
+        values: &Values,
+    ) -> Result<Option<ResourceRef>, RunbookError> {
+        let Some(target) = target else {
+            return Ok(None);
+        };
+
         let text = TextTemplate::parse(target).render_text(values)?;
         let checked = ParamKind::Target.accept(&Value::from(text))?;
+        let reference = ResourceRef::new(checked.as_str().unwrap_or_default())
+            .map_err(RunbookError::BadReference)?;
 
-        ResourceRef::new(checked.as_str().unwrap_or_default()).map_err(|error| error.to_string())
+        Ok(Some(reference))
     }
 
-    fn judge(
+    fn render_expect(expect: Option<&Expect>, values: &Values) -> Result<Expect, RunbookError> {
+        match expect {
+            Some(expect) => expect.render(values),
+            None => Ok(Expect::default()),
+        }
+    }
+
+    fn prepare(
         handle: &Handle,
         target: Option<&ResourceRef>,
         params: &Value,
-    ) -> Result<(Risk, Option<String>), String> {
+    ) -> Result<Prepared, RunbookError> {
         Self::admit(handle, target)?;
 
-        let prepared = handle
-            .prepare(target, params.clone())
-            .map_err(|error| error.to_string())?;
+        let prepared = handle.prepare(target, params.clone())?;
 
         if let Some(target) = target.filter(|_| prepared.destination().is_none()) {
-            return Err(format!("{target} does not name a host this core can reach"));
+            return Err(RunbookError::Unreachable(target.clone()));
         }
 
-        Ok((prepared.risk(), prepared.destination().map(str::to_owned)))
+        Ok(prepared)
     }
 
-    fn admit(handle: &Handle, target: Option<&ResourceRef>) -> Result<(), String> {
+    fn admit(handle: &Handle, target: Option<&ResourceRef>) -> Result<(), RunbookError> {
         let action = handle.id();
 
         if handle.person_only() {
-            return Err(format!(
-                "{action} is for the person only, so a runbook cannot run it"
-            ));
+            return Err(RunbookError::PersonOnly(action.clone()));
         }
 
         match (handle.takes_target(), target) {
-            (true, None) => Err(format!("{action} needs a target")),
-            (false, Some(_)) => Err(format!("{action} takes no target")),
+            (true, None) => Err(RunbookError::NeedsTarget(action.clone())),
+            (false, Some(_)) => Err(RunbookError::TakesNoTarget(action.clone())),
             _ => Ok(()),
         }
     }

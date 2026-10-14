@@ -4,7 +4,7 @@ use serde_json::{Map, Value};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use crate::runbooks::{Plan, RunReport, Runbooks};
+use crate::runbooks::{Plan, RunReport, RunbookError, RunbookName, Runbooks};
 
 #[derive(Debug, Clone)]
 pub struct RunbookRun {
@@ -15,7 +15,7 @@ pub struct RunbookRun {
 #[serde(deny_unknown_fields)]
 pub struct RunbookRunParams {
     pub project: String,
-    pub name: String,
+    pub name: RunbookName,
 
     #[serde(default)]
     pub params: Map<String, Value>,
@@ -69,7 +69,7 @@ impl Action for RunbookRun {
         _target: Option<&ResourceRef>,
         params: &RunbookRunParams,
     ) -> Option<String> {
-        params.plan.as_ref().map(|plan| plan.runbook.clone())
+        params.plan.as_ref().map(|plan| plan.reference().to_owned())
     }
 
     fn grantable(&self, _target: Option<&ResourceRef>, params: &RunbookRunParams) -> bool {
@@ -85,12 +85,13 @@ impl Action for RunbookRun {
         context: &Context,
         params: RunbookRunParams,
     ) -> Result<RunReport, ActionError> {
-        let plan = params
-            .plan
-            .ok_or_else(|| ActionError::failed("the runbook was not planned before it ran"))?;
+        let plan = params.plan.ok_or(RunbookError::NotPlanned)?;
 
-        self.runbooks
+        let report = self
+            .runbooks
             .run(context, &plan, params.approve_steps)
-            .await
+            .await?;
+
+        Ok(report)
     }
 }

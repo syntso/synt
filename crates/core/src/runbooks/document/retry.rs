@@ -3,16 +3,18 @@ use std::time::Duration;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::runbooks::RunbookError;
+
 const MOST_ATTEMPTS: u32 = 20;
 const LONGEST_PAUSE: u64 = 3600;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Retry {
-    pub attempts: u32,
+    attempts: u32,
 
     #[serde(default)]
-    pub every_seconds: u64,
+    every_seconds: u64,
 }
 
 impl Retry {
@@ -21,22 +23,42 @@ impl Retry {
         every_seconds: 0,
     };
 
-    pub(crate) fn check(&self) -> Result<(), String> {
+    #[cfg(test)]
+    pub(crate) fn new(attempts: u32, every_seconds: u64) -> Self {
+        Self {
+            attempts,
+            every_seconds,
+        }
+    }
+
+    pub(crate) fn check(&self) -> Result<(), RunbookError> {
         if !(1..=MOST_ATTEMPTS).contains(&self.attempts) {
-            return Err(format!(
-                "retry attempts must be 1 to {MOST_ATTEMPTS}, got {}",
-                self.attempts
-            ));
+            return Err(RunbookError::Attempts {
+                attempts: self.attempts,
+                most: MOST_ATTEMPTS,
+            });
         }
 
         if self.every_seconds > LONGEST_PAUSE {
-            return Err(format!(
-                "retry every_seconds must be at most {LONGEST_PAUSE}, got {}",
-                self.every_seconds
-            ));
+            return Err(RunbookError::Pause {
+                pause: self.every_seconds,
+                longest: LONGEST_PAUSE,
+            });
         }
 
         Ok(())
+    }
+
+    pub(crate) fn attempts(&self) -> u32 {
+        self.attempts
+    }
+
+    pub(crate) fn every_seconds(&self) -> u64 {
+        self.every_seconds
+    }
+
+    pub(crate) fn repeats(&self) -> bool {
+        self.attempts > 1
     }
 
     pub(crate) fn pause(&self) -> Duration {

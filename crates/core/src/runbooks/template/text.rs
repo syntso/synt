@@ -1,7 +1,8 @@
 use serde_json::Value;
 
 use super::Piece;
-use crate::runbooks::param::{Values, is_param_name};
+use crate::runbooks::RunbookError;
+use crate::runbooks::param::{ParamName, Values};
 
 const OPEN: char = '{';
 const CLOSE: char = '}';
@@ -14,7 +15,7 @@ pub(crate) struct TextTemplate {
 
 impl TextTemplate {
     pub(crate) fn parse(text: &str) -> Self {
-        let mut pieces = Vec::new();
+        let mut template = Self { pieces: Vec::new() };
         let mut literal = String::new();
         let mut rest = text;
 
@@ -28,10 +29,10 @@ impl TextTemplate {
                 continue;
             }
 
-            if let Some(name) = placeholder(rest).filter(|_| !after_dollar) {
-                flush(&mut literal, &mut pieces);
-                pieces.push(Piece::Param(name.to_owned()));
-                rest = &rest[name.len() + 2..];
+            if let Some(name) = Self::placeholder(rest).filter(|_| !after_dollar) {
+                rest = &rest[name.as_str().len() + 2..];
+                template.flush(&mut literal);
+                template.pieces.push(Piece::Param(name));
                 continue;
             }
 
@@ -39,9 +40,8 @@ impl TextTemplate {
             rest = &rest[character.len_utf8()..];
         }
 
-        flush(&mut literal, &mut pieces);
-
-        Self { pieces }
+        template.flush(&mut literal);
+        template
     }
 
     pub(crate) fn escape(text: &str) -> String {
@@ -52,49 +52,48 @@ impl TextTemplate {
         &self.pieces
     }
 
-    pub(crate) fn params(&self) -> impl Iterator<Item = &str> {
+    pub(crate) fn params(&self) -> impl Iterator<Item = &ParamName> {
         self.pieces.iter().filter_map(|piece| match piece {
-            Piece::Param(name) => Some(name.as_str()),
+            Piece::Param(name) => Some(name),
             Piece::Text(_) => None,
         })
     }
 
-    pub(crate) fn render(&self, values: &Values) -> Result<Value, String> {
+    pub(crate) fn render(&self, values: &Values) -> Result<Value, RunbookError> {
         if let [Piece::Param(name)] = self.pieces.as_slice() {
-            return values.get(name).cloned();
+            return values.get(name.as_str()).cloned();
         }
 
         self.render_text(values).map(Value::String)
     }
 
-    pub(crate) fn render_text(&self, values: &Values) -> Result<String, String> {
+    pub(crate) fn render_text(&self, values: &Values) -> Result<String, RunbookError> {
         let mut text = String::new();
 
         for piece in &self.pieces {
             match piece {
                 Piece::Text(literal) => text.push_str(literal),
-                Piece::Param(name) => text.push_str(&values.text(name)?),
+                Piece::Param(name) => text.push_str(&values.text(name.as_str())?),
             }
         }
 
         Ok(text)
     }
-}
 
-fn placeholder(text: &str) -> Option<&str> {
-    let inner = text.strip_prefix(OPEN)?;
-    let end = inner.find(CLOSE)?;
-    let name = &inner[..end];
+    fn placeholder(text: &str) -> Option<ParamName> {
+        let inner = text.strip_prefix(OPEN)?;
+        let end = inner.find(CLOSE)?;
 
-    is_param_name(name).then_some(name)
-}
-
-fn flush(literal: &mut String, pieces: &mut Vec<Piece>) {
-    if literal.is_empty() {
-        return;
+        ParamName::new(&inner[..end]).ok()
     }
 
-    pieces.push(Piece::Text(std::mem::take(literal)));
+    fn flush(&mut self, literal: &mut String) {
+        if literal.is_empty() {
+            return;
+        }
+
+        self.pieces.push(Piece::Text(std::mem::take(literal)));
+    }
 }
 
 #[cfg(test)]
@@ -102,7 +101,7 @@ mod tests {
     use serde_json::json;
 
     use super::{Piece, TextTemplate};
-    use crate::runbooks::param::Values;
+    use crate::runbooks::param::{ParamName, Values};
 
     fn values() -> Values {
         Values::from_pairs([
@@ -164,7 +163,7 @@ mod tests {
         let template = TextTemplate::parse("{host}:{port} ${HOME} {{host}} {host}");
 
         assert_eq!(
-            template.params().collect::<Vec<_>>(),
+            template.params().map(ParamName::as_str).collect::<Vec<_>>(),
             ["host", "port", "host"]
         );
     }
@@ -173,7 +172,8 @@ mod tests {
     fn a_missing_value_is_an_error() {
         let error = TextTemplate::parse("restart {unit}")
             .render(&values())
-            .unwrap_err();
+            .unwrap_err()
+            .to_string();
 
         assert!(error.contains("unit"), "{error}");
     }
@@ -198,7 +198,7 @@ mod tests {
             template.pieces(),
             [
                 Piece::Text("a".to_owned()),
-                Piece::Param("host".to_owned()),
+                Piece::Param(ParamName::new("host").unwrap()),
                 Piece::Text("b".to_owned()),
             ]
         );

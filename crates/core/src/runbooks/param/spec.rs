@@ -2,32 +2,33 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{ParamKind, is_param_name};
+use super::{ParamKind, ParamName};
+use crate::runbooks::RunbookError;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ParamSpec {
-    pub name: String,
-    pub kind: ParamKind,
+    name: ParamName,
+    kind: ParamKind,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default: Option<Value>,
+    default: Option<Value>,
 
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub description: String,
+    description: String,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub choices: Vec<String>,
+    choices: Vec<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub min: Option<i64>,
+    min: Option<i64>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max: Option<i64>,
+    max: Option<i64>,
 }
 
 impl ParamSpec {
-    pub(crate) fn literal(name: String, kind: ParamKind, default: &str) -> Self {
+    pub(crate) fn literal(name: ParamName, kind: ParamKind, default: &str) -> Self {
         Self {
             name,
             kind,
@@ -39,14 +40,22 @@ impl ParamSpec {
         }
     }
 
-    pub(crate) fn check(&self) -> Result<(), String> {
-        if !is_param_name(&self.name) {
-            return Err(format!(
-                "param {:?}: a name starts with a letter or _ and holds only letters, digits and _",
-                self.name
-            ));
-        }
+    pub(crate) fn name(&self) -> &ParamName {
+        &self.name
+    }
 
+    pub(crate) fn default(&self) -> Option<&Value> {
+        self.default.as_ref()
+    }
+
+    pub(crate) fn default_text(&self) -> Option<String> {
+        self.default.as_ref().map(|default| match default {
+            Value::String(text) => text.clone(),
+            other => other.to_string(),
+        })
+    }
+
+    pub(crate) fn check(&self) -> Result<(), RunbookError> {
         self.check_choices()?;
         self.check_bounds()?;
 
@@ -56,7 +65,7 @@ impl ParamSpec {
         }
     }
 
-    pub(crate) fn accept(&self, value: &Value) -> Result<Value, String> {
+    pub(crate) fn accept(&self, value: &Value) -> Result<Value, RunbookError> {
         let accepted = self.kind.accept(value)?;
 
         self.within_choices(&accepted)?;
@@ -65,40 +74,41 @@ impl ParamSpec {
         Ok(accepted)
     }
 
-    fn check_choices(&self) -> Result<(), String> {
+    fn check_choices(&self) -> Result<(), RunbookError> {
         let is_choice = self.kind == ParamKind::Choice;
 
         if is_choice && self.choices.is_empty() {
-            return Err(format!("param {}: a choice needs choices", self.name));
+            return Err(RunbookError::NoChoices(self.name.clone()));
         }
 
         if !is_choice && !self.choices.is_empty() {
-            return Err(format!("param {}: only a choice has choices", self.name));
+            return Err(RunbookError::StrayChoices(self.name.clone()));
         }
 
         Ok(())
     }
 
-    fn check_bounds(&self) -> Result<(), String> {
+    fn check_bounds(&self) -> Result<(), RunbookError> {
         let bounded = self.min.is_some() || self.max.is_some();
 
         if bounded && self.kind != ParamKind::Integer {
-            return Err(format!(
-                "param {}: only an integer has min and max",
-                self.name
-            ));
+            return Err(RunbookError::StrayBounds(self.name.clone()));
         }
 
         if let (Some(min), Some(max)) = (self.min, self.max)
             && min > max
         {
-            return Err(format!("param {}: min {min} is above max {max}", self.name));
+            return Err(RunbookError::UpsideDown {
+                name: self.name.clone(),
+                min,
+                max,
+            });
         }
 
         Ok(())
     }
 
-    fn within_choices(&self, value: &Value) -> Result<(), String> {
+    fn within_choices(&self, value: &Value) -> Result<(), RunbookError> {
         if self.kind != ParamKind::Choice {
             return Ok(());
         }
@@ -109,23 +119,23 @@ impl ParamSpec {
             return Ok(());
         }
 
-        Err(format!(
-            "{chosen:?} is not one of {}",
-            self.choices.join(", ")
-        ))
+        Err(RunbookError::NotAChoice {
+            chosen: chosen.to_owned(),
+            choices: self.choices.clone(),
+        })
     }
 
-    fn within_bounds(&self, value: &Value) -> Result<(), String> {
+    fn within_bounds(&self, value: &Value) -> Result<(), RunbookError> {
         let Some(number) = value.as_i64() else {
             return Ok(());
         };
 
         if self.min.is_some_and(|min| number < min) || self.max.is_some_and(|max| number > max) {
-            return Err(format!(
-                "{number} is outside {}..{}",
-                self.min.map(|min| min.to_string()).unwrap_or_default(),
-                self.max.map(|max| max.to_string()).unwrap_or_default(),
-            ));
+            return Err(RunbookError::OutOfBounds {
+                number,
+                min: self.min,
+                max: self.max,
+            });
         }
 
         Ok(())
@@ -137,11 +147,11 @@ mod tests {
     use serde_json::json;
 
     use super::ParamSpec;
-    use crate::runbooks::param::ParamKind;
+    use crate::runbooks::param::{ParamKind, ParamName};
 
     fn spec(kind: ParamKind) -> ParamSpec {
         ParamSpec {
-            name: "value".to_owned(),
+            name: ParamName::new("value").unwrap(),
             kind,
             default: None,
             description: String::new(),
@@ -158,11 +168,12 @@ mod tests {
             ..spec(ParamKind::Choice)
         };
 
-        assert_eq!(choice.accept(&json!("green")), Ok(json!("green")));
+        assert_eq!(choice.accept(&json!("green")).unwrap(), json!("green"));
         assert!(
             choice
                 .accept(&json!("red"))
                 .unwrap_err()
+                .to_string()
                 .contains("blue, green")
         );
         assert!(choice.check().is_ok());
@@ -176,17 +187,16 @@ mod tests {
             ..spec(ParamKind::Integer)
         };
 
-        assert_eq!(bounded.accept(&json!("10")), Ok(json!(10)));
-        assert!(bounded.accept(&json!(0)).is_err());
+        assert_eq!(bounded.accept(&json!("10")).unwrap(), json!(10));
+        assert_eq!(
+            bounded.accept(&json!(0)).unwrap_err().to_string(),
+            "0 is outside 1..10"
+        );
         assert!(bounded.accept(&json!(11)).is_err());
     }
 
     #[test]
     fn a_spec_is_checked_as_a_whole() {
-        let unnamed = ParamSpec {
-            name: "dry-run".to_owned(),
-            ..spec(ParamKind::Boolean)
-        };
         let empty_choice = spec(ParamKind::Choice);
         let stray_choices = ParamSpec {
             choices: vec!["a".to_owned()],
@@ -207,7 +217,6 @@ mod tests {
         };
 
         for broken in [
-            unnamed,
             empty_choice,
             stray_choices,
             upside_down,
@@ -216,5 +225,13 @@ mod tests {
         ] {
             assert!(broken.check().is_err(), "{broken:?} passed");
         }
+    }
+
+    #[test]
+    fn a_name_is_checked_as_it_is_read() {
+        let unnamed: Result<ParamSpec, _> =
+            serde_json::from_value(json!({ "name": "dry-run", "kind": "boolean" }));
+
+        assert!(unnamed.unwrap_err().to_string().contains("\"dry-run\""));
     }
 }

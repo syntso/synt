@@ -25,7 +25,7 @@ impl Action for RunbookGet {
     type Output = RunbookEntry;
 
     fn summary(&self, output: &RunbookEntry) -> Value {
-        json!({ "name": output.name })
+        json!({ "name": output.name() })
     }
 
     async fn run(
@@ -36,12 +36,9 @@ impl Action for RunbookGet {
         let runbooks = self.runbooks.clone();
 
         blocking(move || {
-            let (_, runbook) = runbooks.store().get(&params.project, &params.name)?;
+            let document = runbooks.folder(&params.project)?.read(&params.name)?;
 
-            Ok(RunbookEntry {
-                name: params.name,
-                runbook,
-            })
+            Ok(RunbookEntry::new(params.name, document))
         })
         .await
     }

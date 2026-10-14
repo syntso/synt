@@ -6,6 +6,8 @@ use synt_journal::{JournalError, JournalId};
 use synt_platform::{KeyPlace, PlatformError};
 use thiserror::Error;
 
+use crate::runbooks::RunbookError;
+
 #[derive(Debug, Error)]
 pub enum CoreError {
     #[error("data folder: {0}")]
@@ -38,8 +40,8 @@ pub enum CoreError {
     #[error("{0}")]
     Grant(String),
 
-    #[error("{0}")]
-    Runbook(String),
+    #[error(transparent)]
+    Runbook(#[from] RunbookError),
 
     #[error("{0}")]
     SshKey(String),
@@ -79,7 +81,7 @@ pub enum CoreError {
 impl From<CoreError> for ActionError {
     fn from(error: CoreError) -> Self {
         match error {
-            CoreError::Runbook(reason) => Self::InvalidParams(reason),
+            CoreError::Runbook(error) => error.into(),
             other => Self::Failed(other.to_string()),
         }
     }

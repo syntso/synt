@@ -1,4 +1,4 @@
-use super::quote::quoted;
+use super::quote::Quote;
 use crate::runbooks::template::{Piece, TextTemplate};
 
 pub(super) struct ShellText {
@@ -14,14 +14,14 @@ impl ShellText {
 
     pub(super) fn word(&self) -> String {
         if self.template.pieces().is_empty() {
-            return quoted("");
+            return "".single_quoted();
         }
 
         self.template
             .pieces()
             .iter()
             .map(|piece| match piece {
-                Piece::Text(text) => quoted(text),
+                Piece::Text(text) => text.single_quoted(),
                 Piece::Param(name) => format!("\"${{{name}}}\""),
             })
             .collect()

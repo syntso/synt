@@ -1,77 +1,88 @@
+mod action;
+
+pub use action::StepAction;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use synt_journal::ActionId;
 
-use super::{Expect, OnFailure, Retry};
+use super::{Expect, OnFailure, OneLine, Retry};
+use crate::runbooks::RunbookError;
+use crate::runbooks::param::ParamName;
 use crate::runbooks::template::JsonTemplate;
-
-const LONGEST_TITLE: usize = 200;
-const RUNBOOK_ACTIONS: &str = "runbook.";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Step {
-    pub title: String,
-    pub action: String,
+    title: OneLine,
+    action: StepAction,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
+    target: Option<String>,
 
     #[serde(default, skip_serializing_if = "Map::is_empty")]
-    pub params: Map<String, Value>,
+    params: Map<String, Value>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expect: Option<Expect>,
+    expect: Option<Expect>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub retry: Option<Retry>,
+    retry: Option<Retry>,
 
-    #[serde(default, skip_serializing_if = "is_default")]
-    pub on_failure: OnFailure,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    on_failure: Option<OnFailure>,
 }
 
 impl Step {
-    pub(crate) fn check(&self) -> Result<(), String> {
-        let fits = !self.title.trim().is_empty() && self.title.len() <= LONGEST_TITLE;
+    pub(crate) const SHELL_ACTION: &str = "ssh.exec";
+    pub(crate) const COMMAND: &str = "command";
 
-        if !fits || self.title.contains(char::is_control) {
-            return Err(format!(
-                "a title must be 1 to {LONGEST_TITLE} characters on one line"
-            ));
+    pub(crate) fn new(
+        title: OneLine,
+        action: StepAction,
+        target: Option<String>,
+        params: Map<String, Value>,
+    ) -> Self {
+        Self {
+            title,
+            action,
+            target,
+            params,
+            expect: None,
+            retry: None,
+            on_failure: None,
         }
+    }
 
-        let action = ActionId::new(&self.action).map_err(|error| format!("action: {error}"))?;
-
-        if action.as_str().starts_with(RUNBOOK_ACTIONS) {
-            return Err(format!("{action} cannot be a step of a runbook"));
-        }
-
-        if let Some(expect) = &self.expect {
-            expect.check()?;
-        }
-
+    pub(crate) fn check(&self) -> Result<(), RunbookError> {
         match &self.retry {
             Some(retry) => retry.check(),
             None => Ok(()),
         }
     }
 
-    pub(crate) fn params_used(&self) -> Vec<String> {
-        let contains = self
-            .expect
-            .as_ref()
-            .and_then(|expect| expect.contains.as_deref());
-        let texts = [Some(self.title.as_str()), self.target.as_deref(), contains];
+    pub(crate) fn title(&self) -> &OneLine {
+        &self.title
+    }
 
-        let mut used: Vec<String> = texts
-            .into_iter()
-            .flatten()
-            .flat_map(|text| Value::from(text).placeholders())
-            .collect();
+    pub(crate) fn action(&self) -> &StepAction {
+        &self.action
+    }
 
-        used.extend(self.params.placeholders());
-        used
+    pub(crate) fn target(&self) -> Option<&str> {
+        self.target.as_deref()
+    }
+
+    pub(crate) fn params(&self) -> &Map<String, Value> {
+        &self.params
+    }
+
+    pub(crate) fn expect(&self) -> Option<&Expect> {
+        self.expect.as_ref()
+    }
+
+    pub(crate) fn on_failure(&self) -> OnFailure {
+        self.on_failure.unwrap_or_default()
     }
 
     pub(crate) fn retry(&self) -> Retry {
@@ -81,8 +92,26 @@ impl Step {
     pub(crate) fn exit_wanted(&self) -> i64 {
         self.expect.as_ref().map_or(0, Expect::exit_wanted)
     }
-}
 
-fn is_default<T: Default + PartialEq>(value: &T) -> bool {
-    *value == T::default()
+    pub(crate) fn shell_command(&self) -> Option<&str> {
+        if self.action.as_str() != Self::SHELL_ACTION {
+            return None;
+        }
+
+        self.params.get(Self::COMMAND)?.as_str()
+    }
+
+    pub(crate) fn params_used(&self) -> Vec<ParamName> {
+        let contains = self.expect.as_ref().and_then(Expect::contains);
+        let texts = [Some(self.title.as_str()), self.target.as_deref(), contains];
+
+        let mut used: Vec<ParamName> = texts
+            .into_iter()
+            .flatten()
+            .flat_map(|text| Value::from(text).placeholders())
+            .collect();
+
+        used.extend(self.params.placeholders());
+        used
+    }
 }

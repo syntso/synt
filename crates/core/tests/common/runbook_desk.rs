@@ -5,7 +5,8 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 use synt_client::{Client, ClientError};
 use synt_core::{
-    Broker, Core, LocalSessionOpen, ProjectOpen, Projects, Runbooks, SessionClose, Terminals,
+    Broker, Core, LocalSessionOpen, ProjectOpen, Projects, RunbookActions, Runbooks, SessionClose,
+    Terminals,
 };
 use synt_proto::{ActionCall, ActionOutcome, Notification, RunbookStep};
 use tokio::sync::broadcast;
@@ -37,10 +38,12 @@ impl RunbookDesk {
             .register(LocalSessionOpen::new(terminals.clone()))
             .unwrap();
         registry.register(SessionClose::new(terminals)).unwrap();
-        runbooks.register(&mut registry).unwrap();
+        RunbookActions::new(runbooks.clone())
+            .register(&mut registry)
+            .unwrap();
 
         let core = Arc::new(Core::new(registry, grounds.journal(), Broker::new()));
-        runbooks.connect(&core);
+        runbooks.connect(&core).unwrap();
 
         let folder = grounds.path().join(PROJECT);
         fs::create_dir_all(&folder).unwrap();

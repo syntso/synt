@@ -1,33 +1,87 @@
+use std::borrow::Borrow;
+use std::fmt::{self, Display, Formatter};
+
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+use crate::runbooks::RunbookError;
+
 const LONGEST: usize = 64;
 
-pub(crate) fn is_param_name(name: &str) -> bool {
-    let mut characters = name.chars();
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(try_from = "String", into = "String")]
+pub struct ParamName(String);
 
-    let Some(first) = characters.next() else {
-        return false;
-    };
+impl ParamName {
+    pub(crate) fn new(name: impl Into<String>) -> Result<Self, RunbookError> {
+        let name = name.into();
 
-    let starts_well = first.is_ascii_alphabetic() || first == '_';
-    let continues_well =
-        characters.all(|character| character.is_ascii_alphanumeric() || character == '_');
+        if !Self::fits(&name) {
+            return Err(RunbookError::BadParamName(name));
+        }
 
-    starts_well && continues_well && name.len() <= LONGEST
+        Ok(Self(name))
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    fn fits(name: &str) -> bool {
+        let mut characters = name.chars();
+
+        let Some(first) = characters.next() else {
+            return false;
+        };
+
+        let starts_well = first.is_ascii_alphabetic() || first == '_';
+        let continues_well =
+            characters.all(|character| character.is_ascii_alphanumeric() || character == '_');
+
+        starts_well && continues_well && name.len() <= LONGEST
+    }
+}
+
+impl TryFrom<String> for ParamName {
+    type Error = RunbookError;
+
+    fn try_from(name: String) -> Result<Self, RunbookError> {
+        Self::new(name)
+    }
+}
+
+impl From<ParamName> for String {
+    fn from(name: ParamName) -> Self {
+        name.0
+    }
+}
+
+impl Borrow<str> for ParamName {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for ParamName {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::is_param_name;
+    use super::ParamName;
 
     #[test]
     fn names_are_identifiers() {
-        assert!(is_param_name("host"));
-        assert!(is_param_name("_tag"));
-        assert!(is_param_name("service_2"));
+        for good in ["host", "_tag", "service_2"] {
+            assert!(ParamName::new(good).is_ok(), "{good}");
+        }
 
-        assert!(!is_param_name(""));
-        assert!(!is_param_name("2nd"));
-        assert!(!is_param_name("dry-run"));
-        assert!(!is_param_name("a b"));
-        assert!(!is_param_name(&"a".repeat(65)));
+        for bad in ["", "2nd", "dry-run", "a b", &"a".repeat(65)] {
+            assert!(ParamName::new(bad).is_err(), "{bad}");
+        }
     }
 }

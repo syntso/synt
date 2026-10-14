@@ -43,8 +43,11 @@ impl Action for RunbookExport {
         let runbooks = self.runbooks.clone();
 
         blocking(move || {
-            let (reference, runbook) = runbooks.store().get(&params.project, &params.name)?;
-            let script = ShellScript::new(&reference, &runbook).render();
+            let folder = runbooks.folder(&params.project)?;
+            let document = folder.read(&params.name)?;
+            let reference = folder.reference(&params.name);
+
+            let script = ShellScript::new(&reference, &document).render();
 
             Ok(ExportedRunbook {
                 runbook: reference,

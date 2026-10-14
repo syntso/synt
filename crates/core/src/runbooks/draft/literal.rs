@@ -2,33 +2,33 @@ use std::collections::BTreeSet;
 
 use serde_json::Value;
 
-use crate::runbooks::param::{ParamKind, ParamSpec};
+use super::DraftStep;
+use crate::runbooks::param::{ParamKind, ParamName, ParamSpec};
+
+const TARGET_HINT: &str = "host";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Literal {
-    pub(super) text: String,
+    text: String,
     hint: String,
     is_target: bool,
     steps: BTreeSet<usize>,
 }
 
 impl Literal {
-    pub(super) fn new(text: &str, hint: &str, is_target: bool, step: usize) -> Self {
-        Self {
-            text: text.to_owned(),
-            hint: hint.to_owned(),
-            is_target,
-            steps: [step].into(),
+    pub(super) fn repeated_in(steps: &[DraftStep]) -> Vec<Self> {
+        let mut found = Vec::new();
+
+        for (index, step) in steps.iter().enumerate() {
+            Self::note_step(&mut found, index, step);
         }
+
+        found.retain(Self::repeats);
+        found
     }
 
-    pub(super) fn seen_again(&mut self, step: usize, is_target: bool) {
-        self.steps.insert(step);
-        self.is_target |= is_target;
-    }
-
-    pub(super) fn repeats(&self) -> bool {
-        self.steps.len() > 1
+    pub(super) fn text(&self) -> &str {
+        &self.text
     }
 
     pub(super) fn base_name(&self) -> String {
@@ -50,8 +50,49 @@ impl Literal {
         }
     }
 
-    pub(super) fn spec(&self, name: &str) -> ParamSpec {
-        ParamSpec::literal(name.to_owned(), self.kind(), &self.text)
+    pub(super) fn spec(&self, name: ParamName) -> ParamSpec {
+        ParamSpec::literal(name, self.kind(), &self.text)
+    }
+
+    fn new(text: &str, hint: &str, is_target: bool, step: usize) -> Self {
+        Self {
+            text: text.to_owned(),
+            hint: hint.to_owned(),
+            is_target,
+            steps: [step].into(),
+        }
+    }
+
+    fn note_step(found: &mut Vec<Self>, index: usize, step: &DraftStep) {
+        if let Some(target) = step.target() {
+            Self::note(found, index, target, TARGET_HINT, true);
+        }
+
+        for (key, value) in step.params() {
+            if let Some(text) = value.as_str() {
+                Self::note(found, index, text, key, false);
+            }
+        }
+    }
+
+    fn note(found: &mut Vec<Self>, step: usize, text: &str, hint: &str, is_target: bool) {
+        if text.is_empty() {
+            return;
+        }
+
+        match found.iter_mut().find(|literal| literal.text == text) {
+            Some(known) => known.seen_again(step, is_target),
+            None => found.push(Self::new(text, hint, is_target, step)),
+        }
+    }
+
+    fn seen_again(&mut self, step: usize, is_target: bool) {
+        self.steps.insert(step);
+        self.is_target |= is_target;
+    }
+
+    fn repeats(&self) -> bool {
+        self.steps.len() > 1
     }
 
     fn kind(&self) -> ParamKind {

@@ -1,3 +1,7 @@
+mod link;
+
+pub(crate) use link::LinkProgress;
+
 use std::future::Future;
 
 use synt_proto::RunbookStep;

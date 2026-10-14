@@ -1,18 +1,19 @@
 use serde_json::{Map, Value};
 
 use super::TextTemplate;
-use crate::runbooks::param::Values;
+use crate::runbooks::RunbookError;
+use crate::runbooks::param::{ParamName, Values};
 
 pub(crate) trait JsonTemplate: Sized {
-    fn render(&self, values: &Values) -> Result<Self, String>;
+    fn render(&self, values: &Values) -> Result<Self, RunbookError>;
 
-    fn placeholders(&self) -> Vec<String>;
+    fn placeholders(&self) -> Vec<ParamName>;
 
     fn escaped(&self) -> Self;
 }
 
 impl JsonTemplate for Value {
-    fn render(&self, values: &Values) -> Result<Self, String> {
+    fn render(&self, values: &Values) -> Result<Self, RunbookError> {
         match self {
             Value::String(text) => TextTemplate::parse(text).render(values),
             Value::Array(items) => items
@@ -25,12 +26,9 @@ impl JsonTemplate for Value {
         }
     }
 
-    fn placeholders(&self) -> Vec<String> {
+    fn placeholders(&self) -> Vec<ParamName> {
         match self {
-            Value::String(text) => TextTemplate::parse(text)
-                .params()
-                .map(str::to_owned)
-                .collect(),
+            Value::String(text) => TextTemplate::parse(text).params().cloned().collect(),
             Value::Array(items) => items.iter().flat_map(Self::placeholders).collect(),
             Value::Object(fields) => fields.placeholders(),
             Value::Null | Value::Bool(_) | Value::Number(_) => Vec::new(),
@@ -48,13 +46,13 @@ impl JsonTemplate for Value {
 }
 
 impl JsonTemplate for Map<String, Value> {
-    fn render(&self, values: &Values) -> Result<Self, String> {
+    fn render(&self, values: &Values) -> Result<Self, RunbookError> {
         self.iter()
             .map(|(key, value)| Ok((key.clone(), value.render(values)?)))
             .collect()
     }
 
-    fn placeholders(&self) -> Vec<String> {
+    fn placeholders(&self) -> Vec<ParamName> {
         self.values().flat_map(Value::placeholders).collect()
     }
 
@@ -99,7 +97,11 @@ mod tests {
     fn the_params_used_anywhere_are_found() {
         let params = json!({ "a": "{x}", "b": ["{y} {x}"], "c": { "d": "{z}" }, "e": 1 });
 
-        let mut names = params.placeholders();
+        let mut names: Vec<String> = params
+            .placeholders()
+            .into_iter()
+            .map(String::from)
+            .collect();
         names.sort();
 
         assert_eq!(names, ["x", "x", "y", "z"]);

@@ -11,8 +11,8 @@ use synt_core::{
     AlwaysGrants, Broker, Core, CoreCaller, CoreScreen, Databases, EventFeed, ExtensionMerger,
     Files, GrantList, GrantRevoke, IdleWatch, JournalPage, JournalVerify, KeyGenerate, KeyImport,
     KeyList, KeyRemove, Kube, LocalSessionOpen, LoginCommand, Ping, ProjectClose, ProjectList,
-    ProjectOpen, Projects, ResourceGet, ResourceList, ResourcePut, ResourceRemove, Runbooks,
-    SecretList, SecretPut, SecretRemove, Secrets, Server, SessionAttach, SessionBlocks,
+    ProjectOpen, Projects, ResourceGet, ResourceList, ResourcePut, ResourceRemove, RunbookActions,
+    Runbooks, SecretList, SecretPut, SecretRemove, Secrets, Server, SessionAttach, SessionBlocks,
     SessionClose, SessionIntegration, SessionList, SessionResize, SshConnections, SshExec, SshKeys,
     SshSessionOpen, SshWarm, Storage, Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
 };
@@ -87,7 +87,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     register_keys(&mut registry, &keys, &pool)?;
     register_secrets(&mut registry, &secrets)?;
     Databases::new(pool.clone(), projects.clone(), secrets.clone()).register(&mut registry)?;
-    runbooks.register(&mut registry)?;
+    RunbookActions::new(runbooks.clone()).register(&mut registry)?;
 
     let extensions = Extensions::open(
         &data,
@@ -113,7 +113,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         Arc::new(CoreCaller::new(&core)),
         Arc::new(CoreScreen::new(&core)),
     );
-    runbooks.connect(&core);
+    runbooks.connect(&core)?;
     let _feed = EventFeed::start(&extensions, &journal, &projects);
     let server = Server::bind(&endpoint, core, apps()?)?;
     let _sync: SyncLoop = syncer.start(SYNC_EVERY);

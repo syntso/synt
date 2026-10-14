@@ -1,43 +1,49 @@
 use std::collections::BTreeMap;
 
+use super::DraftStep;
 use super::literal::Literal;
-use crate::runbooks::param::ParamSpec;
+use crate::runbooks::RunbookError;
+use crate::runbooks::param::{ParamName, ParamSpec};
 
 #[derive(Debug, Default)]
 pub(super) struct Placeholders {
-    names: BTreeMap<String, String>,
+    names: BTreeMap<String, ParamName>,
+    specs: Vec<ParamSpec>,
 }
 
 impl Placeholders {
-    pub(super) fn naming(literals: &[Literal]) -> Self {
+    pub(super) fn for_steps(steps: &[DraftStep]) -> Result<Self, RunbookError> {
         let mut placeholders = Self::default();
-        let mut taken: Vec<String> = Vec::new();
 
-        for literal in literals {
-            let base = literal.base_name();
-            let mut name = base.clone();
-            let mut counter = 2;
+        for literal in Literal::repeated_in(steps) {
+            let name = placeholders.free_name(&literal.base_name())?;
 
-            while taken.contains(&name) {
-                name = format!("{base}_{counter}");
-                counter += 1;
-            }
-
-            taken.push(name.clone());
-            placeholders.names.insert(literal.text.clone(), name);
+            placeholders.specs.push(literal.spec(name.clone()));
+            placeholders.names.insert(literal.text().to_owned(), name);
         }
 
-        placeholders
-    }
-
-    pub(super) fn specs(&self, literals: &[Literal]) -> Vec<ParamSpec> {
-        literals
-            .iter()
-            .filter_map(|literal| self.names.get(&literal.text).map(|name| literal.spec(name)))
-            .collect()
+        Ok(placeholders)
     }
 
     pub(super) fn lift(&self, text: &str) -> Option<String> {
         self.names.get(text).map(|name| format!("{{{name}}}"))
+    }
+
+    pub(super) fn into_specs(self) -> Vec<ParamSpec> {
+        self.specs
+    }
+
+    fn free_name(&self, base: &str) -> Result<ParamName, RunbookError> {
+        let taken = |name: &str| self.specs.iter().any(|spec| spec.name().as_str() == name);
+
+        let mut name = base.to_owned();
+        let mut counter = 2;
+
+        while taken(&name) {
+            name = format!("{base}_{counter}");
+            counter += 1;
+        }
+
+        ParamName::new(name)
     }
 }
