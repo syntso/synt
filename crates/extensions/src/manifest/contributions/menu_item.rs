@@ -48,7 +48,11 @@ mod tests {
 
     #[test]
     fn a_menu_entry_may_name_every_kind_of_resource() {
-        assert!(item(&["host", "tunnel", "cluster", "database"]).check().is_ok());
+        assert!(
+            item(&["host", "tunnel", "cluster", "database"])
+                .check()
+                .is_ok()
+        );
         assert!(item(&[]).check().is_ok());
     }
 
