@@ -3,8 +3,10 @@ use minisign_verify::{PublicKey, Signature};
 use super::sealed::Sealed;
 use super::{IndexSeal, Listing};
 use crate::ExtensionError;
-use crate::package::sha256;
-use crate::shelf::now;
+use crate::clock::now;
+use crate::digest::sha256;
+
+const MILLIS_PER_SECOND: u64 = 1000;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TrustedKey {
@@ -37,7 +39,7 @@ impl TrustedKey {
                 ExtensionError::Signature(format!("the trusted comment of the index: {error}"))
             })?;
 
-        if seal.expires <= now() / 1000 {
+        if seal.expires <= now() / MILLIS_PER_SECOND {
             return Err(ExtensionError::Signature(
                 "the registry index has expired; the registry has not been signed lately"
                     .to_owned(),
@@ -73,12 +75,9 @@ impl TrustedKey {
     fn verify(&self, data: &[u8], signature: &[u8]) -> Result<Signature, ExtensionError> {
         let text = std::str::from_utf8(signature)
             .map_err(|error| ExtensionError::Signature(error.to_string()))?;
-        let signature = Signature::decode(text)
-            .map_err(|error| ExtensionError::Signature(error.to_string()))?;
+        let signature = Signature::decode(text)?;
 
-        self.key
-            .verify(data, &signature, false)
-            .map_err(|error| ExtensionError::Signature(error.to_string()))?;
+        self.key.verify(data, &signature, false)?;
 
         Ok(signature)
     }

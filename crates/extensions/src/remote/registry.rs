@@ -1,7 +1,7 @@
 use super::fetcher::Fetcher;
 use super::{Index, Listing, TrustedKey};
 use crate::ExtensionError;
-use crate::package::Package;
+use crate::install::Package;
 
 const REGISTRY: &str = "https://github.com/syntso/extensions/releases/latest/download";
 const REGISTRY_KEY: &str = include_str!("../../registry.pub");
