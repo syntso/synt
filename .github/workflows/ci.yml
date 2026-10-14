@@ -67,6 +67,28 @@ jobs:
       - if: always()
         run: tests/ssh/down.sh
 
+  kube-integration:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-nextest
+      - run: cargo nextest run -p synt-kube --test cluster -p synt-core --test clusters --no-run
+      - run: tests/kube/up.sh
+      - run: cargo nextest run -p synt-kube --test cluster -p synt-core --test clusters --run-ignored only
+        env:
+          SYNT_KUBE_TESTS: "1"
+          SSH_AUTH_SOCK: ""
+      - if: failure()
+        run: docker compose --file tests/kube/compose.yaml logs
+      - if: always()
+        run: tests/kube/down.sh
+
   fuzz:
     runs-on: ubuntu-24.04
     steps:
@@ -84,11 +106,12 @@ jobs:
 
   rust:
     if: always()
-    needs: [lint, test, ssh-integration, fuzz]
+    needs: [lint, test, ssh-integration, kube-integration, fuzz]
     runs-on: ubuntu-24.04
     steps:
       - run: >-
           test "${{ needs.lint.result }}" = success &&
           test "${{ needs.test.result }}" = success &&
           test "${{ needs.ssh-integration.result }}" = success &&
+          test "${{ needs.kube-integration.result }}" = success &&
           test "${{ needs.fuzz.result }}" = success

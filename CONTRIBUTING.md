@@ -71,3 +71,15 @@ tests/ssh/down.sh
 ```
 
 `up.sh` needs Docker and `ssh-keygen`. It generates fresh client and host keys in `tests/ssh/run/` (ignored by git) and starts two Alpine OpenSSH containers: `bastion`, published on a random port of `127.0.0.1`, and `target`, reachable only from the bastion as `target:22`. Both log in user `synt` with the client key or the vault key and run a TCP echo on port 7000. The tests write their own `known_hosts` into a temporary folder and never touch `~/.ssh`. CI runs them in the `ssh-integration` job.
+
+## Kubernetes integration tests
+
+The tests in `crates/kube/tests/cluster` and `crates/core/tests/clusters` talk to a real cluster. They are ignored by default and skip themselves unless `SYNT_KUBE_TESTS=1` is set.
+
+```bash
+tests/kube/up.sh
+SYNT_KUBE_TESTS=1 cargo nextest run -p synt-kube --test cluster -p synt-core --test clusters --run-ignored only
+tests/kube/down.sh
+```
+
+`up.sh` needs Docker and `ssh-keygen`. It starts a single-node k3s cluster (`rancher/k3s`, the image k3d runs) with its API server published on a random port of `127.0.0.1`, and an OpenSSH `bastion` from `tests/ssh` on the same Docker network, where the API server is also reachable as `cluster:6443`. It writes `tests/kube/run/kubeconfig` (ignored by git) with three contexts: `direct` (the published port, client certificate), `inside` (`https://cluster:6443`, reachable only through the bastion, so it checks the SSH tunnel and the TLS name) and `plugin` (the published port with an exec credential plugin that prints a service account token). The tests make a namespace of their own and delete it at the end; pods run `busybox`. CI runs them in the `kube-integration` job.
