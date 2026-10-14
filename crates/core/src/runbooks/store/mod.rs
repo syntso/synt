@@ -1,5 +1,6 @@
 mod disk;
 mod entry;
+mod folder;
 mod listing;
 mod summary;
 

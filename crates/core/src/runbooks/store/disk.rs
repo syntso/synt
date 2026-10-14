@@ -1,17 +1,8 @@
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
-
-use synt_platform::{read_plain_file, replace_file};
-
-use super::{RunbookEntry, RunbookListing, RunbookSummary};
+use super::folder::RunbookFolder;
+use super::{RunbookEntry, RunbookListing};
 use crate::CoreError;
-use crate::projects::{Problem, ProjectPlace, Projects, check_name};
+use crate::projects::{Projects, check_name};
 use crate::runbooks::document::Runbook;
-
-const FOLDER: &str = "runbooks";
-const EXTENSION: &str = "toml";
-const LARGEST_FILE: u64 = 256 * 1024;
 
 #[derive(Debug, Clone)]
 pub(crate) struct RunbookStore {
@@ -25,42 +16,27 @@ impl RunbookStore {
 
     pub(crate) fn reference(&self, project: &str, name: &str) -> Result<String, CoreError> {
         check_name(name).map_err(CoreError::Runbook)?;
-        let place = self.projects.place(project)?;
+        let folder = self.folder(project)?;
 
-        Ok(reference(&place, name))
+        Ok(folder.reference(name))
     }
 
     pub(crate) fn list(&self, project: &str) -> Result<RunbookListing, CoreError> {
-        let place = self.projects.place(project)?;
-        let mut listing = RunbookListing {
-            project: place.slug.clone(),
-            runbooks: Vec::new(),
-            problems: Vec::new(),
-        };
-
-        for (name, path) in files(&place.path)? {
-            match read(&path) {
-                Ok(runbook) => listing.runbooks.push(RunbookSummary::of(name, &runbook)),
-                Err(error) => listing.problems.push(Problem {
-                    file: file_name(&name),
-                    error,
-                }),
-            }
-        }
-
-        Ok(listing)
+        self.folder(project)?.listing()
     }
 
     pub(crate) fn get(&self, project: &str, name: &str) -> Result<(String, Runbook), CoreError> {
         check_name(name).map_err(CoreError::Runbook)?;
-        let place = self.projects.place(project)?;
-        let path = place.path.join(file_name(name));
+        let folder = self.folder(project)?;
 
-        let runbook = read(&path).map_err(|error| {
-            CoreError::Runbook(format!("runbook {name} of project {}: {error}", place.slug))
+        let runbook = folder.read(name).map_err(|error| {
+            CoreError::Runbook(format!(
+                "runbook {name} of project {}: {error}",
+                folder.slug()
+            ))
         })?;
 
-        Ok((reference(&place, name), runbook))
+        Ok((folder.reference(name), runbook))
     }
 
     pub(crate) fn put(
@@ -73,15 +49,15 @@ impl RunbookStore {
         check_name(name).map_err(CoreError::Runbook)?;
         runbook.check().map_err(CoreError::Runbook)?;
 
-        let place = self.projects.place(project)?;
-        check_admitted(&place, name, admitted)?;
+        let folder = self.folder(project)?;
+        folder.admit(name, admitted)?;
 
         let text = runbook
             .to_toml()
             .map_err(|error| CoreError::Runbook(format!("cannot write {name}: {error}")))?;
 
-        prepare_folder(&place.path)
-            .and_then(|()| replace_file(&place.path.join(file_name(name)), text.as_bytes()))
+        folder
+            .write(name, &text)
             .map_err(|error| CoreError::Project(format!("cannot write runbook {name}: {error}")))?;
 
         Ok(RunbookEntry {
@@ -89,95 +65,10 @@ impl RunbookStore {
             runbook,
         })
     }
-}
 
-fn reference(place: &ProjectPlace, name: &str) -> String {
-    format!("@{}/{name}", place.id)
-}
+    fn folder(&self, project: &str) -> Result<RunbookFolder, CoreError> {
+        let place = self.projects.place(project)?;
 
-fn check_admitted(
-    place: &ProjectPlace,
-    name: &str,
-    admitted: Option<&str>,
-) -> Result<(), CoreError> {
-    let actual = reference(place, name);
-
-    if admitted == Some(actual.as_str()) {
-        return Ok(());
+        Ok(RunbookFolder::new(place))
     }
-
-    Err(CoreError::Project(format!(
-        "runbook {name} of project {} is now {actual}, which is not what the call was \
-         admitted for; run it again",
-        place.slug
-    )))
-}
-
-fn file_name(name: &str) -> String {
-    format!("{FOLDER}/{name}.{EXTENSION}")
-}
-
-fn read(path: &Path) -> Result<Runbook, String> {
-    let bytes = match read_plain_file(path, LARGEST_FILE) {
-        Ok(bytes) => bytes,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Err("there is no such runbook".to_owned());
-        }
-        Err(error) => return Err(error.to_string()),
-    };
-
-    let text = String::from_utf8(bytes).map_err(|_| "the file is not UTF-8 text".to_owned())?;
-
-    Runbook::from_toml(&text)
-}
-
-fn files(project: &Path) -> Result<Vec<(String, PathBuf)>, CoreError> {
-    let folder = project.join(FOLDER);
-
-    let entries = match fs::read_dir(&folder) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(error.into()),
-    };
-
-    let mut found = Vec::new();
-
-    for entry in entries {
-        let path = entry?.path();
-
-        if let Some(name) = runbook_name(&path) {
-            found.push((name, path));
-        }
-    }
-
-    found.sort();
-    Ok(found)
-}
-
-fn runbook_name(path: &Path) -> Option<String> {
-    if path.extension()? != EXTENSION {
-        return None;
-    }
-
-    let stem = path.file_stem()?.to_str()?;
-
-    check_name(stem).ok().map(|()| stem.to_owned())
-}
-
-fn prepare_folder(project: &Path) -> io::Result<()> {
-    let folder = project.join(FOLDER);
-
-    match fs::create_dir(&folder) {
-        Err(error) if error.kind() != io::ErrorKind::AlreadyExists => return Err(error),
-        _ => {}
-    }
-
-    if fs::symlink_metadata(&folder)?.is_dir() {
-        return Ok(());
-    }
-
-    Err(io::Error::new(
-        io::ErrorKind::InvalidInput,
-        format!("{} must be a plain folder, not a link", folder.display()),
-    ))
 }
