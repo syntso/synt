@@ -30,9 +30,9 @@ impl RunningCore {
     pub async fn stop(self) {
         let _ = self.shutdown.send(());
 
-        time::timeout(STOP_LIMIT, self.task)
-            .await
-            .expect("the core stops once asked to")
-            .unwrap();
+        let Ok(stopped) = time::timeout(STOP_LIMIT, self.task).await else {
+            panic!("the core did not stop once asked to");
+        };
+        stopped.unwrap();
     }
 }

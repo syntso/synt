@@ -30,9 +30,9 @@ impl RunningServer {
     pub async fn stop(self) {
         let _ = self.shutdown.send(());
 
-        let stopped = time::timeout(STOP_LIMIT, self.task)
-            .await
-            .expect("the server stops once the shutdown future completes");
+        let Ok(stopped) = time::timeout(STOP_LIMIT, self.task).await else {
+            panic!("the server did not stop once the shutdown future completed");
+        };
 
         stopped.unwrap();
     }

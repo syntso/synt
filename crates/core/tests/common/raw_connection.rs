@@ -83,8 +83,9 @@ impl RawConnection {
     }
 
     async fn next_frame(&mut self) -> Option<Result<Frame, FrameError>> {
-        time::timeout(ANSWER_LIMIT, self.incoming.next())
-            .await
-            .expect("the core answers in time")
+        let Ok(frame) = time::timeout(ANSWER_LIMIT, self.incoming.next()).await else {
+            panic!("the core did not answer in time");
+        };
+        frame
     }
 }

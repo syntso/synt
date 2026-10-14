@@ -33,9 +33,9 @@ impl Desk {
         let caller = caller.clone();
         let running = tokio::spawn(async move { caller.call(call).await });
 
-        let question = time::timeout(PATIENCE, next_question(&mut questions))
-            .await
-            .expect("the core asks the person in time");
+        let Ok(question) = time::timeout(PATIENCE, next_question(&mut questions)).await else {
+            panic!("the core did not ask the person in time");
+        };
         self.app.respond(question.id, decision).await.unwrap();
 
         (question, running.await.unwrap())

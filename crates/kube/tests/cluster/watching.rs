@@ -53,8 +53,8 @@ async fn a_watch_reports_what_exists_then_every_change() {
 }
 
 async fn next(watch: &mut synt_kube::Watch) -> WatchNotice {
-    time::timeout(Duration::from_secs(30), watch.next())
-        .await
-        .expect("a notice within 30 s")
-        .unwrap()
+    let Ok(notice) = time::timeout(Duration::from_secs(30), watch.next()).await else {
+        panic!("no notice within 30 s");
+    };
+    notice.unwrap()
 }

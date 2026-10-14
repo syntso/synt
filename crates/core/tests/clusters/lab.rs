@@ -153,8 +153,10 @@ impl Lab {
     }
 
     pub fn requested(&self, request: RequestSeq) -> Value {
-        self.detail_of(request, EventKind::Requested)
-            .expect("every call is requested")
+        let Some(detail) = self.detail_of(request, EventKind::Requested) else {
+            panic!("every call is requested");
+        };
+        detail
     }
 
     pub async fn finished(&self, request: RequestSeq) -> Value {

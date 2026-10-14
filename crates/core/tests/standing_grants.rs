@@ -30,10 +30,12 @@ fn start() -> Harness {
 
 fn approval(harness: &Harness, request: RequestSeq) -> Value {
     let trail = harness.trail(request);
-    let approved = trail
+    let Some(approved) = trail
         .iter()
         .find(|event| event.kind() == EventKind::Approved)
-        .expect("the call was approved");
+    else {
+        panic!("the call was not approved");
+    };
 
     approved.details().value().clone()
 }

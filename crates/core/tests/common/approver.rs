@@ -26,9 +26,10 @@ impl Approver {
     }
 
     pub async fn next(&mut self) -> ApprovalRequest {
-        time::timeout(PATIENCE, self.next_question())
-            .await
-            .expect("the core asks the app in time")
+        let Ok(question) = time::timeout(PATIENCE, self.next_question()).await else {
+            panic!("the core did not ask the app in time");
+        };
+        question
     }
 
     pub fn was_not_asked(&mut self) -> bool {
@@ -73,7 +74,7 @@ impl Approver {
     ) -> ActionOutcome {
         let (_, outcome) = self.decide(caller, call, decision).await;
 
-        outcome.expect("the approved call runs")
+        outcome.unwrap_or_else(|error| panic!("the approved call did not run: {error}"))
     }
 
     async fn next_question(&mut self) -> ApprovalRequest {

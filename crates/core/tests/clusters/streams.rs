@@ -38,11 +38,13 @@ impl Followed {
     }
 
     async fn line(&mut self) -> String {
-        time::timeout(PATIENCE, self.lines.next_line())
-            .await
-            .expect("a line in time")
-            .unwrap()
-            .expect("the stream is still open")
+        let Ok(read) = time::timeout(PATIENCE, self.lines.next_line()).await else {
+            panic!("no line in time");
+        };
+        let Some(line) = read.unwrap() else {
+            panic!("the stream closed");
+        };
+        line
     }
 
     async fn end(self) -> u64 {
