@@ -3,16 +3,15 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use super::remove_if_present;
-use crate::native;
+use super::{Found, NativeFiles, Os};
 
 const PENDING_SUFFIX: &str = ".pending";
 
 pub fn replace_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let pending = pending(path)?;
-    remove_if_present(&pending)?;
+    fs::remove_file(&pending).found()?;
 
-    let mut file = native::create_new_file(&pending)?;
+    let mut file = Os::create_new_file(&pending)?;
     file.write_all(bytes)?;
     file.sync_all()?;
     drop(file);

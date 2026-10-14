@@ -1,8 +1,20 @@
+mod environment;
+mod native;
+#[cfg(unix)]
+mod unix;
+#[cfg(windows)]
+mod windows;
+
 use std::ffi::OsString;
 use std::io;
 use std::path::Path;
 
-use crate::native;
+use environment::Environment;
+use native::NativeSpawn;
+#[cfg(unix)]
+use unix::Unix as Os;
+#[cfg(windows)]
+use windows::Windows as Os;
 
 pub fn start_detached(program: &Path, arguments: &[OsString]) -> io::Result<()> {
     if !program.is_absolute() {
@@ -15,7 +27,7 @@ pub fn start_detached(program: &Path, arguments: &[OsString]) -> io::Result<()> 
         ));
     }
 
-    let environment = native::detached_environment()?;
+    let environment = Os::environment()?;
 
-    native::spawn_detached(program, arguments, &environment)
+    Os::spawn(program, arguments, &environment)
 }

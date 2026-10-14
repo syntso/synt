@@ -2,16 +2,16 @@ use std::fs::Metadata;
 use std::io;
 use std::path::Path;
 
-use super::limited::read_at_most;
-use crate::native;
+use super::{NativeFiles, Os, Ownership, ReadAtMost};
 
 pub fn read_owned_file(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
-    let file = native::open_without_waiting(path)?;
+    let file = Os::open_without_waiting(path)?;
     let metadata = file.metadata()?;
 
     refuse_unsafe(&metadata)?;
 
-    read_at_most(file, limit)?.ok_or_else(|| refused(&format!("it is larger than {limit} bytes")))
+    file.read_at_most(limit)?
+        .ok_or_else(|| refused(&format!("it is larger than {limit} bytes")))
 }
 
 fn refuse_unsafe(metadata: &Metadata) -> io::Result<()> {
@@ -19,11 +19,11 @@ fn refuse_unsafe(metadata: &Metadata) -> io::Result<()> {
         return Err(refused("it is not a regular file"));
     }
 
-    if !native::owned_by_current_user(metadata) {
+    if !metadata.owned_by_current_user() {
         return Err(refused("it belongs to another user"));
     }
 
-    if native::writable_by_others(metadata) {
+    if metadata.writable_by_others() {
         return Err(refused("other users can change it"));
     }
 

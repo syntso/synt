@@ -12,13 +12,13 @@ use crate::PlatformError;
 const PERSISTENCE: &str = "persistence";
 const THIS_MACHINE: &str = "Local";
 
-pub(crate) struct Credentials {
+pub(super) struct Credentials {
     store: Arc<Store>,
     service: String,
 }
 
 impl Credentials {
-    pub(crate) fn open(service: String) -> Result<Self, PlatformError> {
+    pub(super) fn open(service: String) -> Result<Self, PlatformError> {
         let store = Store::new()?;
 
         Ok(Self { store, service })
