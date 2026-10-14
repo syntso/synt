@@ -1,7 +1,7 @@
 use serde_json::{Map, Value};
 use similar::TextDiff;
 
-use super::Change;
+use crate::Change;
 
 const CONTEXT_LINES: usize = 3;
 const NOTHING: &str = "/dev/null";

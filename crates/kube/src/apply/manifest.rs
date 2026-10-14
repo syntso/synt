@@ -1,23 +1,25 @@
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::Value;
 
-use crate::error::first_line;
+use super::Planner;
 use crate::objects::Fields;
-use crate::{KubeError, ObjectRef};
+use crate::{AppliedObject, Cluster, KubeError, ObjectRef, Plan};
 
 const LARGEST_COUNT: usize = 100;
 const LIST_SUFFIX: &str = "List";
 const SECRET: &str = "Secret";
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
+#[serde(try_from = "String")]
 pub struct Manifest {
     objects: Vec<Value>,
 }
 
 impl Manifest {
     pub fn parse(text: &str) -> Result<Self, KubeError> {
-        let documents: Vec<Value> = serde_saphyr::from_multiple(text).map_err(|error| {
-            KubeError::invalid(format!("the manifest is not YAML: {}", first_line(&error)))
-        })?;
+        let documents: Vec<Value> =
+            serde_saphyr::from_multiple(text).map_err(KubeError::manifest_not_yaml)?;
 
         let mut objects = Vec::new();
         for document in documents.into_iter().filter(|document| !document.is_null()) {
@@ -41,6 +43,26 @@ impl Manifest {
 
     pub fn objects(&self) -> &[Value] {
         &self.objects
+    }
+
+    pub async fn plan(&self, cluster: &Cluster, force: bool) -> Result<Plan, KubeError> {
+        Planner::new(cluster, force).plan(self).await
+    }
+
+    pub async fn apply(
+        &self,
+        cluster: &Cluster,
+        force: bool,
+    ) -> Result<Vec<AppliedObject>, KubeError> {
+        let mut applied = Vec::with_capacity(self.objects.len());
+
+        for object in &self.objects {
+            let placed = cluster.object_in_manifest(object).await?;
+
+            applied.push(placed.apply(object, force).await?);
+        }
+
+        Ok(applied)
     }
 
     pub fn refs(&self) -> Vec<ObjectRef> {
@@ -91,6 +113,14 @@ impl Manifest {
         }
 
         Ok(())
+    }
+}
+
+impl TryFrom<String> for Manifest {
+    type Error = KubeError;
+
+    fn try_from(text: String) -> Result<Self, KubeError> {
+        Self::parse(&text)
     }
 }
 
