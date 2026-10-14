@@ -8,12 +8,13 @@ use std::time::Duration;
 
 use synt_actions::{ActionError, Registry};
 use synt_core::{
-    AlwaysGrants, Broker, Core, CoreCaller, Files, GrantList, GrantRevoke, IdleWatch, JournalPage,
-    JournalVerify, KeyGenerate, KeyImport, KeyList, KeyRemove, LocalSessionOpen, LoginCommand,
-    Ping, ProjectClose, ProjectList, ProjectOpen, Projects, ResourceGet, ResourceList, ResourcePut,
-    ResourceRemove, Server, SessionAttach, SessionBlocks, SessionClose, SessionIntegration,
-    SessionList, SessionResize, SshConnections, SshExec, SshKeys, SshSessionOpen, SshWarm, Storage,
-    Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
+    AlwaysGrants, Broker, Core, CoreCaller, Databases, Files, GrantList, GrantRevoke, IdleWatch,
+    JournalPage, JournalVerify, KeyGenerate, KeyImport, KeyList, KeyRemove, LocalSessionOpen,
+    LoginCommand, PasswordList, PasswordRemove, PasswordSet, Passwords, Ping, ProjectClose,
+    ProjectList, ProjectOpen, Projects, ResourceGet, ResourceList, ResourcePut, ResourceRemove,
+    Server, SessionAttach, SessionBlocks, SessionClose, SessionIntegration, SessionList,
+    SessionResize, SshConnections, SshExec, SshKeys, SshSessionOpen, SshWarm, Storage, Terminals,
+    TunnelClose, TunnelList, TunnelOpen, VERSION,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Journal, JournalWriter};
@@ -66,6 +67,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let journal = JournalWriter::spawn(journal)?;
     let state = storage.state()?;
     let keys = SshKeys::new(storage.vault(), state.clone());
+    let passwords = Passwords::new(storage.vault(), state.clone());
     let projects = Projects::start(state.clone())?;
     let always = AlwaysGrants::load(state, storage.grant_seal()?)?;
 
@@ -78,6 +80,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     register_sessions(&mut registry, &pool, &projects, &terminals)?;
     register_records(&mut registry, &journal, &projects, &always)?;
     register_keys(&mut registry, &keys, &pool)?;
+    register_databases(&mut registry, &pool, &projects, &passwords)?;
 
     let extensions = Extensions::open(
         &data,
@@ -166,6 +169,19 @@ fn register_keys(registry: &mut Registry, keys: &SshKeys, pool: &Pool) -> Result
     registry.register(KeyGenerate::new(keys.clone()))?;
     registry.register(KeyList::new(keys.clone()))?;
     registry.register(KeyRemove::new(keys.clone(), pool.clone()))
+}
+
+fn register_databases(
+    registry: &mut Registry,
+    pool: &Pool,
+    projects: &Projects,
+    passwords: &Passwords,
+) -> Result<(), ActionError> {
+    registry.register(PasswordSet::new(passwords.clone()))?;
+    registry.register(PasswordList::new(passwords.clone()))?;
+    registry.register(PasswordRemove::new(passwords.clone()))?;
+
+    Databases::new(pool.clone(), projects.clone(), passwords.clone()).register(registry)
 }
 
 async fn serve(server: Server, idle: Option<Duration>, terminals: Terminals, tunnels: Tunnels) {
