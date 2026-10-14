@@ -4,7 +4,7 @@ use synt_journal::Name;
 
 use super::Visit;
 use crate::builtin::ExtensionHttp;
-use crate::caller::ExtensionCall;
+use crate::call::ExtensionCall;
 use crate::http::{HttpRequest, HttpResponse};
 use crate::interface::GuestError;
 
@@ -65,7 +65,7 @@ impl Visit {
         outside
             .runtime
             .block_on(outside.caller.call(call, outside.origin.as_ref()))
-            .map_err(|failure| GuestError::new(failure.code, failure.message))
+            .map_err(GuestError::from)
     }
 }
 

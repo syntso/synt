@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use synt_actions::Risk;
 
 use super::{ActionSpec, Guest};
-use crate::package::Package;
+use crate::install::Package;
 use crate::shelf::Installed;
 
 pub(crate) struct Candidate {

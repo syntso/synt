@@ -11,7 +11,7 @@ impl Shelf {
             .query_row(
                 "SELECT vals FROM extension_settings WHERE extension = ?1",
                 [extension],
-                |row| row.get(0),
+                |row| row.get("vals"),
             )
             .optional()?;
 

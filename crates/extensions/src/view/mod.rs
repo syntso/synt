@@ -1,5 +1,6 @@
-mod view_check;
-mod view_patch;
+mod check;
+mod node;
+mod patch;
 
-pub(crate) use view_check::ViewCheck;
-pub(crate) use view_patch::ViewPatch;
+pub(crate) use check::ViewCheck;
+pub(crate) use patch::ViewPatch;

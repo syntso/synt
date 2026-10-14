@@ -1,10 +1,11 @@
-mod core_caller;
-mod core_screen;
+mod caller;
 mod event_feed;
-mod extension_merger;
+mod journal_entry;
+mod merger;
 mod project_folders;
+mod screen;
 
-pub use core_caller::CoreCaller;
-pub use core_screen::CoreScreen;
+pub use caller::CoreCaller;
 pub use event_feed::EventFeed;
-pub use extension_merger::ExtensionMerger;
+pub use merger::ExtensionMerger;
+pub use screen::CoreScreen;

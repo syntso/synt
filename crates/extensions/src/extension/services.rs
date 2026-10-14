@@ -2,11 +2,11 @@ use std::sync::{Arc, OnceLock};
 
 use tokio::runtime::Handle;
 
-use crate::caller::Caller;
+use crate::call::Caller;
 use crate::documents::ProjectFolders;
 use crate::http::SecretSource;
-use crate::screen::Screen;
 use crate::shelf::Shelf;
+use crate::ui::Screen;
 
 pub(crate) struct Services {
     pub(crate) shelf: Shelf,

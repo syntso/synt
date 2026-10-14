@@ -1,14 +1,13 @@
-use std::path::Path;
-
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::file_entry::FileEntry;
-use super::pick_params::PickParams;
+use super::entry::FileEntry;
 use crate::builtin::blocking::blocking;
-use crate::files::{FileGate, Picked};
 use crate::manifest::FileAccess;
+use crate::picked::Picked;
 use crate::{ExtensionError, Extensions};
 
 #[derive(Clone)]
@@ -16,9 +15,49 @@ pub(crate) struct ExtensionFilePick {
     extensions: Extensions,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PickParams {
+    pub extension: String,
+    pub path: String,
+    pub access: String,
+}
+
 impl ExtensionFilePick {
     pub(crate) fn new(extensions: Extensions) -> Self {
         Self { extensions }
+    }
+
+    fn pick(&self, params: &PickParams, wanted: FileAccess) -> Result<FileEntry, ExtensionError> {
+        let loaded = self.extensions.loaded(&params.extension)?;
+        let granted = loaded.guest.manifest().capabilities.files;
+
+        if !granted.is_some_and(|granted| granted.covers(wanted)) {
+            return Err(ExtensionError::Refused(format!(
+                "{} may not {} files the person picks",
+                params.extension,
+                wanted.as_str()
+            )));
+        }
+
+        let picked = Picked::pick(&params.path, wanted)?;
+        self.extensions
+            .services()
+            .shelf
+            .put_pick(&params.extension, &picked)?;
+
+        Ok(FileEntry::new(&params.extension, picked))
+    }
+}
+
+impl PickParams {
+    fn access(&self) -> Result<FileAccess, ActionError> {
+        FileAccess::parse(&self.access).ok_or_else(|| {
+            ActionError::InvalidParams(format!(
+                "access is read or read-write, not {:?}",
+                self.access
+            ))
+        })
     }
 }
 
@@ -32,7 +71,7 @@ impl Action for ExtensionFilePick {
     type Output = FileEntry;
 
     fn check(&self, _target: Option<&ResourceRef>, params: &PickParams) -> Result<(), ActionError> {
-        access(&params.access).map(drop)
+        params.access().map(drop)
     }
 
     fn summary(&self, output: &FileEntry) -> Value {
@@ -45,55 +84,9 @@ impl Action for ExtensionFilePick {
     }
 
     async fn run(&self, _context: &Context, params: PickParams) -> Result<FileEntry, ActionError> {
-        let wanted = access(&params.access)?;
-        let extensions = self.extensions.clone();
+        let wanted = params.access()?;
+        let action = self.clone();
 
-        blocking(move || pick(&extensions, &params, wanted)).await
+        blocking(move || action.pick(&params, wanted)).await
     }
-}
-
-fn pick(
-    extensions: &Extensions,
-    params: &PickParams,
-    wanted: FileAccess,
-) -> Result<FileEntry, ExtensionError> {
-    let loaded = extensions.loaded(&params.extension)?;
-    let granted = loaded.guest.manifest().capabilities.files;
-
-    if !granted.is_some_and(|granted| granted.covers(wanted)) {
-        return Err(ExtensionError::Refused(format!(
-            "{} may not {} files the person picks",
-            params.extension,
-            wanted.as_str()
-        )));
-    }
-
-    FileGate::check_pick(Path::new(&params.path), wanted).map_err(ExtensionError::Refused)?;
-
-    let picked = Picked {
-        handle: new_handle()?,
-        name: Picked::name_of(&params.path),
-        access: wanted,
-        path: params.path.clone(),
-    };
-    extensions
-        .services()
-        .shelf
-        .put_pick(&params.extension, &picked)?;
-
-    Ok(FileEntry::new(&params.extension, picked))
-}
-
-fn access(text: &str) -> Result<FileAccess, ActionError> {
-    FileAccess::parse(text).ok_or_else(|| {
-        ActionError::InvalidParams(format!("access is read or read-write, not {text:?}"))
-    })
-}
-
-fn new_handle() -> Result<String, ExtensionError> {
-    let mut bytes = [0_u8; 12];
-    getrandom::fill(&mut bytes)
-        .map_err(|error| ExtensionError::Refused(format!("system random source: {error}")))?;
-
-    Ok(format!("file-{}", data_encoding::HEXLOWER.encode(&bytes)))
 }

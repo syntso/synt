@@ -4,8 +4,7 @@ use synt_actions::{Description, Handle, Risk};
 use synt_journal::ActionId;
 
 use super::{ActionSpec, ExtensionAction, Guest};
-use crate::background::{Lane, Wake};
-use crate::events::ExtensionEvent;
+use crate::background::{ExtensionEvent, Lane, Wake};
 use crate::manifest::Api;
 use crate::shelf::Installed;
 

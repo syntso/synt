@@ -1,13 +1,21 @@
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::handle_params::HandleParams;
 use crate::Extensions;
 use crate::builtin::blocking::blocking;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionFileForget {
     extensions: Extensions,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HandleParams {
+    pub extension: String,
+    pub handle: String,
 }
 
 impl ExtensionFileForget {

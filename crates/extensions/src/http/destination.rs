@@ -4,6 +4,10 @@ use ureq::http::Uri;
 
 use crate::manifest::Capabilities;
 
+const HTTPS_PORT: u16 = 443;
+const HTTP_PORT: u16 = 80;
+const LOCALHOST: &str = "localhost";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Destination {
     pub(crate) secure: bool,
@@ -38,9 +42,22 @@ impl Destination {
             ));
         }
 
-        let port = uri.port_u16().unwrap_or(if secure { 443 } else { 80 });
+        let port = uri.port_u16().unwrap_or(default_port(secure));
 
         Ok(Self { secure, host, port })
+    }
+
+    pub(crate) fn listed_in(url: &str, capabilities: &Capabilities) -> Result<Self, String> {
+        let destination = Self::parse(url)?;
+
+        if !destination.is_listed_in(capabilities) {
+            return Err(format!(
+                "{} is not listed in capabilities.http",
+                destination.listed()
+            ));
+        }
+
+        Ok(destination)
     }
 
     pub(crate) fn listed(&self) -> String {
@@ -62,16 +79,20 @@ impl Destination {
     }
 
     fn default_port(&self) -> bool {
-        self.port == if self.secure { 443 } else { 80 }
+        self.port == default_port(self.secure)
     }
 
     fn is_loopback(&self) -> bool {
-        self.host == "localhost"
+        self.host == LOCALHOST
             || self
                 .host
                 .parse::<Ipv4Addr>()
                 .is_ok_and(|address| address.is_loopback())
     }
+}
+
+fn default_port(secure: bool) -> u16 {
+    if secure { HTTPS_PORT } else { HTTP_PORT }
 }
 
 #[cfg(test)]

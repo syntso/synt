@@ -1,4 +1,4 @@
-use crate::events::ExtensionEvent;
+use super::ExtensionEvent;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Wake {

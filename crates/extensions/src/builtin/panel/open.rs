@@ -1,19 +1,22 @@
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::panel_info::PanelInfo;
-use super::panel_params::PanelParams;
+use super::info::PanelInfo;
 use crate::Extensions;
 use crate::builtin::guard::refuse_extensions;
-
-pub(crate) const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self' \
-     'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; \
-     frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; \
-     frame-ancestors 'self'";
 
 #[derive(Clone)]
 pub(crate) struct ExtensionPanelOpen {
     extensions: Extensions,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PanelParams {
+    pub extension: String,
+    pub panel: String,
 }
 
 impl ExtensionPanelOpen {
@@ -37,29 +40,21 @@ impl Action for ExtensionPanelOpen {
     async fn run(&self, context: &Context, params: PanelParams) -> Result<PanelInfo, ActionError> {
         refuse_extensions(context)?;
 
-        let loaded = self
-            .extensions
-            .loaded(&params.extension)
-            .map_err(|error| ActionError::failed(error.to_string()))?;
-        let manifest = loaded.guest.manifest();
-
-        let (title, entry) = manifest
+        let loaded = self.extensions.loaded(&params.extension)?;
+        let web_panel = loaded
+            .guest
+            .manifest()
             .contributes
             .panel(&params.panel)
-            .and_then(|panel| Some((panel.title.clone(), panel.entry.clone()?)))
-            .ok_or_else(|| {
-                ActionError::InvalidParams(format!(
-                    "{} contributes no web panel {}",
-                    params.extension, params.panel
-                ))
-            })?;
+            .and_then(|panel| Some((panel.title.clone(), panel.entry.clone()?)));
 
-        Ok(PanelInfo {
-            extension: params.extension,
-            panel: params.panel,
-            title,
-            entry,
-            csp: CSP,
-        })
+        let Some((title, entry)) = web_panel else {
+            return Err(ActionError::InvalidParams(format!(
+                "{} contributes no web panel {}",
+                params.extension, params.panel
+            )));
+        };
+
+        Ok(PanelInfo::new(params.extension, params.panel, title, entry))
     }
 }

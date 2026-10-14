@@ -3,6 +3,8 @@ use crate::ExtensionError;
 pub(crate) const LONGEST_TEXT: usize = 200;
 const LONGEST_LOCAL_ID: usize = 40;
 const LONGEST_ASSET_PATH: usize = 200;
+const LONGEST_HOST: usize = 253;
+const LONGEST_SECRET_NAME: usize = 64;
 
 pub(crate) fn check_text(field: &str, text: &str) -> Result<(), ExtensionError> {
     if text.trim().is_empty() || text.len() > LONGEST_TEXT || text.contains(char::is_control) {
@@ -42,13 +44,57 @@ pub(crate) fn is_asset_path(path: &str) -> bool {
     path.len() <= LONGEST_ASSET_PATH && path.split('/').all(plain_segment)
 }
 
+pub(crate) fn check_http_host(entry: &str) -> Result<(), String> {
+    let (host, port) = match entry.rsplit_once(':') {
+        Some((host, port)) => (host, Some(port)),
+        None => (entry, None),
+    };
+
+    let plain_host = !host.is_empty()
+        && host.len() <= LONGEST_HOST
+        && !host.starts_with(['.', '-'])
+        && !host.ends_with(['.', '-'])
+        && !host.contains("..")
+        && host.chars().all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || ".-".contains(character)
+        });
+    let plain_port = port.is_none_or(|port| port.parse::<u16>().is_ok_and(|port| port > 0));
+
+    if plain_host && plain_port {
+        return Ok(());
+    }
+
+    Err(format!(
+        "http host {entry:?} must be a lowercase host name or IPv4 address, with an optional \
+         :port; patterns and schemes are not allowed"
+    ))
+}
+
+pub(crate) fn check_secret_name(name: &str) -> Result<(), String> {
+    let plain_segment = |segment: &str| {
+        !segment.is_empty()
+            && segment
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || "-_".contains(character))
+    };
+
+    if name.is_empty() || name.len() > LONGEST_SECRET_NAME || !name.split('/').all(plain_segment) {
+        return Err(format!(
+            "secret {name:?} must be 1 to {LONGEST_SECRET_NAME} letters, digits, '-' and '_', \
+             with '/' between parts"
+        ));
+    }
+
+    Ok(())
+}
+
 pub(crate) fn refused(reason: impl Into<String>) -> ExtensionError {
     ExtensionError::Manifest(reason.into())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{check_local_id, is_asset_path};
+    use super::{check_http_host, check_local_id, check_secret_name, is_asset_path};
 
     #[test]
     fn local_ids_are_plain() {
@@ -75,6 +121,41 @@ mod tests {
             "a b",
         ] {
             assert!(!is_asset_path(path), "{path:?}");
+        }
+    }
+
+    #[test]
+    fn hosts_are_plain_names_with_an_optional_port() {
+        for host in [
+            "api.example.com",
+            "127.0.0.1:8080",
+            "localhost",
+            "grafana-1.lan:3000",
+        ] {
+            assert!(check_http_host(host).is_ok(), "{host}");
+        }
+
+        for host in [
+            "",
+            "*.example.com",
+            "https://example.com",
+            "Example.com",
+            "example.com:0",
+            "example.com:99999",
+            "example..com",
+            "example.com/path",
+            ".example.com",
+        ] {
+            assert!(check_http_host(host).is_err(), "{host}");
+        }
+    }
+
+    #[test]
+    fn secret_names_match_the_vault_rules() {
+        assert!(check_secret_name("grafana/token").is_ok());
+
+        for name in ["", "a//b", "../x", "a.b", "a b", "/a"] {
+            assert!(check_secret_name(name).is_err(), "{name:?}");
         }
     }
 }

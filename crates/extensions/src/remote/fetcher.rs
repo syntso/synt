@@ -4,7 +4,7 @@ use std::time::Duration;
 use ureq::Agent;
 
 use crate::ExtensionError;
-use crate::tls::trusted_tls;
+use crate::http::trusted_tls;
 
 const TIMEOUT: Duration = Duration::from_secs(60);
 

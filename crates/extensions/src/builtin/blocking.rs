@@ -6,12 +6,9 @@ use crate::ExtensionError;
 pub(super) async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, ExtensionError> + Send + 'static,
 ) -> Result<T, ActionError> {
-    task::spawn_blocking(work)
+    let done = task::spawn_blocking(work)
         .await
-        .map_err(|_| ActionError::failed("the work stopped unexpectedly"))?
-        .map_err(|error| failure(&error))
-}
+        .map_err(|_| ActionError::failed("the work stopped unexpectedly"))?;
 
-pub(super) fn failure(error: &ExtensionError) -> ActionError {
-    ActionError::failed(error.to_string())
+    Ok(done?)
 }

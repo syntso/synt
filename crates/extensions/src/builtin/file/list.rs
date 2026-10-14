@@ -1,10 +1,10 @@
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::file_entry::FileEntry;
+use super::entry::FileEntry;
 use crate::Extensions;
 use crate::builtin::blocking::blocking;
-use crate::builtin::extension_params::ExtensionParams;
+use crate::builtin::params::ExtensionParams;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionFileList {

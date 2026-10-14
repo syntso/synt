@@ -3,7 +3,7 @@ use serde_json::Value;
 use super::Visit;
 use crate::interface::GuestError;
 use crate::manifest::Panel;
-use crate::screen::ScreenUpdate;
+use crate::ui::ScreenUpdate;
 use crate::view::ViewPatch;
 
 const LARGEST_MESSAGE: usize = 256 * 1024;
@@ -19,7 +19,8 @@ impl Visit {
 
         let patch = parse_message(patch)?;
         let owns = |action: &str| self.guest.owns_action(action);
-        ViewPatch::check(&patch, &owns)
+        ViewPatch::new(&owns)
+            .check(&patch)
             .map_err(|reason| GuestError::new("invalid_patch", reason))?;
 
         self.show(ScreenUpdate::ViewPatched {

@@ -1,7 +1,7 @@
 use super::Visit;
-use crate::files::{FileGate, Picked};
 use crate::interface::GuestError;
 use crate::manifest::FileAccess;
+use crate::picked::Picked;
 
 impl Visit {
     pub(super) fn picked_files(&self) -> Vec<Picked> {
@@ -17,15 +17,11 @@ impl Visit {
     }
 
     pub(super) fn read_picked(&self, handle: &str) -> Result<Vec<u8>, GuestError> {
-        let picked = self.find_pick(handle, FileAccess::Read)?;
-
-        FileGate::read(&picked)
+        self.find_pick(handle, FileAccess::Read)?.read()
     }
 
     pub(super) fn write_picked(&self, handle: &str, body: &[u8]) -> Result<(), GuestError> {
-        let picked = self.find_pick(handle, FileAccess::ReadWrite)?;
-
-        FileGate::write(&picked, body)
+        self.find_pick(handle, FileAccess::ReadWrite)?.write(body)
     }
 
     fn find_pick(&self, handle: &str, wanted: FileAccess) -> Result<Picked, GuestError> {
@@ -39,8 +35,7 @@ impl Visit {
             .guest
             .services()
             .shelf
-            .pick(self.id(), handle)
-            .map_err(|error| GuestError::new("failed", error.to_string()))?
+            .pick(self.id(), handle)?
             .ok_or_else(|| {
                 GuestError::new(
                     "unknown_file",
