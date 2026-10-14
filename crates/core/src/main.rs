@@ -9,11 +9,11 @@ use std::time::Duration;
 use synt_actions::{ActionError, Registry};
 use synt_core::{
     AlwaysGrants, Broker, Core, CoreCaller, Files, GrantList, GrantRevoke, IdleWatch, JournalPage,
-    JournalVerify, KeyGenerate, KeyImport, KeyList, KeyRemove, LocalSessionOpen, LoginCommand,
-    Ping, ProjectClose, ProjectList, ProjectOpen, Projects, ResourceGet, ResourceList, ResourcePut,
-    ResourceRemove, Server, SessionAttach, SessionBlocks, SessionClose, SessionIntegration,
-    SessionList, SessionResize, SshConnections, SshExec, SshKeys, SshSessionOpen, SshWarm, Storage,
-    Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
+    JournalVerify, KeyGenerate, KeyImport, KeyList, KeyRemove, Kube, LocalSessionOpen,
+    LoginCommand, Ping, ProjectClose, ProjectList, ProjectOpen, Projects, ResourceGet,
+    ResourceList, ResourcePut, ResourceRemove, Server, SessionAttach, SessionBlocks, SessionClose,
+    SessionIntegration, SessionList, SessionResize, SshConnections, SshExec, SshKeys,
+    SshSessionOpen, SshWarm, Storage, Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Journal, JournalWriter};
@@ -72,9 +72,11 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let pool = Pool::builder().key_vault(Arc::new(keys.clone())).build();
     let tunnels = Tunnels::new(pool.clone());
     let terminals = Terminals::new(journal.clone());
+    let kube = Kube::new(pool.clone(), projects.clone(), journal.clone());
 
     let mut registry = Registry::new();
     register_hosts(&mut registry, &pool, &projects, &tunnels)?;
+    kube.register(&mut registry)?;
     register_sessions(&mut registry, &pool, &projects, &terminals)?;
     register_records(&mut registry, &journal, &projects, &always)?;
     register_keys(&mut registry, &keys, &pool)?;
@@ -97,7 +99,11 @@ async fn run() -> Result<(), Box<dyn Error>> {
         endpoint.address().to_string_lossy()
     );
 
-    serve(server, arguments.idle, terminals, tunnels).await;
+    let idle = IdleWatch::new(arguments.idle)
+        .watch(terminals.clone())
+        .watch(tunnels)
+        .watch(kube);
+    serve(server, idle, terminals).await;
 
     Ok(())
 }
@@ -168,11 +174,8 @@ fn register_keys(registry: &mut Registry, keys: &SshKeys, pool: &Pool) -> Result
     registry.register(KeyRemove::new(keys.clone(), pool.clone()))
 }
 
-async fn serve(server: Server, idle: Option<Duration>, terminals: Terminals, tunnels: Tunnels) {
-    let idle = IdleWatch::new(idle)
-        .watch(server.activity())
-        .watch(terminals.clone())
-        .watch(tunnels);
+async fn serve(server: Server, idle: IdleWatch, terminals: Terminals) {
+    let idle = idle.watch(server.activity());
 
     let stopping = async {
         tokio::select! {

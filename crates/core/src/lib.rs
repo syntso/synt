@@ -28,10 +28,10 @@ mod terminal;
 pub use broker::Broker;
 pub use builtin::{
     Files, GrantList, GrantRevoke, JournalPage, JournalVerify, KeyGenerate, KeyImport, KeyList,
-    KeyRemove, LocalSessionOpen, Ping, Pong, ProjectClose, ProjectList, ProjectOpen, ResourceGet,
-    ResourceList, ResourcePut, ResourceRemove, SessionAttach, SessionBlocks, SessionClose,
-    SessionIntegration, SessionList, SessionResize, SshConnections, SshExec, SshSessionOpen,
-    SshWarm, TunnelClose, TunnelList, TunnelOpen,
+    KeyRemove, Kube, LocalSessionOpen, Ping, Pong, ProjectClose, ProjectList, ProjectOpen,
+    ResourceGet, ResourceList, ResourcePut, ResourceRemove, SessionAttach, SessionBlocks,
+    SessionClose, SessionIntegration, SessionList, SessionResize, SshConnections, SshExec,
+    SshSessionOpen, SshWarm, TunnelClose, TunnelList, TunnelOpen,
 };
 pub use core::{Core, VERSION};
 pub use error::CoreError;
@@ -39,7 +39,7 @@ pub use extensions::CoreCaller;
 pub use grants::{AlwaysGrants, GrantSeal};
 pub use idle::{Activity, IdleWatch};
 pub use login::LoginCommand;
-pub use projects::{HostResource, Projects, Resource, TunnelResource};
+pub use projects::{ClusterResource, HostResource, Projects, Resource, TunnelResource};
 pub use server::Server;
 pub use ssh_keys::{KeyName, SshKeys};
 pub use state::State;

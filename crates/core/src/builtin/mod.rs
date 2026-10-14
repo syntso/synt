@@ -2,6 +2,7 @@ mod blocking;
 mod grant;
 mod hold;
 mod journal;
+mod k8s;
 mod key;
 mod ping;
 mod project;
@@ -13,6 +14,7 @@ mod tunnel;
 
 pub use grant::{GrantList, GrantRevoke};
 pub use journal::{JournalPage, JournalVerify};
+pub use k8s::Kube;
 pub use key::{KeyGenerate, KeyImport, KeyList, KeyRemove};
 pub use ping::{Ping, Pong};
 pub use project::{ProjectClose, ProjectList, ProjectOpen};

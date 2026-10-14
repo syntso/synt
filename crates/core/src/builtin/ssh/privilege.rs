@@ -22,7 +22,7 @@ const SEPARATORS: [char; 8] = [';', '&', '|', '(', ')', '<', '>', '\n'];
 const EXPANSIONS: [char; 10] = ['$', '`', '\\', '{', '}', '!', '*', '?', '[', ']'];
 const QUOTES: [char; 2] = ['"', '\''];
 
-pub(super) fn escalates(command: &str) -> bool {
+pub(crate) fn escalates(command: &str) -> bool {
     if command.contains(EXPANSIONS) {
         return true;
     }
