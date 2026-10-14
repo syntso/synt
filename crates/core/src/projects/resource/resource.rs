@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{ClusterResource, HostResource, TunnelResource};
+use super::{ClusterResource, DatabaseResource, HostResource, TunnelResource};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -9,6 +9,7 @@ pub enum Resource {
     Host(HostResource),
     Tunnel(TunnelResource),
     Cluster(ClusterResource),
+    Database(DatabaseResource),
 }
 
 impl Resource {
@@ -28,6 +29,7 @@ impl Resource {
             Self::Host(host) => host.check(),
             Self::Tunnel(tunnel) => tunnel.check(),
             Self::Cluster(cluster) => cluster.check(),
+            Self::Database(database) => database.check(),
         }
     }
 
@@ -36,6 +38,7 @@ impl Resource {
             Self::Host(_) => "host",
             Self::Tunnel(_) => "tunnel",
             Self::Cluster(_) => "cluster",
+            Self::Database(_) => "database",
         }
     }
 }

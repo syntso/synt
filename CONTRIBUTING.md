@@ -95,3 +95,15 @@ tests/kube/down.sh
 ```
 
 `up.sh` needs Docker and `ssh-keygen`. It starts a single-node k3s cluster (`rancher/k3s`, the image k3d runs) with its API server published on a random port of `127.0.0.1`, and an OpenSSH `bastion` from `tests/ssh` on the same Docker network, where the API server is also reachable as `cluster:6443`. It writes `tests/kube/run/kubeconfig` (ignored by git) with three contexts: `direct` (the published port, client certificate), `inside` (`https://cluster:6443`, reachable only through the bastion, so it checks the SSH tunnel and the TLS name) and `plugin` (the published port with an exec credential plugin that prints a service account token). The tests make a namespace of their own and delete it at the end; pods run `busybox`. CI runs them in the `kube-integration` job.
+
+## Database integration tests
+
+The tests in `crates/db/tests/servers` and `crates/core/tests/database_servers.rs` talk to real PostgreSQL, MySQL, MariaDB and Redis servers. They are ignored by default and skip themselves unless `SYNT_DB_TESTS=1` is set. SQLite needs no server, so its tests always run.
+
+```bash
+tests/db/up.sh
+SYNT_DB_TESTS=1 cargo nextest run -p synt-db -p synt-core --test servers --test database_servers --run-ignored only
+tests/db/down.sh
+```
+
+`up.sh` needs Docker and `openssl`. It writes a throwaway self-signed certificate to `tests/db/run/` (ignored by git), starts the four servers on random ports of `127.0.0.1` with TLS on (Redis also on a separate TLS port), and writes the ports to `tests/db/run/ports`. Every server logs in user `synt` with password `synt-test-password` to database `synt`. When the SSH test servers are already up, `up.sh` also puts PostgreSQL on their inner network as `db-postgres`, so `crates/core/tests/servers` can reach it through two SSH hops (that test needs both switches). CI runs all of this in the `db-integration` job.

@@ -10,8 +10,8 @@ use tokio::sync::broadcast;
 use super::personal::PERSONAL;
 use super::project::is_project_id;
 use super::{
-    OpenProject, Personal, Project, ProjectChange, ProjectInfo, ProjectPlace, Resolved, Resource,
-    ResourceEntry, ResourceListing, TargetRef,
+    OpenProject, Personal, Project, ProjectChange, ProjectInfo, ProjectPlace, Resolved,
+    ResolvedDatabase, Resource, ResourceEntry, ResourceListing, TargetRef,
 };
 use crate::CoreError;
 use crate::locked::locked;
@@ -256,6 +256,31 @@ impl Projects {
 
     pub(crate) fn personal_kubeconfig(&self) -> &KubeconfigSource {
         self.personal.kubeconfig()
+    }
+
+    pub(crate) fn database(&self, text: &str) -> Result<ResolvedDatabase, CoreError> {
+        let reference = match TargetRef::parse(text) {
+            Some(parsed) => parsed.map_err(CoreError::Project)?,
+            None => {
+                return Err(CoreError::Project(format!(
+                    "{text:?} is not a database resource; write @<project>/<database>"
+                )));
+            }
+        };
+
+        if is_personal(reference.project) {
+            return Err(CoreError::Project(
+                "the Personal project holds ssh hosts only; put databases in a project".to_owned(),
+            ));
+        }
+
+        self.with_project(reference.project, |project| {
+            project.database(reference.resource)
+        })
+    }
+
+    pub(crate) fn database_destination(&self, text: &str, resolved: &ResolvedDatabase) -> String {
+        format!("{} = {}", self.canonical(text), resolved.describe())
     }
 
     pub(crate) fn destination(&self, text: &str, resolved: &Resolved) -> String {

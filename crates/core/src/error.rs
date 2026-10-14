@@ -47,6 +47,9 @@ pub enum CoreError {
     #[error("{0}")]
     Secret(String),
 
+    #[error("{0}")]
+    Password(String),
+
     #[error("system random source: {0}")]
     Random(String),
 

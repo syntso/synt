@@ -14,6 +14,7 @@ publish = false
 [workspace.dependencies]
 synt-actions = { path = "crates/actions" }
 synt-client = { path = "crates/client" }
+synt-db = { path = "crates/db" }
 synt-extensions = { path = "crates/extensions" }
 synt-journal = { path = "crates/journal" }
 synt-kube = { path = "crates/kube" }
@@ -29,6 +30,7 @@ clap = { version = "4.6.7", features = ["derive"] }
 core-foundation = "0.10.1"
 data-encoding = "2.11.1"
 directories = "6.0.0"
+fallible-iterator = "0.2.0"
 futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
 getrandom = "0.4.3"
 hkdf = "0.13.0"
@@ -42,10 +44,13 @@ k8s-openapi = { version = "0.28.0", features = ["v1_32"] }
 keyring-core = "1.0.1"
 kube = { version = "4.2.0", default-features = false, features = ["client", "config", "ring", "rustls-tls", "ws"] }
 minisign = "0.10.0"
+mysql_async = { version = "0.37.1", default-features = false, features = ["default-rustls-ring"] }
 minisign-verify = "0.3.0"
 nix = { version = "0.31.3", default-features = false, features = ["signal", "socket", "user"] }
 notify = "8.2.0"
 portable-pty = "0.9.0"
+redis = { version = "1.7.1", default-features = false, features = ["tokio-comp"] }
+postgres-protocol = "0.6.12"
 proptest = "1.12.0"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 russh = { version = "0.64.1", default-features = false, features = ["ring"] }
@@ -61,11 +66,15 @@ serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 sha1 = "0.11.0"
 sha2 = "0.11.1"
 similar = "3.2.0"
+sqlparser = { version = "0.63.0", features = ["visitor"] }
 ssh2-config = "0.8.2"
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 tempfile = "3.27.0"
 thiserror = "2.0.21"
 tokio = "1.53.2"
+tokio-postgres = { version = "0.7.18", default-features = false, features = ["runtime"] }
+tokio-postgres-rustls = "0.14.0"
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
 tokio-util = { version = "0.7.20", features = ["codec"] }
 toml = "1.1.8"
 tower = { version = "0.5.3", features = ["util"] }

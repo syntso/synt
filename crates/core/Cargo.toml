@@ -23,6 +23,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 synt-actions.workspace = true
+synt-db.workspace = true
 synt-extensions.workspace = true
 synt-journal.workspace = true
 synt-kube.workspace = true
@@ -40,6 +41,7 @@ zeroize.workspace = true
 [dev-dependencies]
 synt-client.workspace = true
 synt-test-servers.workspace = true
+rusqlite.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 wat.workspace = true

@@ -10,7 +10,9 @@ use super::ProjectInfo;
 use super::file::ProjectFile;
 use crate::CoreError;
 use crate::projects::names::check_name;
-use crate::projects::{Problem, Resolved, Resource, ResourceEntry, ResourceListing};
+use crate::projects::{
+    Problem, Resolved, ResolvedDatabase, Resource, ResourceEntry, ResourceListing,
+};
 
 pub(crate) const PROJECT_FILE: &str = "synt.toml";
 pub(crate) const RESOURCES: &str = "resources";
@@ -131,7 +133,33 @@ impl Project {
 
                 Ok(Resolved::Cluster { spec, via })
             }
+            Resource::Database(_) => Err(CoreError::Project(format!(
+                "@{}/{name} is a database; reach it with the db.* actions",
+                self.slug
+            ))),
         }
+    }
+
+    pub(crate) fn database(&self, name: &str) -> Result<ResolvedDatabase, CoreError> {
+        let found = self.find(name)?;
+        let Resource::Database(database) = found else {
+            return Err(CoreError::Project(format!(
+                "@{}/{name} is a {}, not a database",
+                self.slug,
+                found.kind()
+            )));
+        };
+
+        let via = database
+            .via
+            .as_deref()
+            .map(|host| self.host_target(host))
+            .transpose()?;
+
+        Ok(ResolvedDatabase {
+            resource: database.clone(),
+            via,
+        })
     }
 
     pub(crate) fn put(&mut self, name: &str, resource: Resource) -> Result<(), CoreError> {

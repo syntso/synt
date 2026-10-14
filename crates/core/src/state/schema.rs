@@ -1,4 +1,4 @@
-pub(super) const VERSION: i64 = 3;
+pub(super) const VERSION: i64 = 4;
 
 pub(super) const CREATE: &str = "
 CREATE TABLE IF NOT EXISTS open_projects (
@@ -27,6 +27,11 @@ CREATE TABLE IF NOT EXISTS ssh_keys (
     public_key TEXT NOT NULL,
     fingerprint TEXT NOT NULL,
     created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS passwords (
+    name TEXT PRIMARY KEY,
+    updated_at INTEGER NOT NULL
 );
 ";
 
