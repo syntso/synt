@@ -1,7 +1,12 @@
+mod home;
+mod host_key;
+
 use std::path::PathBuf;
 
+pub use home::SshHome;
+pub use host_key::HostKey;
+
 use crate::run_folder::RunFolder;
-use crate::{HostKey, SshHome};
 
 const SWITCH: &str = "SYNT_SSH_TESTS";
 const RUN_FOLDER: &str = "../../tests/ssh/run";

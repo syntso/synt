@@ -4,7 +4,7 @@ use std::path::Path;
 
 use tempfile::TempDir;
 
-use crate::HostKey;
+use super::HostKey;
 
 const KNOWN_HOSTS: &str = "known_hosts";
 
@@ -36,16 +36,18 @@ impl SshHome {
             .create(true)
             .append(true)
             .open(self.path().join(KNOWN_HOSTS))
-            .unwrap_or_else(|error| unwritable(&error));
+            .unwrap_or_else(|error| Self::unwritable(&error));
 
-        writeln!(file, "{}", key.known_hosts_line(host)).unwrap_or_else(|error| unwritable(&error));
+        writeln!(file, "{}", key.known_hosts_line(host))
+            .unwrap_or_else(|error| Self::unwritable(&error));
     }
 
     pub fn forget_all(&self) {
-        fs::write(self.path().join(KNOWN_HOSTS), "").unwrap_or_else(|error| unwritable(&error));
+        fs::write(self.path().join(KNOWN_HOSTS), "")
+            .unwrap_or_else(|error| Self::unwritable(&error));
     }
-}
 
-fn unwritable(error: &io::Error) -> ! {
-    panic!("the temporary folder is not writable: {error}")
+    fn unwritable(error: &io::Error) -> ! {
+        panic!("the temporary folder is not writable: {error}")
+    }
 }
