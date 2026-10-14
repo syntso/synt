@@ -9,3 +9,14 @@ pub struct Query<'a> {
     pub access: Access,
     pub page: Page,
 }
+
+impl<'a> Query<'a> {
+    pub(crate) fn for_one_value(text: &'a str, params: &'a [Value]) -> Self {
+        Self {
+            text,
+            params,
+            access: Access::ReadOnly,
+            page: Page::new(1, usize::MAX),
+        }
+    }
+}

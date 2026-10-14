@@ -7,7 +7,7 @@ use synt_db::{Effect, Engine};
 use synt_journal::ResourceRef;
 
 use super::Databases;
-use super::query::millis;
+use crate::clock::milliseconds;
 
 const LIMIT: Duration = Duration::from_secs(30);
 
@@ -72,7 +72,7 @@ impl Action for DbPing {
         Ok(PingResult {
             engine,
             version,
-            duration_ms: millis(started),
+            duration_ms: milliseconds(started.elapsed()),
         })
     }
 }

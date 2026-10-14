@@ -1,7 +1,7 @@
 mod databases;
 mod explain;
 mod failure;
-mod open_database;
+mod open;
 mod ping;
 mod query;
 mod recorded;

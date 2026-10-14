@@ -4,11 +4,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
-use synt_db::{Access, Classification, Effect, Engine, Page, Query, Rows};
+use synt_db::{Access, Classification, Database, DbError, Effect, Engine, Page, Query, Rows};
 use synt_journal::ResourceRef;
 
 use super::Databases;
 use super::recorded::recorded_statement;
+use crate::clock::milliseconds;
 
 const DEFAULT_ROWS: usize = 100;
 const MOST_ROWS: usize = 10_000;
@@ -140,30 +141,13 @@ impl Action for DbQuery {
             .engine(context.target())
             .ok_or_else(|| ActionError::failed("the target is no longer a database"))?;
         let classified = params.classification(engine);
-        let access = if classified.is_read() {
-            Access::ReadOnly
-        } else {
-            Access::ReadWrite
-        };
-
-        let page = params.page();
+        let access = classified.access();
         let started = Instant::now();
 
         let rows = self
             .databases
             .with(context, params.timeout(), async |database| {
-                match (&params.command, &params.sql) {
-                    (Some(words), _) => database.command(words, page).await,
-                    (None, sql) => {
-                        let query = Query {
-                            text: sql.as_deref().unwrap_or_default(),
-                            params: &params.params,
-                            access,
-                            page,
-                        };
-                        database.query(&query).await
-                    }
-                }
+                params.run(database, access).await
             })
             .await?;
 
@@ -171,7 +155,7 @@ impl Action for DbQuery {
             kind: classified.kind,
             effect: classified.effect,
             rows,
-            duration_ms: millis(started),
+            duration_ms: milliseconds(started.elapsed()),
         })
     }
 }
@@ -183,6 +167,23 @@ impl QueryParams {
             (None, Some(sql)) => Classification::of_sql(engine, sql),
             (None, None) => Classification::of_command::<String>(&[]),
         }
+    }
+
+    async fn run(&self, database: &mut Database, access: Access) -> Result<Rows, DbError> {
+        let page = self.page();
+
+        if let Some(words) = &self.command {
+            return database.command(words, page).await;
+        }
+
+        let query = Query {
+            text: self.sql.as_deref().unwrap_or_default(),
+            params: &self.params,
+            access,
+            page,
+        };
+
+        database.query(&query).await
     }
 
     fn check_statement(&self, engine: Engine) -> Result<(), ActionError> {
@@ -241,10 +242,6 @@ impl QueryParams {
     fn timeout(&self) -> Duration {
         Duration::from_secs(self.timeout_seconds.unwrap_or(DEFAULT_TIMEOUT))
     }
-}
-
-pub(super) fn millis(started: Instant) -> u64 {
-    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 fn invalid(reason: &str) -> Result<(), ActionError> {

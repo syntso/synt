@@ -8,11 +8,11 @@ use synt_db::{Classification, Effect, Engine};
 use synt_journal::ResourceRef;
 
 use super::Databases;
-use super::query::millis;
 use super::recorded::recorded_statement;
+use crate::clock::milliseconds;
 
 const LIMIT: Duration = Duration::from_secs(60);
-const NOT_ONE_STATEMENT: [&str; 3] = ["unparsable", "several statements", "empty"];
+const EXPLAIN: &str = "explain";
 
 #[derive(Debug, Clone)]
 pub(crate) struct DbExplain {
@@ -98,7 +98,7 @@ impl Action for DbExplain {
         Ok(ExplainResult {
             kind: classified.kind,
             plan,
-            duration_ms: millis(started),
+            duration_ms: milliseconds(started.elapsed()),
         })
     }
 }
@@ -112,14 +112,14 @@ fn one_statement(engine: Engine, sql: &str) -> Result<Classification, ActionErro
 
     let classified = Classification::of_sql(engine, sql);
 
-    if NOT_ONE_STATEMENT.contains(&classified.kind.as_str()) {
+    if !classified.is_one_statement() {
         return Err(ActionError::InvalidParams(format!(
             "db.explain takes one statement the parser understands, got {}",
             classified.kind
         )));
     }
 
-    if classified.kind == "explain" {
+    if classified.kind == EXPLAIN {
         return Err(ActionError::InvalidParams(
             "give the statement itself; db.explain adds EXPLAIN".to_owned(),
         ));

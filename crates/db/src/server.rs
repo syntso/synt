@@ -3,9 +3,10 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use tokio::time;
 use zeroize::Zeroizing;
 
-use crate::{Engine, Place, TlsMode};
+use crate::{DbError, Engine, Place, TlsMode};
 
 const CONNECT_LIMIT: Duration = Duration::from_secs(30);
 
@@ -109,15 +110,39 @@ impl Server {
         }
     }
 
-    pub(crate) fn dial(&self) -> Option<(String, u16)> {
+    pub(crate) fn dial(&self) -> Result<(String, u16), DbError> {
         match &self.place {
             Place::Network {
                 reached_at: Some(address),
                 ..
-            } => Some((address.ip().to_string(), address.port())),
-            Place::Network { host, port, .. } => Some((host.clone(), *port)),
-            Place::File(_) => None,
+            } => Ok((address.ip().to_string(), address.port())),
+            Place::Network { host, port, .. } => Ok((host.clone(), *port)),
+            Place::File(_) => Err(DbError::InvalidInput(format!(
+                "{} needs a host and a port, not a file",
+                self.engine
+            ))),
         }
+    }
+
+    pub(crate) fn is_tunneled(&self) -> bool {
+        matches!(
+            self.place,
+            Place::Network {
+                reached_at: Some(_),
+                ..
+            }
+        )
+    }
+
+    pub(crate) async fn connect_in_time<T>(
+        &self,
+        connecting: impl Future<Output = Result<T, DbError>>,
+    ) -> Result<T, DbError> {
+        let limit = self.connect_limit;
+
+        time::timeout(limit, connecting)
+            .await
+            .map_err(|_| DbError::Timeout(limit))?
     }
 
     fn at(engine: Engine, place: Place) -> Self {
@@ -170,7 +195,7 @@ mod tests {
         let server = Server::network(Engine::Mysql, "orders-db.internal", 3306)
             .reached_at("127.0.0.1:40123".parse().expect("address"));
 
-        assert_eq!(server.dial(), Some(("127.0.0.1".to_owned(), 40123)));
+        assert_eq!(server.dial(), Ok(("127.0.0.1".to_owned(), 40123)));
         assert_eq!(server.host(), Some("orders-db.internal"));
     }
 }

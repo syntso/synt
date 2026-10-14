@@ -9,9 +9,10 @@ use synt_ssh::{Destination, Pool, Target, Tunnels};
 use tokio::sync::Semaphore;
 use tokio::time;
 use tokio_util::sync::{CancellationToken, DropGuard};
+use zeroize::Zeroizing;
 
 use super::failure::failure;
-use super::open_database::OpenDatabase;
+use super::open::OpenDatabase;
 use super::{DbExplain, DbPing, DbQuery, DbSchema, DbTables};
 use crate::builtin::blocking::blocking;
 use crate::builtin::ssh::{failure as ssh_failure, is_root};
@@ -99,10 +100,8 @@ impl Databases {
             .map_err(|_| ActionError::failed("the database actions are shutting down"))?;
 
         let running = async {
-            let mut open = self.open(context).await?;
-            let done = work(&mut open.database).await.map_err(failure);
-            open.close().await;
-            done
+            let open = self.open(context).await?;
+            open.serve(work).await.map_err(failure)
         };
 
         time::timeout(limit, running).await.map_err(|_| {
@@ -171,7 +170,7 @@ impl Databases {
     async fn password(
         &self,
         resolved: &ResolvedDatabase,
-    ) -> Result<Option<zeroize::Zeroizing<String>>, ActionError> {
+    ) -> Result<Option<Zeroizing<String>>, ActionError> {
         let Some(name) = resolved
             .resource
             .password_name()

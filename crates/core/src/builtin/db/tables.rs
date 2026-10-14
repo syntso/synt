@@ -7,7 +7,7 @@ use synt_db::{Effect, TableName};
 use synt_journal::ResourceRef;
 
 use super::Databases;
-use super::query::millis;
+use crate::clock::milliseconds;
 
 const LIMIT: Duration = Duration::from_secs(60);
 
@@ -63,7 +63,7 @@ impl Action for DbTables {
 
         Ok(TablesResult {
             tables,
-            duration_ms: millis(started),
+            duration_ms: milliseconds(started.elapsed()),
         })
     }
 }
