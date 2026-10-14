@@ -88,7 +88,7 @@ jobs:
       - run: cargo fmt --manifest-path "$FIXTURE" --check
       - run: cargo clippy --manifest-path "$FIXTURE" --target wasm32-wasip2 --locked -- -D warnings
       - run: cargo build --manifest-path "$FIXTURE" --target wasm32-wasip2 --release --locked
-      - run: cargo nextest run -p synt-extensions -p synt-core --test api --test everything
+      - run: cargo nextest run -p synt-extensions -p synt-core --test api --test install --test everything
         env:
           SYNT_EVERYTHING_WASM: ${{ github.workspace }}/tests/extension/everything/target/wasm32-wasip2/release/everything.wasm
 
