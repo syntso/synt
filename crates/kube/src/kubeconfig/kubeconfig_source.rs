@@ -71,9 +71,12 @@ impl KubeconfigSource {
     }
 
     pub(crate) fn broken(&self, reason: impl Display) -> KubeError {
+        let reason = reason.to_string();
+        let first_line = reason.lines().next().unwrap_or_default().trim_end();
+
         KubeError::Kubeconfig {
             place: self.to_string(),
-            reason: reason.to_string(),
+            reason: first_line.to_owned(),
         }
     }
 }
@@ -108,4 +111,37 @@ fn default_paths() -> Vec<PathBuf> {
     env::home_dir()
         .map(|home| vec![home.join(".kube").join("config")])
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::KubeconfigSource;
+
+    const BROKEN: &str = "apiVersion: v1\nusers:\n- name: admin\n  user:\n    token: SECRET-TOKEN-123\n    bad: [unclosed\n";
+
+    #[test]
+    fn a_broken_kubeconfig_is_reported_without_quoting_its_lines() {
+        let folder = tempfile::tempdir().expect("a temporary folder");
+        let path = folder.path().join("config");
+        fs::write(&path, BROKEN).expect("written");
+
+        let error = KubeconfigSource::File(path).load().expect_err("broken").to_string();
+
+        assert!(error.contains("line 6"), "{error}");
+        assert!(!error.contains("SECRET-TOKEN-123"), "{error}");
+    }
+
+    #[test]
+    fn a_missing_kubeconfig_says_where_it_was_looked_for() {
+        let folder = tempfile::tempdir().expect("a temporary folder");
+        let path = folder.path().join("nothing");
+
+        let source = KubeconfigSource::File(path.clone());
+        let error = source.load().expect_err("missing").to_string();
+
+        assert!(!source.exists());
+        assert!(error.contains(&path.display().to_string()), "{error}");
+    }
 }
