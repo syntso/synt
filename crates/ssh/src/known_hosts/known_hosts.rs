@@ -22,10 +22,16 @@ impl KnownHosts {
 
         for file in FILES {
             let text = read_if_present(&directory.join(file)).await?;
-            entries.extend(text.lines().filter_map(Entry::parse));
+            entries.extend(Self::parse(&text).entries);
         }
 
         Ok(Self { entries })
+    }
+
+    pub(crate) fn parse(text: &str) -> Self {
+        let entries = text.lines().filter_map(Entry::parse).collect();
+
+        Self { entries }
     }
 
     pub(crate) fn known_algorithms(&self, host: &str, port: u16) -> Vec<Algorithm> {

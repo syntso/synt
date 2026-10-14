@@ -5,6 +5,8 @@ mod builtin;
 mod core;
 mod error;
 mod extensions;
+#[cfg(fuzzing)]
+pub mod fuzzing;
 mod grants;
 mod idle;
 mod keys;

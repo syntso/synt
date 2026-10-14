@@ -35,13 +35,25 @@ impl UserConfig {
             return Ok(Self { parsed });
         }
 
-        let parsed = Arc::new(parse(&path, &text)?);
+        let config = Self::parse(&path, &text)?;
 
         if !includes_other_files(&text) {
-            remember(path, text, Arc::clone(&parsed));
+            remember(path, text, Arc::clone(&config.parsed));
         }
 
-        Ok(Self { parsed })
+        Ok(config)
+    }
+
+    pub(crate) fn parse(path: &Path, text: &[u8]) -> Result<Self, SshError> {
+        let rules = ParseRule::ALLOW_UNKNOWN_FIELDS | ParseRule::ALLOW_UNSUPPORTED_FIELDS;
+
+        let parsed = SshConfig::default()
+            .parse(&mut &text[..], rules)
+            .map_err(|error| SshError::Config(format!("{}: {error}", path.display())))?;
+
+        Ok(Self {
+            parsed: Arc::new(parsed),
+        })
     }
 
     pub(crate) fn settings(&self, host: &str) -> HostSettings {
@@ -71,14 +83,6 @@ impl UserConfig {
             parsed: Arc::new(SshConfig::default()),
         }
     }
-}
-
-fn parse(path: &Path, text: &[u8]) -> Result<SshConfig, SshError> {
-    let rules = ParseRule::ALLOW_UNKNOWN_FIELDS | ParseRule::ALLOW_UNSUPPORTED_FIELDS;
-
-    SshConfig::default()
-        .parse(&mut &text[..], rules)
-        .map_err(|error| SshError::Config(format!("{}: {error}", path.display())))
 }
 
 fn recall(path: &Path, text: &[u8]) -> Option<Arc<SshConfig>> {

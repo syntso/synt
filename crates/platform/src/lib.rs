@@ -4,6 +4,8 @@ mod directories;
 mod endpoint;
 mod error;
 mod files;
+#[cfg(fuzzing)]
+pub mod fuzzing;
 mod listener;
 mod peer;
 mod pty;

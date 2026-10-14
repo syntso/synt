@@ -3,6 +3,8 @@ mod config;
 mod dial;
 mod error;
 mod exec;
+#[cfg(fuzzing)]
+pub mod fuzzing;
 mod home;
 mod known_hosts;
 mod pool;

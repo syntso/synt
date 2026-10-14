@@ -126,7 +126,8 @@ impl Project {
         check_name(name).map_err(CoreError::Project)?;
         resource.check().map_err(CoreError::Project)?;
 
-        let text = toml::to_string(&resource)
+        let text = resource
+            .to_toml()
             .map_err(|error| CoreError::Project(format!("cannot write {name}: {error}")))?;
 
         check_resources_folder(&self.path)
@@ -416,10 +417,8 @@ fn resource_name(path: &Path) -> Option<String> {
 
 fn read_resource(path: &Path) -> Result<Resource, String> {
     let text = read_text(path).map_err(|error| error.to_string())?;
-    let resource: Resource = toml::from_str(&text).map_err(|error| error.message().to_owned())?;
 
-    resource.check()?;
-    Ok(resource)
+    Resource::from_toml(&text)
 }
 
 fn read_project_file(path: &Path) -> Result<Option<ProjectFile>, String> {

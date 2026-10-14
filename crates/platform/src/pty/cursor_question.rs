@@ -3,27 +3,27 @@ use tokio::sync::mpsc;
 const QUESTION: &[u8] = b"\x1b[6n";
 const ANSWER: &[u8] = b"\x1b[1;1R";
 
-pub(super) struct CursorQuestion {
+pub(crate) struct CursorQuestion {
     held: Vec<u8>,
     answer_to: Option<mpsc::Sender<Vec<u8>>>,
 }
 
 impl CursorQuestion {
-    pub(super) fn expected(input: mpsc::Sender<Vec<u8>>) -> Self {
+    pub(crate) fn expected(input: mpsc::Sender<Vec<u8>>) -> Self {
         Self {
             held: Vec::new(),
             answer_to: Some(input),
         }
     }
 
-    pub(super) fn not_expected() -> Self {
+    pub(crate) fn not_expected() -> Self {
         Self {
             held: Vec::new(),
             answer_to: None,
         }
     }
 
-    pub(super) fn screen(&mut self, chunk: &[u8]) -> Vec<u8> {
+    pub(crate) fn screen(&mut self, chunk: &[u8]) -> Vec<u8> {
         let Some(input) = self.answer_to.take() else {
             return chunk.to_vec();
         };
@@ -44,7 +44,7 @@ impl CursorQuestion {
         shown
     }
 
-    pub(super) fn rest(self) -> Vec<u8> {
+    pub(crate) fn rest(self) -> Vec<u8> {
         self.held
     }
 }

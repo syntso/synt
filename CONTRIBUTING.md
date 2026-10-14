@@ -48,3 +48,14 @@ cargo test --workspace
 ```
 
 CI runs the same commands on macOS, Windows and Linux, plus `cargo deny check` for dependency licenses.
+
+## Fuzzing
+
+Every parser that reads bytes from outside has a target in `fuzz/`. They need nightly and `cargo install cargo-fuzz`:
+
+```bash
+cargo +nightly fuzz list
+cargo +nightly fuzz run osc133_scanner -- -max_total_time=180
+```
+
+A crash is a bug: fix it and keep the input as a regression test in the crate.

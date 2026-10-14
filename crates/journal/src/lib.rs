@@ -5,6 +5,8 @@ mod codec;
 mod error;
 mod export;
 mod filter;
+#[cfg(fuzzing)]
+pub mod fuzzing;
 mod hex;
 mod journal;
 mod lock;

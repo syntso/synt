@@ -14,7 +14,7 @@ mod terminals;
 pub(crate) use attached::Attached;
 use attachment::Attachment;
 pub use blocks::Block;
-use blocks::{Blocks, Scanner};
+pub(crate) use blocks::{Blocks, Scanner};
 pub use console::SessionKind;
 pub(crate) use console::{Console, ConsoleOutput};
 pub use ending::Ending;

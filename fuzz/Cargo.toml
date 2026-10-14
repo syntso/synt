@@ -1,0 +1,103 @@
+[package]
+name = "synt-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+members = ["."]
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+must_use_candidate = "allow"
+
+[dependencies]
+bytes = "1.12.1"
+libfuzzer-sys = "0.4.13"
+serde_json = "1.0.154"
+synt-core = { path = "../crates/core" }
+synt-extensions = { path = "../crates/extensions" }
+synt-journal = { path = "../crates/journal" }
+synt-platform = { path = "../crates/platform" }
+synt-proto = { path = "../crates/proto" }
+synt-ssh = { path = "../crates/ssh" }
+tokio-util = { version = "0.7.20", features = ["codec"] }
+
+[lib]
+path = "src/lib.rs"
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "proto_frame"
+path = "fuzz_targets/proto_frame.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "proto_message"
+path = "fuzz_targets/proto_message.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "journal_details"
+path = "fuzz_targets/journal_details.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "journal_actor"
+path = "fuzz_targets/journal_actor.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ssh_known_hosts"
+path = "fuzz_targets/ssh_known_hosts.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ssh_config"
+path = "fuzz_targets/ssh_config.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "osc133_scanner"
+path = "fuzz_targets/osc133_scanner.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "extension_manifest"
+path = "fuzz_targets/extension_manifest.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "project_resource"
+path = "fuzz_targets/project_resource.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pty_cursor_question"
+path = "fuzz_targets/pty_cursor_question.rs"
+test = false
+doc = false
+bench = false
