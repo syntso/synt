@@ -22,6 +22,10 @@ pub(crate) fn destination(projects: &Projects, target: Option<&ResourceRef>) -> 
     let target = target?;
     let resolved = projects.resolve(target.as_str()).ok()?;
 
+    if matches!(resolved, Resolved::Cluster { .. }) {
+        return None;
+    }
+
     Some(projects.destination(target.as_str(), &resolved))
 }
 

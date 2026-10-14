@@ -518,6 +518,64 @@ async fn a_resource_that_fails_its_checks_is_not_written() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_cluster_resource_is_written_as_a_file_and_listed() {
+    let harness = start();
+    let app = harness.app().await;
+    let folder = orders(&harness);
+    open(&app, &folder).await;
+
+    let call = ActionCall::new(ResourcePut::ID)
+        .target("@orders/kube")
+        .params(json!({
+            "kind": "cluster",
+            "kubeconfig": "~/.kube/orders.yaml",
+            "context": "prod-eu",
+            "namespace": "orders",
+            "via": "bastion",
+        }));
+    app.call(call).await.unwrap();
+    let written = fs::read_to_string(resource_file(&folder, "kube")).unwrap();
+    let listed = listing(&app).await;
+    let kube = listed["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["name"] == "kube")
+        .unwrap();
+
+    assert!(written.starts_with("kind = \"cluster\""), "{written}");
+    assert!(written.contains("via = \"bastion\""), "{written}");
+    assert_eq!(kube["context"], "prod-eu");
+    assert_eq!(kube["kubeconfig"], "~/.kube/orders.yaml");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cluster_is_neither_an_ssh_target_nor_a_way_in() {
+    let harness = start();
+    let mut approver = harness.approver().await;
+    let agent = harness.agent("deploy-bot").await;
+    let folder = orders(&harness);
+    fs::write(
+        resource_file(&folder, "kube"),
+        "kind = \"cluster\"\ncontext = \"prod-eu\"\nvia = \"bastion\"\n",
+    )
+    .unwrap();
+    fs::write(
+        resource_file(&folder, "behind"),
+        "kind = \"host\"\naddress = \"10.0.4.4\"\nuser = \"deploy\"\nvia = \"kube\"\n",
+    )
+    .unwrap();
+    open(approver.app(), &folder).await;
+
+    let on_cluster = rejection(agent.call(exec("@orders/kube")).await);
+    let through_cluster = rejection(agent.call(exec("@orders/behind")).await);
+
+    assert_eq!(on_cluster.code, ErrorCode::INVALID_PARAMS);
+    assert_eq!(through_cluster.code, ErrorCode::INVALID_PARAMS);
+    assert!(approver.was_not_asked());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn the_personal_project_is_read_only() {
     let harness = start();
     let app = harness.app().await;
