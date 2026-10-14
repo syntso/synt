@@ -1,10 +1,8 @@
-use data_encoding::HEXLOWER;
-use sha2::{Digest, Sha256};
-
+use crate::digest::sha256;
 use crate::manifest::Manifest;
 
-pub(crate) const MANIFEST_FILE: &str = "extension.toml";
-pub(crate) const COMPONENT_FILE: &str = "extension.wasm";
+pub(super) const MANIFEST_FILE: &str = "extension.toml";
+pub(super) const COMPONENT_FILE: &str = "extension.wasm";
 
 #[derive(Debug, Clone)]
 pub(crate) struct Package {
@@ -25,8 +23,4 @@ impl Package {
             signed,
         }
     }
-}
-
-pub(crate) fn sha256(bytes: &[u8]) -> String {
-    HEXLOWER.encode(&Sha256::digest(bytes))
 }

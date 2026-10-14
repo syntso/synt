@@ -2,9 +2,11 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use super::package::{COMPONENT_FILE, MANIFEST_FILE};
+use super::{InstalledFiles, Package};
 use crate::ExtensionError;
+use crate::digest::sha256;
 use crate::manifest::Manifest;
-use crate::package::{COMPONENT_FILE, MANIFEST_FILE, Package, sha256};
 
 const STAGING: &str = ".staging";
 
@@ -36,14 +38,18 @@ impl InstallFolder {
         Ok(sha256(manifest.as_bytes()))
     }
 
-    pub(crate) fn read(&self, id: &str) -> Result<(Manifest, String, Vec<u8>), ExtensionError> {
+    pub(crate) fn read(&self, id: &str) -> Result<InstalledFiles, ExtensionError> {
         let place = self.place(id);
 
         let text = fs::read_to_string(place.join(MANIFEST_FILE))?;
         let manifest = Manifest::parse(&text)?;
         let wasm = fs::read(place.join(COMPONENT_FILE))?;
 
-        Ok((manifest, sha256(text.as_bytes()), wasm))
+        Ok(InstalledFiles {
+            manifest,
+            manifest_sha256: sha256(text.as_bytes()),
+            wasm,
+        })
     }
 
     pub(crate) fn remove(&self, id: &str) -> Result<(), ExtensionError> {
@@ -57,8 +63,7 @@ impl InstallFolder {
 
 fn clear(path: &Path) -> Result<(), ExtensionError> {
     match fs::remove_dir_all(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error.into()),
+        Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error.into()),
+        _ => Ok(()),
     }
 }
