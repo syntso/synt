@@ -14,6 +14,7 @@ publish = false
 [workspace.dependencies]
 synt-actions = { path = "crates/actions" }
 synt-client = { path = "crates/client" }
+synt-db = { path = "crates/db" }
 synt-extensions = { path = "crates/extensions" }
 synt-journal = { path = "crates/journal" }
 synt-platform = { path = "crates/platform" }
@@ -33,10 +34,12 @@ hmac = "0.13.0"
 interprocess = { version = "2.4.5", features = ["tokio"] }
 keyring-core = "1.0.1"
 minisign = "0.10.0"
+mysql_async = { version = "0.37.1", default-features = false, features = ["default-rustls-ring"] }
 minisign-verify = "0.3.0"
 nix = { version = "0.31.3", default-features = false, features = ["signal", "socket", "user"] }
 notify = "8.2.0"
 portable-pty = "0.9.0"
+redis = { version = "1.7.1", default-features = false, features = ["tokio-comp"] }
 proptest = "1.12.0"
 russh = { version = "0.64.1", default-features = false, features = ["ring"] }
 russh-sftp = "3.0.1"
@@ -50,11 +53,15 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 sha1 = "0.11.0"
 sha2 = "0.11.1"
+sqlparser = { version = "0.63.0", features = ["visitor"] }
 ssh2-config = "0.8.2"
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 tempfile = "3.27.0"
 thiserror = "2.0.21"
 tokio = "1.53.2"
+tokio-postgres = { version = "0.7.18", default-features = false, features = ["runtime"] }
+tokio-postgres-rustls = "0.14.0"
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
 tokio-util = { version = "0.7.20", features = ["codec"] }
 toml = "1.1.8"
 ureq = { version = "3.4.2", default-features = false, features = ["rustls-no-provider"] }
