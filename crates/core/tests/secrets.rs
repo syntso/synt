@@ -10,8 +10,8 @@ use common::{Grounds, Harness, rejection};
 use serde_json::json;
 use synt_client::Client;
 use synt_core::{
-    Broker, Core, Databases, ProjectOpen, Projects, ResourceList, SecretList, SecretPut,
-    SecretRemove, Secrets,
+    Broker, Core, Databases, ProjectOpen, Projects, ResourceList, ResourcePut, SecretList,
+    SecretPut, SecretRemove, Secrets,
 };
 use synt_journal::EventKind;
 use synt_proto::{ActionCall, ErrorCode};
@@ -31,6 +31,9 @@ fn start() -> Harness {
         .unwrap();
     registry
         .register(ResourceList::new(projects.clone()))
+        .unwrap();
+    registry
+        .register(ResourcePut::new(projects.clone()))
         .unwrap();
     registry.register(SecretPut::new(secrets.clone())).unwrap();
     registry.register(SecretList::new(secrets.clone())).unwrap();
@@ -227,6 +230,27 @@ async fn a_password_written_into_a_resource_file_is_a_problem_not_a_resource() {
             .contains("secret://")
     );
     assert!(!listed.to_string().contains("hunter2"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_password_sent_with_a_resource_never_reaches_the_journal() {
+    let harness = start();
+    let app = harness.app().await;
+    open(&app, &project(harness.grounds().path(), &[])).await;
+
+    let call = ActionCall::new("resource.put")
+        .target("@vaulted/orders-db")
+        .params(json!({
+            "kind": "database",
+            "engine": "mysql",
+            "host": "db",
+            "password": "hunter2",
+        }));
+    let refused = rejection(app.call(call).await);
+
+    assert_eq!(refused.code, ErrorCode::ACTION_FAILED);
+    assert!(!format!("{:?}", harness.events()).contains("hunter2"));
+    assert!(format!("{:?}", harness.events()).contains("orders-db"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
