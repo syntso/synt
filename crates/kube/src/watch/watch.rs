@@ -87,7 +87,7 @@ impl Watch {
         Ok(())
     }
 
-    async fn open(&self) -> Result<Events, KubeError> {
+    async fn open(&mut self) -> Result<Events, KubeError> {
         let mut params = WatchParams::default().timeout(WATCH_SECONDS);
         if let Some(selector) = &self.selector {
             params = params.labels(selector);
