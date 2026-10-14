@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::{EventTopic, FileAccess, check_http_host, check_secret_name};
+use super::checks::{check_http_host, check_secret_name, refused};
+use super::{EventTopic, FileAccess};
 use crate::ExtensionError;
-use crate::manifest::checks::refused;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Capabilities {

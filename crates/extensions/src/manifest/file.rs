@@ -6,6 +6,7 @@ use super::{Api, Capabilities, Contributions};
 use crate::ExtensionError;
 
 const LONGEST_ID: usize = 40;
+const LONGEST_DESCRIPTION: usize = LONGEST_TEXT * 5;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Manifest {
@@ -29,15 +30,14 @@ pub struct Manifest {
 
 impl Manifest {
     pub fn parse(text: &str) -> Result<Self, ExtensionError> {
-        let manifest: Self =
-            toml::from_str(text).map_err(|error| ExtensionError::Manifest(error.to_string()))?;
+        let manifest: Self = toml::from_str(text)?;
 
         manifest.check()?;
         Ok(manifest)
     }
 
     pub fn to_toml(&self) -> Result<String, ExtensionError> {
-        toml::to_string(self).map_err(|error| ExtensionError::Manifest(error.to_string()))
+        Ok(toml::to_string(self)?)
     }
 
     pub fn check(&self) -> Result<(), ExtensionError> {
@@ -147,7 +147,7 @@ fn check_id(id: &str) -> Result<(), ExtensionError> {
 }
 
 fn check_description(description: &str) -> Result<(), ExtensionError> {
-    if description.len() > LONGEST_TEXT * 5 || description.contains(char::is_control) {
+    if description.len() > LONGEST_DESCRIPTION || description.contains(char::is_control) {
         return Err(refused(
             "description is too long or holds control characters",
         ));
