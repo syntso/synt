@@ -64,7 +64,10 @@ impl Clusters {
 
     fn keep(&self, key: String, cluster: Arc<Cluster>) {
         self.lock().insert(key.clone(), CachedCluster::new(cluster));
+        self.forget_when_idle(key);
+    }
 
+    fn forget_when_idle(&self, key: String) {
         let open = Arc::clone(&self.open);
         tokio::spawn(async move {
             loop {

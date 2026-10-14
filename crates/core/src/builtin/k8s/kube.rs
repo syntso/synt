@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use synt_actions::{ActionError, Context, Registry, Risk};
 use synt_journal::{JournalWriter, ResourceRef};
-use synt_kube::{Cluster, Kind, KubeError, KubeconfigSource};
+use synt_kube::{Cluster, ContextInfo, Kind};
 use synt_ssh::Pool;
 use tokio::runtime::Handle;
 use tokio::task;
@@ -67,8 +67,13 @@ impl Kube {
         &self.streams
     }
 
-    pub(super) fn personal_kubeconfig(&self) -> KubeconfigSource {
-        self.projects.personal_kubeconfig().clone()
+    pub(super) async fn contexts(&self) -> Result<Vec<ContextInfo>, ActionError> {
+        let source = self.projects.personal_kubeconfig().clone();
+
+        task::spawn_blocking(move || source.contexts())
+            .await
+            .map_err(|_| ActionError::failed("reading the kubeconfig stopped unexpectedly"))?
+            .map_err(failed)
     }
 
     pub(super) fn reach(&self, target: Option<&ResourceRef>) -> Result<Reach, ActionError> {
@@ -145,15 +150,6 @@ impl Kube {
 
         Ok(kind)
     }
-}
-
-pub(super) async fn off_thread<T: Send + 'static>(
-    work: impl FnOnce() -> Result<T, KubeError> + Send + 'static,
-) -> Result<T, ActionError> {
-    task::spawn_blocking(work)
-        .await
-        .map_err(|_| ActionError::failed("reading the kubeconfig stopped unexpectedly"))?
-        .map_err(failed)
 }
 
 pub(super) fn wait_for<T>(future: impl Future<Output = T>) -> Result<T, ActionError> {

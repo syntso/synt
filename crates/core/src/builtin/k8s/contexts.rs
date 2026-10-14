@@ -3,7 +3,6 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_kube::ContextInfo;
 
 use super::Kube;
-use super::kube::off_thread;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sContexts {
@@ -29,8 +28,6 @@ impl Action for K8sContexts {
     }
 
     async fn run(&self, _context: &Context, (): ()) -> Result<Vec<ContextInfo>, ActionError> {
-        let source = self.kube.personal_kubeconfig();
-
-        off_thread(move || source.contexts()).await
+        self.kube.contexts().await
     }
 }
