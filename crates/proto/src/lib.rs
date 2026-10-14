@@ -1,6 +1,7 @@
 mod action;
 mod approval;
 mod error;
+mod extension;
 mod handshake;
 mod method;
 mod rpc;
@@ -12,6 +13,7 @@ pub use approval::{
     ApprovalAnswer, ApprovalDecision, ApprovalId, ApprovalRequest, Requester, RiskLevel,
 };
 pub use error::FrameError;
+pub use extension::{PanelPosted, ViewPatched};
 pub use handshake::{ClientKind, Hello, ProtocolVersion, Welcome};
 pub use method::Method;
 pub use rpc::{
