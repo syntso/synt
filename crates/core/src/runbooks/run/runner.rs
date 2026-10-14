@@ -247,6 +247,7 @@ mod tests {
             target: None,
             params: json!({}),
             risk: Risk::Write,
+            destination: None,
             expect: Expect::default(),
             retry: Retry::ONCE,
             on_failure: OnFailure::Stop,

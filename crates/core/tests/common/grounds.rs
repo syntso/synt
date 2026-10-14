@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use synt_actions::Registry;
 use synt_core::{AlwaysGrants, GrantSeal, Ping, State};
@@ -9,7 +9,8 @@ use synt_platform::{Endpoint, Vault};
 use tempfile::TempDir;
 
 use super::{
-    Confused, Failing, FlakyKeyStore, Guarded, MemoryVault, Panicking, Secret, Touch, Waiting,
+    Aimed, Confused, Failing, FlakyKeyStore, Guarded, MemoryVault, Panicking, Secret, Touch,
+    Waiting,
 };
 
 const STATE_FILE: &str = "state.sqlite";
@@ -23,6 +24,7 @@ pub struct Grounds {
     touches: Arc<AtomicUsize>,
     runs: Arc<AtomicUsize>,
     waits: Arc<AtomicUsize>,
+    aim: Arc<Mutex<String>>,
 }
 
 impl Grounds {
@@ -41,6 +43,7 @@ impl Grounds {
             touches: Arc::default(),
             runs: Arc::default(),
             waits: Arc::default(),
+            aim: Arc::new(Mutex::new("10.0.0.1".to_owned())),
         }
     }
 
@@ -95,6 +98,10 @@ impl Grounds {
         self.waits.load(Ordering::SeqCst)
     }
 
+    pub fn aim_at(&self, place: &str) {
+        place.clone_into(&mut self.aim.lock().unwrap());
+    }
+
     pub fn registry(&self) -> Registry {
         let mut registry = Registry::new();
 
@@ -112,6 +119,9 @@ impl Grounds {
             .unwrap();
         registry.register(Secret).unwrap();
         registry.register(Confused).unwrap();
+        registry
+            .register(Aimed::new(Arc::clone(&self.aim)))
+            .unwrap();
 
         registry
     }

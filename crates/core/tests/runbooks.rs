@@ -82,6 +82,15 @@ title = "After the wait"
 action = "test.touch"
 "#;
 
+const AIMING: &str = r#"
+name = "Aiming"
+
+[[steps]]
+title = "Aim"
+action = "test.aim"
+target = "web-1"
+"#;
+
 fn runbook_actor(name: &str) -> Actor {
     Actor::Runbook(Name::new(RunbookDesk::reference(name)).unwrap())
 }
@@ -381,6 +390,46 @@ async fn a_standing_grant_never_approves_the_steps_of_a_later_run() {
         json!({ "command": "rm -rf /srv; docker pull app:v8" })
     );
     assert_eq!(second.unwrap().value["state"], json!("completed"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_step_that_moved_after_the_run_was_approved_is_asked_again() {
+    let desk = RunbookDesk::start().await;
+    desk.write("aiming", AIMING);
+    let mut approver = desk.harness().approver().await;
+    let agent = desk.harness().agent("deploy-bot").await;
+
+    let running = tokio::spawn({
+        let agent = agent.clone();
+        async move {
+            agent
+                .call(RunbookDesk::run_call("aiming", &json!({}), true))
+                .await
+        }
+    });
+    let run_question = approver.next().await;
+    desk.harness().grounds().aim_at("10.6.6.6");
+    approver
+        .answer(&run_question, ApprovalDecision::AllowOnce)
+        .await
+        .unwrap();
+    let step_question = approver.next().await;
+    approver
+        .answer(&step_question, ApprovalDecision::AllowOnce)
+        .await
+        .unwrap();
+    let outcome = running.await.unwrap().unwrap();
+
+    assert_eq!(
+        run_question.params["steps"][0]["destination"],
+        json!("web-1 = 10.0.0.1")
+    );
+    assert_eq!(step_question.action, "test.aim");
+    assert_eq!(
+        step_question.destination.as_deref(),
+        Some("web-1 = 10.6.6.6")
+    );
+    assert_eq!(outcome.value["state"], json!("completed"));
 }
 
 #[tokio::test(flavor = "multi_thread")]

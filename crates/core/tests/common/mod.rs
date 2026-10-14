@@ -1,5 +1,6 @@
 #![allow(dead_code, unused_imports)]
 
+mod aimed;
 mod approver;
 mod calls;
 mod confused;
@@ -21,6 +22,7 @@ mod syncing_core;
 mod touch;
 mod waiting;
 
+pub use aimed::Aimed;
 pub use approver::Approver;
 pub use calls::{app_hello, kinds, ping, rejection};
 pub use confused::Confused;

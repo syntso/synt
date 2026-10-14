@@ -17,6 +17,9 @@ pub(crate) struct PlannedStep {
     pub(crate) params: Value,
     pub(crate) risk: Risk,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) destination: Option<String>,
+
     #[serde(skip)]
     pub(crate) expect: Expect,
 
@@ -43,7 +46,7 @@ impl PlannedStep {
         let params = Value::Object(render_fields(&step.params, values)?);
 
         let handle = lookup(&action).ok_or_else(|| format!("there is no action {action}"))?;
-        let risk = judge(&handle, target.as_ref(), &params)?;
+        let (risk, destination) = judge(&handle, target.as_ref(), &params)?;
 
         Ok(Self {
             number,
@@ -52,6 +55,7 @@ impl PlannedStep {
             target,
             params,
             risk,
+            destination,
             expect: rendered_expect(step.expect.as_ref(), values)?,
             retry: step.retry(),
             on_failure: step.on_failure,
@@ -89,7 +93,11 @@ fn rendered_expect(expect: Option<&Expect>, values: &Values) -> Result<Expect, S
     })
 }
 
-fn judge(handle: &Handle, target: Option<&ResourceRef>, params: &Value) -> Result<Risk, String> {
+fn judge(
+    handle: &Handle,
+    target: Option<&ResourceRef>,
+    params: &Value,
+) -> Result<(Risk, Option<String>), String> {
     let action = handle.id();
 
     if handle.person_only() {
@@ -112,5 +120,5 @@ fn judge(handle: &Handle, target: Option<&ResourceRef>, params: &Value) -> Resul
         return Err(format!("{target} does not name a host this core can reach"));
     }
 
-    Ok(prepared.risk())
+    Ok((prepared.risk(), prepared.destination().map(str::to_owned)))
 }

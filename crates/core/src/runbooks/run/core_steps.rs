@@ -32,6 +32,7 @@ impl StepCaller for CoreSteps {
             actor: &self.starter,
             request: self.run,
             approved: self.approved,
+            planned: step.destination.as_deref(),
             stop: Some(&self.stop),
         };
 

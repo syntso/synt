@@ -105,7 +105,7 @@ impl Core {
             destination: prepared.destination(),
             grantable: prepared.grantable(),
             params: prepared.shown().unwrap_or(&shown_params),
-            run_approved: origin.is_some_and(|origin| origin.approved),
+            run_approved: origin.is_some_and(|origin| origin.approves(prepared.destination())),
             departed,
         };
         let (request, grant) = self.admit(&call, request, &access).await?;
