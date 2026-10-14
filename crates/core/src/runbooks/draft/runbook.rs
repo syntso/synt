@@ -1,14 +1,7 @@
-use std::collections::BTreeMap;
-
-use serde_json::{Map, Value};
-
 use super::DraftStep;
-use super::literal::Literal;
-use crate::runbooks::document::{OnFailure, Runbook, Step};
-use crate::runbooks::param::{ParamKind, ParamSpec};
-use crate::runbooks::template::{JsonTemplate, TextTemplate};
-
-const TARGET_HINT: &str = "host";
+use super::literals::Literals;
+use super::placeholders::Placeholders;
+use crate::runbooks::document::Runbook;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Draft {
@@ -29,153 +22,25 @@ impl Draft {
     }
 
     pub(crate) fn build(self) -> Result<Runbook, String> {
-        let literals = self.repeated_literals();
-        let names = param_names(&literals);
+        let literals = Literals::repeated_in(&self.steps);
+        let placeholders = Placeholders::naming(&literals);
 
-        let params = literals
-            .iter()
-            .map(|literal| spec(&names[&literal.text], literal))
-            .collect();
         let steps = self
             .steps
             .iter()
-            .map(|step| templated(step, &names))
+            .map(|step| step.templated(&placeholders))
             .collect();
 
         let runbook = Runbook {
             name: self.name,
             description: String::new(),
-            params,
+            params: placeholders.specs(&literals),
             steps,
             rollback: Vec::new(),
         };
 
         runbook.check()?;
         Ok(runbook)
-    }
-
-    fn repeated_literals(&self) -> Vec<Literal> {
-        let mut literals: Vec<Literal> = Vec::new();
-
-        for (index, step) in self.steps.iter().enumerate() {
-            if let Some(target) = &step.target {
-                note(&mut literals, index, target, TARGET_HINT, true);
-            }
-
-            for (key, value) in &step.params {
-                if let Some(text) = value.as_str() {
-                    note(&mut literals, index, text, key, false);
-                }
-            }
-        }
-
-        literals.retain(Literal::repeats);
-        literals
-    }
-}
-
-fn note(literals: &mut Vec<Literal>, step: usize, text: &str, hint: &str, is_target: bool) {
-    if text.is_empty() {
-        return;
-    }
-
-    if let Some(known) = literals.iter_mut().find(|literal| literal.text == text) {
-        known.steps.insert(step);
-        known.is_target |= is_target;
-        return;
-    }
-
-    literals.push(Literal {
-        text: text.to_owned(),
-        hint: hint.to_owned(),
-        is_target,
-        steps: [step].into(),
-    });
-}
-
-fn param_names(literals: &[Literal]) -> BTreeMap<String, String> {
-    let mut names = BTreeMap::new();
-    let mut taken: Vec<String> = Vec::new();
-
-    for literal in literals {
-        let base = identifier(&literal.hint);
-        let mut name = base.clone();
-        let mut counter = 2;
-
-        while taken.contains(&name) {
-            name = format!("{base}_{counter}");
-            counter += 1;
-        }
-
-        taken.push(name.clone());
-        names.insert(literal.text.clone(), name);
-    }
-
-    names
-}
-
-fn identifier(hint: &str) -> String {
-    let cleaned: String = hint
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect();
-
-    match cleaned.chars().next() {
-        Some(first) if first.is_ascii_alphabetic() || first == '_' => cleaned,
-        _ => format!("_{cleaned}"),
-    }
-}
-
-fn spec(name: &str, literal: &Literal) -> ParamSpec {
-    let as_target = literal.is_target
-        && ParamKind::Target
-            .accept(&Value::from(literal.text.as_str()))
-            .is_ok();
-
-    let kind = if as_target {
-        ParamKind::Target
-    } else {
-        ParamKind::of_literal(&literal.text)
-    };
-
-    ParamSpec::literal(name.to_owned(), kind, &literal.text)
-}
-
-fn templated(step: &DraftStep, names: &BTreeMap<String, String>) -> Step {
-    let lifted = |text: &str| names.get(text).map(|name| format!("{{{name}}}"));
-
-    let target = step
-        .target
-        .as_deref()
-        .map(|target| lifted(target).unwrap_or_else(|| TextTemplate::escape(target)));
-
-    let params: Map<String, Value> = step
-        .params
-        .iter()
-        .map(|(key, value)| {
-            let value = match value.as_str().and_then(lifted) {
-                Some(placeholder) => Value::String(placeholder),
-                None => value.escaped(),
-            };
-
-            (key.clone(), value)
-        })
-        .collect();
-
-    Step {
-        title: TextTemplate::escape(&step.title),
-        action: step.action.clone(),
-        target,
-        params,
-        expect: None,
-        retry: None,
-        on_failure: OnFailure::Stop,
     }
 }
 
@@ -184,27 +49,23 @@ mod tests {
     use serde_json::{Map, Value, json};
 
     use super::{Draft, DraftStep};
+    use crate::runbooks::document::Runbook;
     use crate::runbooks::param::{ParamKind, Values};
     use crate::runbooks::template::JsonTemplate;
 
-    fn step(target: Option<&str>, params: &Value) -> DraftStep {
+    fn call(action: &str, target: Option<&str>, params: &Value) -> DraftStep {
         let params: Map<String, Value> = params.as_object().cloned().unwrap();
-        let title = params
-            .get("command")
-            .and_then(Value::as_str)
-            .unwrap_or("step")
-            .to_owned();
 
-        DraftStep {
-            title,
-            action: "ssh.exec".to_owned(),
-            target: target.map(str::to_owned),
-            params,
-        }
+        DraftStep::new(action.to_owned(), target.map(str::to_owned), params)
     }
 
-    fn draft(steps: Vec<DraftStep>) -> crate::runbooks::document::Runbook {
+    fn step(target: Option<&str>, params: &Value) -> DraftStep {
+        call("ssh.exec", target, params)
+    }
+
+    fn draft(steps: Vec<DraftStep>) -> Runbook {
         let mut draft = Draft::new("From the journal");
+
         for step in steps {
             draft.push(step);
         }
@@ -246,24 +107,8 @@ mod tests {
     #[test]
     fn repeated_param_values_are_named_after_their_field() {
         let runbook = draft(vec![
-            DraftStep {
-                title: "Read".to_owned(),
-                action: "sftp.read".to_owned(),
-                target: Some("a".to_owned()),
-                params: json!({ "path": "/etc/app.conf" })
-                    .as_object()
-                    .cloned()
-                    .unwrap(),
-            },
-            DraftStep {
-                title: "Stat".to_owned(),
-                action: "sftp.stat".to_owned(),
-                target: Some("b".to_owned()),
-                params: json!({ "path": "/etc/app.conf" })
-                    .as_object()
-                    .cloned()
-                    .unwrap(),
-            },
+            call("sftp.read", Some("a"), &json!({ "path": "/etc/app.conf" })),
+            call("sftp.stat", Some("b"), &json!({ "path": "/etc/app.conf" })),
         ]);
 
         assert_eq!(runbook.params[0].name, "path");

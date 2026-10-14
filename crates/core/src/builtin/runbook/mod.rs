@@ -6,6 +6,7 @@ mod get;
 mod list;
 mod params;
 mod put;
+mod requests;
 mod run;
 mod stop;
 

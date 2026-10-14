@@ -1,19 +1,15 @@
-use std::collections::BTreeSet;
-
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::{Map, Value};
+use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
-use synt_journal::{Event, EventKind, JournalReader, Seq};
 
 use super::Drafted;
-use crate::CoreError;
+use super::requests::Requests;
 use crate::builtin::blocking::blocking;
-use crate::runbooks::{Draft, DraftStep, Runbook, Runbooks};
+use crate::runbooks::Runbooks;
 
 const MOST_EVENTS: usize = 100;
 const DEFAULT_NAME: &str = "Steps from the journal";
-const COMMAND: &str = "command";
 
 #[derive(Debug, Clone)]
 pub struct RunbookFromJournal {
@@ -63,80 +59,11 @@ impl Action for RunbookFromJournal {
 
         let runbook = blocking(move || {
             let reader = journal.reader()?;
-            drafted(&reader, &params.events, name)
+
+            Requests::new(&reader).draft(&params.events, name)
         })
         .await?;
 
         Drafted::new(runbook)
-    }
-}
-
-fn drafted(reader: &JournalReader, events: &[u64], name: String) -> Result<Runbook, CoreError> {
-    let mut draft = Draft::new(name);
-    let mut seen = BTreeSet::new();
-
-    for seq in events {
-        let request = requested(reader, Seq::new(*seq))?;
-
-        if seen.insert(request.seq()) {
-            draft.push(step(&request));
-        }
-    }
-
-    draft.build().map_err(CoreError::Runbook)
-}
-
-fn requested(reader: &JournalReader, seq: Seq) -> Result<Event, CoreError> {
-    let event = find(reader, seq)?;
-
-    if event.kind() == EventKind::Requested {
-        return Ok(event);
-    }
-
-    let Some(call) = event.call() else {
-        return Err(CoreError::Runbook(format!(
-            "journal event {seq} belongs to no call"
-        )));
-    };
-
-    let request = find(reader, call)?;
-
-    if request.kind() != EventKind::Requested {
-        return Err(CoreError::Runbook(format!(
-            "journal event {call} is not a request"
-        )));
-    }
-
-    Ok(request)
-}
-
-fn find(reader: &JournalReader, seq: Seq) -> Result<Event, CoreError> {
-    reader
-        .get(seq)?
-        .ok_or_else(|| CoreError::Runbook(format!("the journal has no event {seq}")))
-}
-
-fn step(request: &Event) -> DraftStep {
-    let action = request.action().as_str().to_owned();
-    let target = request.resource().map(|target| target.as_str().to_owned());
-    let params: Map<String, Value> = request
-        .details()
-        .value()
-        .get("params")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-
-    let title = match (params.get(COMMAND).and_then(Value::as_str), &target) {
-        (Some(command), _) => DraftStep::title_from(command),
-        (None, Some(target)) => format!("{action} on {target}"),
-        (None, None) => action.clone(),
-    };
-
-    DraftStep {
-        title,
-        action,
-        target,
-        params,
     }
 }

@@ -1,6 +1,6 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::{Map, Value};
+use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::Drafted;
@@ -9,8 +9,6 @@ use crate::terminal::{Block, SessionId};
 
 const MOST_BLOCKS: usize = 100;
 const DEFAULT_NAME: &str = "Steps from a terminal session";
-const SHELL_ACTION: &str = "ssh.exec";
-const COMMAND: &str = "command";
 
 #[derive(Debug, Clone)]
 pub struct RunbookFromBlocks {
@@ -78,12 +76,7 @@ impl Action for RunbookFromBlocks {
         for number in &params.blocks {
             let command = command_of(&blocks, *number)?;
 
-            draft.push(DraftStep {
-                title: DraftStep::title_from(&command),
-                action: SHELL_ACTION.to_owned(),
-                target: Some(host.as_str().to_owned()),
-                params: Map::from_iter([(COMMAND.to_owned(), Value::String(command))]),
-            });
+            draft.push(DraftStep::shell(host.as_str(), command));
         }
 
         let runbook = draft.build().map_err(ActionError::InvalidParams)?;
