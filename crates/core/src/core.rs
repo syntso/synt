@@ -18,6 +18,7 @@ use crate::link::Link;
 use crate::on_behalf::OnBehalf;
 use crate::parsed_call::ParsedCall;
 use crate::recorder::{Call, Recorder};
+use crate::refusal::Refusal;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -86,36 +87,10 @@ impl Core {
         };
         let request = Recorder::request(&call, details);
 
-        let Some(handle) = handle else {
-            let error = RpcError::new(
-                ErrorCode::UNKNOWN_ACTION,
-                format!("no action named {action}"),
-            );
-            return Err(self.reject(request, failed(&call, error)).await);
-        };
-
-        if handle.person_only() && !acts_for_person(actor) {
-            let reason = format!("{action} is for the person only");
-            return Err(self.reject(request, denied(&call, reason)).await);
-        }
-
-        let takes_target = handle.takes_target();
-
-        let prepared = match prepare_blocking(&handle, call.target, params).await {
+        let prepared = match screen(&call, handle, params).await {
             Ok(prepared) => prepared,
-            Err(error) => return Err(self.reject(request, failed(&call, failure(&error))).await),
+            Err(refusal) => return Err(self.reject(request, recorded(&call, refusal)).await),
         };
-
-        if let Some(target) = call
-            .target
-            .filter(|_| takes_target && prepared.destination().is_none())
-        {
-            let error = RpcError::new(
-                ErrorCode::INVALID_PARAMS,
-                format!("{target} does not name a host this core can reach"),
-            );
-            return Err(self.reject(request, failed(&call, error)).await);
-        }
 
         let access = AccessRequest {
             actor,
@@ -267,6 +242,49 @@ impl Core {
             Ok(()) => error,
             Err(journal) => unavailable(&journal),
         }
+    }
+}
+
+async fn screen(
+    call: &Call<'_>,
+    handle: Option<Handle>,
+    params: Value,
+) -> Result<Prepared, Refusal> {
+    let Some(handle) = handle else {
+        let error = RpcError::new(
+            ErrorCode::UNKNOWN_ACTION,
+            format!("no action named {}", call.action),
+        );
+        return Err(Refusal::Failed(error));
+    };
+
+    if handle.person_only() && !acts_for_person(call.actor) {
+        let reason = format!("{} is for the person only", call.action);
+        return Err(Refusal::Denied(reason));
+    }
+
+    let prepared = prepare_blocking(&handle, call.target, params)
+        .await
+        .map_err(|error| Refusal::Failed(failure(&error)))?;
+
+    if let Some(target) = call
+        .target
+        .filter(|_| handle.takes_target() && prepared.destination().is_none())
+    {
+        let error = RpcError::new(
+            ErrorCode::INVALID_PARAMS,
+            format!("{target} does not name a host this core can reach"),
+        );
+        return Err(Refusal::Failed(error));
+    }
+
+    Ok(prepared)
+}
+
+fn recorded(call: &Call<'_>, refusal: Refusal) -> (NewEvent, RpcError) {
+    match refusal {
+        Refusal::Failed(error) => failed(call, error),
+        Refusal::Denied(reason) => denied(call, reason),
     }
 }
 

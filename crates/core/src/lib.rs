@@ -18,6 +18,7 @@ mod on_behalf;
 mod parsed_call;
 mod projects;
 mod recorder;
+mod refusal;
 mod server;
 mod ssh_keys;
 mod state;

@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::Arc;
 
 use hmac::{Hmac, KeyInit, Mac};
@@ -59,8 +60,8 @@ impl GrantSeal {
     }
 }
 
-impl std::fmt::Debug for GrantSeal {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for GrantSeal {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("GrantSeal")
             .field("place", &self.vault.place())

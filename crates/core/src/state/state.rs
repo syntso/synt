@@ -10,6 +10,9 @@ use crate::clock::unix_millis;
 use crate::locked::locked;
 use crate::ssh_keys::{KeyInfo, KeyName};
 
+const GRANT_COLUMNS: &str = "id, actor, action, resource, destination, created_at";
+const SSH_KEY_COLUMNS: &str = "name, kind, public_key, fingerprint, created_at";
+
 #[derive(Debug, Clone)]
 pub struct State {
     connection: Arc<Mutex<Connection>>,
@@ -54,9 +57,8 @@ impl State {
 
     pub(crate) fn grants(&self) -> Result<Vec<StoredGrant>, CoreError> {
         let connection = self.lock();
-        let mut statement = connection.prepare(
-            "SELECT id, actor, action, resource, destination, created_at FROM grants ORDER BY id",
-        )?;
+        let mut statement =
+            connection.prepare(&format!("SELECT {GRANT_COLUMNS} FROM grants ORDER BY id"))?;
 
         let grants = statement
             .query_map([], stored_grant)?
@@ -120,9 +122,9 @@ impl State {
 
     pub(crate) fn ssh_keys(&self) -> Result<Vec<KeyInfo>, CoreError> {
         let connection = self.lock();
-        let mut statement = connection.prepare(
-            "SELECT name, kind, public_key, fingerprint, created_at FROM ssh_keys ORDER BY name",
-        )?;
+        let mut statement = connection.prepare(&format!(
+            "SELECT {SSH_KEY_COLUMNS} FROM ssh_keys ORDER BY name"
+        ))?;
 
         let keys = statement
             .query_map([], stored_ssh_key)?
@@ -135,8 +137,7 @@ impl State {
         let key = self
             .lock()
             .query_row(
-                "SELECT name, kind, public_key, fingerprint, created_at FROM ssh_keys \
-                 WHERE name = ?1",
+                &format!("SELECT {SSH_KEY_COLUMNS} FROM ssh_keys WHERE name = ?1"),
                 [name],
                 stored_ssh_key,
             )
@@ -147,8 +148,7 @@ impl State {
 
     pub(crate) fn insert_ssh_key(&self, key: &KeyInfo) -> Result<(), CoreError> {
         self.lock().execute(
-            "INSERT INTO ssh_keys (name, kind, public_key, fingerprint, created_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            &format!("INSERT INTO ssh_keys ({SSH_KEY_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5)"),
             (
                 &key.name,
                 &key.kind,

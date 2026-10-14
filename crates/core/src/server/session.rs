@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::StreamExt;
+use serde::Serialize;
 use serde_json::{Value, json};
 use synt_journal::Actor;
 use synt_platform::{AppCheck, LocalStream, Peer};
@@ -180,18 +181,16 @@ async fn answer(
             let call: ActionCall = request.into_params()?;
             let outcome = core.dispatch(actor, call, departed, link).await?;
 
-            serde_json::to_value(outcome).map_err(|error| {
-                eprintln!("synt-core: outcome: {error}");
-                RpcError::internal("the outcome cannot be encoded")
-            })
+            encoded(&outcome, "outcome", "the outcome cannot be encoded")
         }
         Some(Method::ActionsDescribe) => {
             let descriptions = core.describe(actor);
 
-            serde_json::to_value(descriptions).map_err(|error| {
-                eprintln!("synt-core: descriptions: {error}");
-                RpcError::internal("the action descriptions cannot be encoded")
-            })
+            encoded(
+                &descriptions,
+                "descriptions",
+                "the action descriptions cannot be encoded",
+            )
         }
         Some(Method::ApprovalRespond) => {
             let answer: ApprovalAnswer = request.into_params()?;
@@ -205,4 +204,11 @@ async fn answer(
             format!("no method named {}", request.method),
         )),
     }
+}
+
+fn encoded(value: &impl Serialize, what: &str, refusal: &str) -> Result<Value, RpcError> {
+    serde_json::to_value(value).map_err(|error| {
+        eprintln!("synt-core: {what}: {error}");
+        RpcError::internal(refusal)
+    })
 }
