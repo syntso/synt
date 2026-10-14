@@ -1,0 +1,39 @@
+use serde_json::{Value, json};
+use synt_actions::{Action, ActionError, Context, Risk};
+
+use super::ProjectParams;
+use super::failure::failure;
+use crate::Syncer;
+use crate::report::Disabled;
+
+pub(crate) struct SyncDisable {
+    syncer: Syncer,
+}
+
+impl SyncDisable {
+    pub(crate) fn new(syncer: Syncer) -> Self {
+        Self { syncer }
+    }
+}
+
+impl Action for SyncDisable {
+    const ID: &'static str = "sync.disable";
+    const TITLE: &'static str = "Stop syncing a project on this device";
+    const RISK: Risk = Risk::Write;
+    const PERSON_ONLY: bool = true;
+
+    type Params = ProjectParams;
+    type Output = Disabled;
+
+    fn summary(&self, output: &Disabled) -> Value {
+        json!({ "project": output.project, "left": output.left })
+    }
+
+    async fn run(
+        &self,
+        _context: &Context,
+        params: ProjectParams,
+    ) -> Result<Disabled, ActionError> {
+        self.syncer.disable(&params.project).await.map_err(failure)
+    }
+}
