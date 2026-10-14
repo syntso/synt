@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
+use super::Action;
 use crate::runnable::{Runnable, Running};
-use crate::{Action, ActionError, Completed, Context};
+use crate::{ActionError, Completed, Context};
 
-pub(crate) struct Bound<A: Action> {
+pub(super) struct Bound<A: Action> {
     action: Arc<A>,
     params: A::Params,
 }
 
 impl<A: Action> Bound<A> {
-    pub(crate) fn new(action: Arc<A>, params: A::Params) -> Self {
+    pub(super) fn new(action: Arc<A>, params: A::Params) -> Self {
         Self { action, params }
     }
 }

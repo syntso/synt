@@ -1,12 +1,16 @@
+mod action;
+mod bound;
+
 use std::sync::Arc;
 
 use serde_json::{Map, Value};
 use synt_journal::ResourceRef;
 
-use super::DynamicAction;
-use super::bound::DynamicBound;
+use self::bound::DynamicBound;
 use crate::erased::Erased;
 use crate::{ActionError, Prepared, Risk};
+
+pub use action::DynamicAction;
 
 pub(crate) struct Dynamic<D> {
     action: Arc<D>,
@@ -16,6 +20,16 @@ impl<D: DynamicAction> Dynamic<D> {
     pub(crate) fn new(action: D) -> Self {
         Self {
             action: Arc::new(action),
+        }
+    }
+
+    fn object(params: Value) -> Result<Value, ActionError> {
+        match params {
+            Value::Null => Ok(Value::Object(Map::new())),
+            Value::Object(fields) => Ok(Value::Object(fields)),
+            _ => Err(ActionError::InvalidParams(
+                "params must be a JSON object".to_owned(),
+            )),
         }
     }
 }
@@ -54,23 +68,13 @@ impl<D: DynamicAction> Erased for Dynamic<D> {
             return Err(ActionError::TargetRequired);
         }
 
-        let params = object(params)?;
+        let params = Self::object(params)?;
         let risk = self.action.risk();
         let destination = self.action.destination(target);
 
         let bound = DynamicBound::new(Arc::clone(&self.action), target.cloned(), params);
 
         Ok(Prepared::new(risk, destination, Box::new(bound)))
-    }
-}
-
-fn object(params: Value) -> Result<Value, ActionError> {
-    match params {
-        Value::Null => Ok(Value::Object(Map::new())),
-        Value::Object(fields) => Ok(Value::Object(fields)),
-        _ => Err(ActionError::InvalidParams(
-            "params must be a JSON object".to_owned(),
-        )),
     }
 }
 

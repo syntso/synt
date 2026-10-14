@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use synt_journal::ActionId;
 
-use crate::{Action, ActionError, Catalog, Description, Handle};
+use crate::{Action, ActionDescription, ActionError, Catalog, Handle};
 
 #[derive(Clone, Default)]
 pub struct Registry {
@@ -17,8 +17,7 @@ impl Registry {
     }
 
     pub fn register<A: Action>(&mut self, action: A) -> Result<(), ActionError> {
-        let id =
-            ActionId::new(A::ID).map_err(|reason| ActionError::InvalidId { id: A::ID, reason })?;
+        let id = ActionId::new(A::ID).map_err(|_| ActionError::InvalidId(A::ID))?;
 
         if self.actions.contains_key(&id) {
             return Err(ActionError::Duplicate(A::ID));
@@ -44,9 +43,9 @@ impl Registry {
         self.actions.keys()
     }
 
-    pub fn describe(&self) -> Vec<Description> {
+    pub fn describe(&self) -> Vec<ActionDescription> {
         let attached = self.catalogs.iter().flat_map(|catalog| catalog.describe());
-        let mut descriptions: Vec<Description> = self
+        let mut descriptions: Vec<ActionDescription> = self
             .actions
             .values()
             .map(Handle::describe)
@@ -68,7 +67,9 @@ mod tests {
     use synt_journal::{ActionId, Actor, ResourceRef, Seq};
 
     use super::Registry;
-    use crate::{Action, ActionError, Catalog, Context, Description, DynamicAction, Handle, Risk};
+    use crate::{
+        Action, ActionDescription, ActionError, Catalog, Context, DynamicAction, Handle, Risk,
+    };
 
     struct Echo;
 
@@ -174,7 +175,7 @@ mod tests {
             (self.handle.id() == id).then(|| self.handle.clone())
         }
 
-        fn describe(&self) -> Vec<Description> {
+        fn describe(&self) -> Vec<ActionDescription> {
             vec![self.handle.describe()]
         }
     }
@@ -244,7 +245,7 @@ mod tests {
         let mut registry = Registry::new();
         assert!(matches!(
             registry.register(Broken),
-            Err(ActionError::InvalidId { .. })
+            Err(ActionError::InvalidId(_))
         ));
     }
 

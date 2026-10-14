@@ -5,7 +5,8 @@ use synt_journal::{ActionId, ResourceRef};
 
 use crate::dynamic::Dynamic;
 use crate::erased::Erased;
-use crate::{Action, ActionError, Description, DynamicAction, Prepared, Risk};
+use crate::typed::Typed;
+use crate::{Action, ActionDescription, ActionError, DynamicAction, Prepared, Risk};
 
 #[derive(Clone)]
 pub struct Handle {
@@ -17,7 +18,7 @@ impl Handle {
     pub(crate) fn new<A: Action>(id: ActionId, action: A) -> Self {
         Self {
             id,
-            action: Arc::new(action),
+            action: Arc::new(Typed::new(action)),
         }
     }
 
@@ -48,8 +49,8 @@ impl Handle {
         self.action.takes_target()
     }
 
-    pub fn describe(&self) -> Description {
-        Description {
+    pub fn describe(&self) -> ActionDescription {
+        ActionDescription {
             id: self.id.clone(),
             title: self.action.title().to_owned(),
             risk: self.action.declared_risk(),
