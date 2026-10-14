@@ -23,7 +23,6 @@ pub(crate) use project::ProjectPlace;
 pub use registry::Projects;
 pub(crate) use resolved::{Resolved, login_label};
 pub(crate) use resolved_database::ResolvedDatabase;
-pub(crate) use resource::is_namespace;
 pub use resource::{ClusterResource, DatabaseResource, HostResource, Resource, TunnelResource};
 pub(crate) use resource::{ResourceEntry, ResourceListing};
 use target_ref::TargetRef;

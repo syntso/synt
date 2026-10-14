@@ -7,9 +7,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::{AppliedObject, Change, Manifest};
 
-use super::Kube;
-use super::failure::failed;
-use super::kube::wait_for;
+use super::{K8sError, Kube};
 
 const NO_DRY_RUN: &str = "not run: the cluster is reached through a root login, which is asked \
                           for first; the diff shows once that connection is up";
@@ -19,9 +17,9 @@ pub(crate) struct K8sApply {
     kube: Kube,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
 pub(crate) struct ApplyParams {
-    pub manifest: String,
+    pub manifest: Manifest,
 
     #[serde(default)]
     pub force: bool,
@@ -36,6 +34,48 @@ impl K8sApply {
     pub(super) fn new(kube: Kube) -> Self {
         Self { kube }
     }
+
+    fn preview(
+        &self,
+        target: Option<&ResourceRef>,
+        params: &ApplyParams,
+    ) -> Result<Value, K8sError> {
+        let manifest = &params.manifest;
+        let plan = self.kube.inspect(target, |cluster| async move {
+            manifest.plan(&cluster, params.force).await
+        })?;
+
+        let Some(plan) = plan else {
+            return Ok(json!({
+                "objects": manifest.refs(),
+                "force": params.force,
+                "diff": Value::Null,
+                "dry_run": NO_DRY_RUN,
+            }));
+        };
+
+        Ok(json!({
+            "objects": plan.objects,
+            "force": params.force,
+            "diff": plan.diff(),
+        }))
+    }
+
+    async fn apply(&self, context: &Context, params: &ApplyParams) -> Result<Applied, K8sError> {
+        let cluster = self.kube.cluster(context).await?;
+        let objects = params.manifest.apply(&cluster, params.force).await?;
+
+        Ok(Applied { objects })
+    }
+}
+
+impl Applied {
+    fn count(&self, change: Change) -> usize {
+        self.objects
+            .iter()
+            .filter(|object| object.change == change)
+            .count()
+    }
 }
 
 impl Action for K8sApply {
@@ -47,39 +87,12 @@ impl Action for K8sApply {
     type Params = ApplyParams;
     type Output = Applied;
 
-    fn check(
-        &self,
-        _target: Option<&ResourceRef>,
-        params: &ApplyParams,
-    ) -> Result<(), ActionError> {
-        Manifest::parse(&params.manifest)
-            .map(|_| ())
-            .map_err(failed)
-    }
-
     fn inspect(
         &self,
         target: Option<&ResourceRef>,
         params: &mut ApplyParams,
     ) -> Result<Option<Value>, ActionError> {
-        let manifest = Manifest::parse(&params.manifest).map_err(failed)?;
-
-        let Some(cluster) = self.kube.inspected_cluster(target)? else {
-            return Ok(Some(json!({
-                "objects": manifest.refs(),
-                "force": params.force,
-                "diff": Value::Null,
-                "dry_run": NO_DRY_RUN,
-            })));
-        };
-
-        let plan = wait_for(cluster.plan(&manifest, params.force))?.map_err(failed)?;
-
-        Ok(Some(json!({
-            "objects": plan.objects,
-            "force": params.force,
-            "diff": plan.diff(),
-        })))
+        Ok(Some(self.preview(target, params)?))
     }
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &ApplyParams) -> Risk {
@@ -103,31 +116,15 @@ impl Action for K8sApply {
     }
 
     fn summary(&self, output: &Applied) -> Value {
-        let count = |change: Change| {
-            output
-                .objects
-                .iter()
-                .filter(|object| object.change == change)
-                .count()
-        };
-
         json!({
             "objects": output.objects,
-            "created": count(Change::Create),
-            "updated": count(Change::Update),
-            "unchanged": count(Change::Unchanged),
+            "created": output.count(Change::Create),
+            "updated": output.count(Change::Update),
+            "unchanged": output.count(Change::Unchanged),
         })
     }
 
     async fn run(&self, context: &Context, params: ApplyParams) -> Result<Applied, ActionError> {
-        let manifest = Manifest::parse(&params.manifest).map_err(failed)?;
-        let cluster = self.kube.cluster(context).await?;
-
-        let objects = cluster
-            .apply(&manifest, params.force)
-            .await
-            .map_err(failed)?;
-
-        Ok(Applied { objects })
+        Ok(self.apply(context, &params).await?)
     }
 }

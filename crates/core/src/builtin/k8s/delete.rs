@@ -5,9 +5,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::Deleted;
 
-use super::failure::failed;
-use super::object_params::ObjectParams;
-use super::{KindFacts, Kube};
+use super::{K8sError, KindFacts, Kube, ObjectParams};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sDelete {
@@ -28,6 +26,17 @@ impl K8sDelete {
     pub(super) fn new(kube: Kube) -> Self {
         Self { kube }
     }
+
+    async fn delete(&self, context: &Context, object: &ObjectParams) -> Result<Deleted, K8sError> {
+        let cluster = self.kube.cluster(context).await?;
+        let kind = self.kube.kind(context, &cluster, &object.kind).await?;
+
+        if !kind.is_namespaced() && context.risk() != Risk::Privileged {
+            return Err(K8sError::ClusterScopedNow(kind.to_string()));
+        }
+
+        Ok(object.on(&cluster, &kind).delete().await?)
+    }
 }
 
 impl Action for K8sDelete {
@@ -38,14 +47,6 @@ impl Action for K8sDelete {
 
     type Params = DeleteParams;
     type Output = Deleted;
-
-    fn check(
-        &self,
-        _target: Option<&ResourceRef>,
-        params: &DeleteParams,
-    ) -> Result<(), ActionError> {
-        params.object.check()
-    }
 
     fn inspect(
         &self,
@@ -74,20 +75,6 @@ impl Action for K8sDelete {
     }
 
     async fn run(&self, context: &Context, params: DeleteParams) -> Result<Deleted, ActionError> {
-        let object = params.object;
-        let cluster = self.kube.cluster(context).await?;
-        let kind = self.kube.kind(context, &cluster, &object.kind).await?;
-
-        if !kind.is_namespaced() && context.risk() != Risk::Privileged {
-            return Err(ActionError::Failed(format!(
-                "{kind} is cluster-scoped, which was not known when the call was admitted; \
-                 run it again so it is asked as privileged"
-            )));
-        }
-
-        cluster
-            .delete(&kind, &object.name, object.namespace.as_deref())
-            .await
-            .map_err(failed)
+        Ok(self.delete(context, &params.object).await?)
     }
 }

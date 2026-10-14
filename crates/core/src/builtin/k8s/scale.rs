@@ -5,9 +5,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::Scaled;
 
-use super::Kube;
-use super::failure::failed;
-use super::object_params::ObjectParams;
+use super::{K8sError, Kube, ObjectParams};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sScale {
@@ -25,6 +23,14 @@ impl K8sScale {
     pub(super) fn new(kube: Kube) -> Self {
         Self { kube }
     }
+
+    async fn scale(&self, context: &Context, params: &ScaleParams) -> Result<Scaled, K8sError> {
+        let object = &params.object;
+        let cluster = self.kube.cluster(context).await?;
+        let kind = self.kube.kind(context, &cluster, &object.kind).await?;
+
+        Ok(object.on(&cluster, &kind).scale(params.replicas).await?)
+    }
 }
 
 impl Action for K8sScale {
@@ -36,10 +42,14 @@ impl Action for K8sScale {
     type Params = ScaleParams;
     type Output = Scaled;
 
-    fn check(&self, target: Option<&ResourceRef>, params: &ScaleParams) -> Result<(), ActionError> {
+    fn check(
+        &self,
+        target: Option<&ResourceRef>,
+        _params: &ScaleParams,
+    ) -> Result<(), ActionError> {
         self.kube.reach(target)?;
 
-        params.object.check()
+        Ok(())
     }
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &ScaleParams) -> Risk {
@@ -55,18 +65,6 @@ impl Action for K8sScale {
     }
 
     async fn run(&self, context: &Context, params: ScaleParams) -> Result<Scaled, ActionError> {
-        let object = params.object;
-        let cluster = self.kube.cluster(context).await?;
-        let kind = self.kube.kind(context, &cluster, &object.kind).await?;
-
-        cluster
-            .scale(
-                &kind,
-                &object.name,
-                object.namespace.as_deref(),
-                params.replicas,
-            )
-            .await
-            .map_err(failed)
+        Ok(self.scale(context, &params).await?)
     }
 }

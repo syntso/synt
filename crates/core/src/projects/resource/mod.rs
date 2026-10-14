@@ -7,7 +7,6 @@ mod listing;
 mod tunnel;
 
 pub use cluster::ClusterResource;
-pub(crate) use cluster::is_namespace;
 pub use database::DatabaseResource;
 pub use definition::Resource;
 pub(crate) use entry::ResourceEntry;

@@ -3,9 +3,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::Restarted;
 
-use super::Kube;
-use super::failure::failed;
-use super::object_params::ObjectParams;
+use super::{K8sError, Kube, ObjectParams};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sRolloutRestart {
@@ -15,6 +13,17 @@ pub(crate) struct K8sRolloutRestart {
 impl K8sRolloutRestart {
     pub(super) fn new(kube: Kube) -> Self {
         Self { kube }
+    }
+
+    async fn restart(
+        &self,
+        context: &Context,
+        object: &ObjectParams,
+    ) -> Result<Restarted, K8sError> {
+        let cluster = self.kube.cluster(context).await?;
+        let kind = self.kube.kind(context, &cluster, &object.kind).await?;
+
+        Ok(object.on(&cluster, &kind).restart().await?)
     }
 }
 
@@ -30,18 +39,18 @@ impl Action for K8sRolloutRestart {
     fn check(
         &self,
         target: Option<&ResourceRef>,
-        params: &ObjectParams,
+        _object: &ObjectParams,
     ) -> Result<(), ActionError> {
         self.kube.reach(target)?;
 
-        params.check()
+        Ok(())
     }
 
-    fn risk(&self, target: Option<&ResourceRef>, _params: &ObjectParams) -> Risk {
+    fn risk(&self, target: Option<&ResourceRef>, _object: &ObjectParams) -> Risk {
         self.kube.risk(target, Self::RISK)
     }
 
-    fn destination(&self, target: Option<&ResourceRef>, _params: &ObjectParams) -> Option<String> {
+    fn destination(&self, target: Option<&ResourceRef>, _object: &ObjectParams) -> Option<String> {
         self.kube.destination(target)
     }
 
@@ -49,13 +58,7 @@ impl Action for K8sRolloutRestart {
         serde_json::to_value(output).unwrap_or_default()
     }
 
-    async fn run(&self, context: &Context, params: ObjectParams) -> Result<Restarted, ActionError> {
-        let cluster = self.kube.cluster(context).await?;
-        let kind = self.kube.kind(context, &cluster, &params.kind).await?;
-
-        cluster
-            .restart(&kind, &params.name, params.namespace.as_deref())
-            .await
-            .map_err(failed)
+    async fn run(&self, context: &Context, object: ObjectParams) -> Result<Restarted, ActionError> {
+        Ok(self.restart(context, &object).await?)
     }
 }

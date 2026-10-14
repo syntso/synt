@@ -28,6 +28,6 @@ impl Action for K8sContexts {
     }
 
     async fn run(&self, _context: &Context, (): ()) -> Result<Vec<ContextInfo>, ActionError> {
-        self.kube.contexts().await
+        Ok(self.kube.contexts().await?)
     }
 }

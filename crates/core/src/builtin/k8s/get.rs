@@ -4,9 +4,7 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::failure::failed;
-use super::names::{check_kind, check_namespace, check_object_name};
-use super::{KindFacts, Kube};
+use super::{K8sError, KindFacts, Kube, ObjectParams};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sGet {
@@ -15,11 +13,8 @@ pub(crate) struct K8sGet {
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub(crate) struct GetParams {
-    pub kind: String,
-    pub name: String,
-
-    #[serde(default)]
-    pub namespace: Option<String>,
+    #[serde(flatten)]
+    pub object: ObjectParams,
 
     #[serde(skip)]
     #[schemars(skip)]
@@ -29,6 +24,13 @@ pub(crate) struct GetParams {
 impl K8sGet {
     pub(super) fn new(kube: Kube) -> Self {
         Self { kube }
+    }
+
+    async fn get(&self, context: &Context, object: &ObjectParams) -> Result<Value, K8sError> {
+        let cluster = self.kube.cluster(context).await?;
+        let kind = self.kube.kind(context, &cluster, &object.kind).await?;
+
+        Ok(object.on(&cluster, &kind).get().await?)
     }
 }
 
@@ -41,18 +43,12 @@ impl Action for K8sGet {
     type Params = GetParams;
     type Output = Value;
 
-    fn check(&self, _target: Option<&ResourceRef>, params: &GetParams) -> Result<(), ActionError> {
-        check_kind(&params.kind)?;
-        check_object_name("name", &params.name)?;
-        check_namespace(params.namespace.as_deref())
-    }
-
     fn inspect(
         &self,
         target: Option<&ResourceRef>,
         params: &mut GetParams,
     ) -> Result<Option<Value>, ActionError> {
-        params.facts = self.kube.kind_facts(target, &params.kind)?;
+        params.facts = self.kube.kind_facts(target, &params.object.kind)?;
 
         Ok(None)
     }
@@ -80,12 +76,6 @@ impl Action for K8sGet {
     }
 
     async fn run(&self, context: &Context, params: GetParams) -> Result<Value, ActionError> {
-        let cluster = self.kube.cluster(context).await?;
-        let kind = self.kube.kind(context, &cluster, &params.kind).await?;
-
-        cluster
-            .get(&kind, &params.name, params.namespace.as_deref())
-            .await
-            .map_err(failed)
+        Ok(self.get(context, &params.object).await?)
     }
 }

@@ -5,13 +5,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
-use synt_kube::{Cluster, LogRequest, LogText};
+use synt_kube::{Cluster, LogRequest, LogText, Namespace};
 use synt_proto::StreamId;
 
-use super::Kube;
-use super::failure::failed;
-use super::names::{check_namespace, check_object_name};
 use super::streams::{Pump, StreamStarted};
+use super::{K8sError, Kube};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sLogs {
@@ -20,25 +18,8 @@ pub(crate) struct K8sLogs {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub(crate) struct LogsParams {
-    pub pod: String,
-
-    #[serde(default)]
-    pub namespace: Option<String>,
-
-    #[serde(default)]
-    pub container: Option<String>,
-
-    #[serde(default)]
-    pub tail: Option<u32>,
-
-    #[serde(default)]
-    pub since_seconds: Option<u32>,
-
-    #[serde(default)]
-    pub previous: bool,
-
-    #[serde(default)]
-    pub timestamps: bool,
+    #[serde(flatten)]
+    pub request: LogRequest,
 
     #[serde(default)]
     pub follow: bool,
@@ -56,16 +37,12 @@ pub(crate) enum Logs {
 }
 
 impl LogsParams {
-    fn into_request(self) -> LogRequest {
-        LogRequest {
-            pod: self.pod,
-            namespace: self.namespace,
-            container: self.container,
-            tail_lines: self.tail,
-            since_seconds: self.since_seconds,
-            previous: self.previous,
-            timestamps: self.timestamps,
+    fn followed_on(&self) -> Result<Option<StreamId>, K8sError> {
+        if self.follow != self.stream.is_some() {
+            return Err(K8sError::FollowWithoutStream);
         }
+
+        Ok(self.stream)
     }
 }
 
@@ -74,23 +51,32 @@ impl K8sLogs {
         Self { kube }
     }
 
+    async fn logs(&self, context: &Context, params: LogsParams) -> Result<Logs, K8sError> {
+        let cluster = self.kube.cluster(context).await?;
+
+        if let Some(stream) = params.followed_on()? {
+            return self.follow(context, cluster, stream, params.request).await;
+        }
+
+        let text = params.request.read(&cluster).await?;
+
+        Ok(Logs::Text(text))
+    }
+
     async fn follow(
         &self,
         context: &Context,
         cluster: Arc<Cluster>,
-        stream: Option<StreamId>,
+        stream: StreamId,
         request: LogRequest,
-    ) -> Result<Logs, ActionError> {
-        let stream =
-            stream.ok_or_else(|| ActionError::InvalidParams("follow needs a stream".to_owned()))?;
-
+    ) -> Result<Logs, K8sError> {
         let pump = Pump::open(context, stream)?;
-        let logs = cluster.follow_logs(&request).await.map_err(failed)?;
+        let logs = request.follow(&cluster).await?;
 
         let about = json!({
-            "pod": request.pod,
-            "namespace": request.namespace.as_deref().unwrap_or(cluster.namespace()),
-            "container": request.container,
+            "pod": request.pod.as_str(),
+            "namespace": request.namespace.as_ref().map_or(cluster.namespace(), Namespace::as_str),
+            "container": request.container.as_ref().map(ToString::to_string),
             "stream": stream.0,
         });
         self.kube
@@ -119,19 +105,7 @@ impl Action for K8sLogs {
 
     fn check(&self, target: Option<&ResourceRef>, params: &LogsParams) -> Result<(), ActionError> {
         self.kube.reach(target)?;
-
-        check_object_name("pod", &params.pod)?;
-        check_namespace(params.namespace.as_deref())?;
-
-        if let Some(container) = &params.container {
-            check_object_name("container", container)?;
-        }
-
-        if params.follow != params.stream.is_some() {
-            return Err(ActionError::InvalidParams(
-                "follow and stream go together: name the stream to follow the logs on".to_owned(),
-            ));
-        }
+        params.followed_on()?;
 
         Ok(())
     }
@@ -160,17 +134,6 @@ impl Action for K8sLogs {
     }
 
     async fn run(&self, context: &Context, params: LogsParams) -> Result<Logs, ActionError> {
-        let cluster = self.kube.cluster(context).await?;
-
-        let (follow, stream) = (params.follow, params.stream);
-        let request = params.into_request();
-
-        if follow {
-            return self.follow(context, cluster, stream, request).await;
-        }
-
-        let text = cluster.logs(&request).await.map_err(failed)?;
-
-        Ok(Logs::Text(text))
+        Ok(self.logs(context, params).await?)
     }
 }

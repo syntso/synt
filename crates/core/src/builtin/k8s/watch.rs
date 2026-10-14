@@ -3,12 +3,11 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
-use synt_kube::{Namespaces, WatchRequest};
+use synt_kube::{KindName, WatchRequest};
 use synt_proto::StreamId;
 
-use super::names::{check_kind, check_namespaces};
 use super::streams::{Pump, StreamStarted};
-use super::{KindFacts, Kube};
+use super::{K8sError, KindFacts, Kube};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sWatch {
@@ -17,16 +16,10 @@ pub(crate) struct K8sWatch {
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub(crate) struct WatchParams {
-    pub kind: String,
+    pub kind: KindName,
 
-    #[serde(default)]
-    pub namespace: Option<String>,
-
-    #[serde(default)]
-    pub all_namespaces: bool,
-
-    #[serde(default)]
-    pub selector: Option<String>,
+    #[serde(flatten)]
+    pub request: WatchRequest,
 
     #[schemars(with = "u32")]
     pub stream: StreamId,
@@ -40,6 +33,31 @@ impl K8sWatch {
     pub(super) fn new(kube: Kube) -> Self {
         Self { kube }
     }
+
+    async fn watch(
+        &self,
+        context: &Context,
+        params: &WatchParams,
+    ) -> Result<StreamStarted, K8sError> {
+        let cluster = self.kube.cluster(context).await?;
+        let kind = self.kube.kind(context, &cluster, &params.kind).await?;
+        let pump = Pump::open(context, params.stream)?;
+        let watch = params.request.open(&cluster, &kind);
+
+        let about = json!({ "kind": kind.to_string(), "stream": params.stream.0 });
+        self.kube
+            .streams()
+            .start(context, Self::ID, about, move |stop| async move {
+                let ended = pump.run(watch, stop).await;
+                drop(cluster);
+                ended
+            });
+
+        Ok(StreamStarted {
+            request: context.request().get(),
+            stream: params.stream.0,
+        })
+    }
 }
 
 impl Action for K8sWatch {
@@ -51,15 +69,6 @@ impl Action for K8sWatch {
 
     type Params = WatchParams;
     type Output = StreamStarted;
-
-    fn check(
-        &self,
-        _target: Option<&ResourceRef>,
-        params: &WatchParams,
-    ) -> Result<(), ActionError> {
-        check_kind(&params.kind)?;
-        check_namespaces(params.namespace.as_deref(), params.all_namespaces)
-    }
 
     fn inspect(
         &self,
@@ -88,28 +97,6 @@ impl Action for K8sWatch {
         context: &Context,
         params: WatchParams,
     ) -> Result<StreamStarted, ActionError> {
-        let cluster = self.kube.cluster(context).await?;
-        let kind = self.kube.kind(context, &cluster, &params.kind).await?;
-        let pump = Pump::open(context, params.stream)?;
-
-        let request = WatchRequest {
-            namespaces: Namespaces::from_request(params.namespace, params.all_namespaces),
-            selector: params.selector,
-        };
-        let watch = cluster.watch(&kind, &request);
-
-        let about = json!({ "kind": kind.to_string(), "stream": params.stream.0 });
-        self.kube
-            .streams()
-            .start(context, Self::ID, about, move |stop| async move {
-                let ended = pump.run(watch, stop).await;
-                drop(cluster);
-                ended
-            });
-
-        Ok(StreamStarted {
-            request: context.request().get(),
-            stream: params.stream.0,
-        })
+        Ok(self.watch(context, &params).await?)
     }
 }
