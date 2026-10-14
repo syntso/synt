@@ -20,7 +20,7 @@ impl FieldMerge {
         let mut merged = Table::new();
 
         for key in keys {
-            let field = field_name(prefix, key);
+            let field = Self::field_name(prefix, key);
             let value = self.value(base.get(key), older.get(key), newer.get(key), &field);
 
             if let Some(value) = value {
@@ -63,12 +63,12 @@ impl FieldMerge {
         self.conflicts.push(field.to_owned());
         newer.or(older).cloned()
     }
-}
 
-fn field_name(prefix: &str, key: &str) -> String {
-    if prefix.is_empty() {
-        return key.to_owned();
+    fn field_name(prefix: &str, key: &str) -> String {
+        if prefix.is_empty() {
+            return key.to_owned();
+        }
+
+        format!("{prefix}.{key}")
     }
-
-    format!("{prefix}.{key}")
 }
