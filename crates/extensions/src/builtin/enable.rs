@@ -1,8 +1,9 @@
 use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 
+use super::ExtensionInfo;
 use super::blocking::blocking;
-use super::{ExtensionInfo, IdParams};
+use super::id_params::IdParams;
 use crate::Extensions;
 
 #[derive(Clone)]

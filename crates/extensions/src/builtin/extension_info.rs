@@ -2,7 +2,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::extension::Loaded;
-use crate::manifest::{Capabilities, Manifest};
+use crate::manifest::{Api, Capabilities, Manifest};
 use crate::shelf::Installed;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -10,6 +10,7 @@ pub(crate) struct ExtensionInfo {
     pub id: String,
     pub name: Option<String>,
     pub version: String,
+    pub api: Option<Api>,
     pub description: Option<String>,
     pub signed: bool,
     pub enabled: bool,
@@ -40,6 +41,7 @@ impl ExtensionInfo {
             id: installed.id,
             name: manifest.as_ref().map(|manifest| manifest.name.clone()),
             version: installed.version,
+            api: manifest.as_ref().map(|manifest| manifest.api),
             description: manifest
                 .as_ref()
                 .map(|manifest| manifest.description.clone()),
