@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 use synt_client::{Client, ClientError};
-use synt_core::{Broker, Core, ProjectOpen, Projects, Runbooks, Terminals};
+use synt_core::{
+    Broker, Core, LocalSessionOpen, ProjectOpen, Projects, Runbooks, SessionClose, Terminals,
+};
 use synt_proto::{ActionCall, ActionOutcome, Notification, RunbookStep};
 use tokio::sync::broadcast;
 
@@ -25,15 +27,16 @@ impl RunbookDesk {
     pub async fn start() -> Self {
         let grounds = Grounds::new();
         let projects = Projects::start(grounds.state()).unwrap();
-        let runbooks = Runbooks::new(
-            projects.clone(),
-            grounds.journal(),
-            Terminals::new(grounds.journal()),
-        );
+        let terminals = Terminals::new(grounds.journal());
+        let runbooks = Runbooks::new(projects.clone(), grounds.journal(), terminals.clone());
 
         let mut registry = grounds.registry();
         registry.register(ExecStub).unwrap();
         registry.register(ProjectOpen::new(projects)).unwrap();
+        registry
+            .register(LocalSessionOpen::new(terminals.clone()))
+            .unwrap();
+        registry.register(SessionClose::new(terminals)).unwrap();
         runbooks.register(&mut registry).unwrap();
 
         let core = Arc::new(Core::new(registry, grounds.journal(), Broker::new()));

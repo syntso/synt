@@ -647,3 +647,41 @@ async fn runbook_actions_describe_their_risk_and_params() {
     assert!(find("runbook.from_journal").is_some());
     assert!(find("runbook.from_blocks").is_none());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn commands_of_a_local_shell_cannot_become_runbook_steps() {
+    let desk = RunbookDesk::start().await;
+    let app = desk.harness().app().await;
+    let opening = ActionCall::new("local.session.open").params(json!({ "cols": 80, "rows": 24 }));
+    let session = app.call(opening).await.unwrap().value["session"].clone();
+
+    let drafting = |session: Value| {
+        ActionCall::new("runbook.from_blocks").params(json!({ "session": session, "blocks": [1] }))
+    };
+    let local = rejection(app.call(drafting(session.clone())).await);
+    let missing = rejection(app.call(drafting(json!(4_242))).await);
+
+    assert_eq!(local.code, ErrorCode::INVALID_PARAMS);
+    assert!(
+        local
+            .message
+            .ends_with("is a local shell, so its commands have no host to run on")
+    );
+    assert_eq!(missing.code, ErrorCode::ACTION_FAILED);
+    assert_eq!(missing.message, "there is no open session 4242");
+
+    let closing = ActionCall::new("session.close").params(json!({ "session": session }));
+    app.call(closing).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn only_the_person_drafts_from_terminal_blocks() {
+    let desk = RunbookDesk::start().await;
+    let agent = desk.harness().agent("deploy-bot").await;
+    let drafting =
+        ActionCall::new("runbook.from_blocks").params(json!({ "session": 1, "blocks": [1] }));
+
+    let error = rejection(agent.call(drafting).await);
+
+    assert_eq!(error.code, ErrorCode::DENIED);
+}

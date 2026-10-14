@@ -4,7 +4,7 @@ use serde_json::{Map, Value};
 use synt_journal::ActionId;
 
 use super::{Expect, OnFailure, Retry, is_default};
-use crate::runbooks::template::{Template, params_in};
+use crate::runbooks::template::params_in;
 
 const LONGEST_TITLE: usize = 200;
 const RUNBOOK_ACTIONS: &str = "runbook.";
@@ -58,22 +58,16 @@ impl Step {
     }
 
     pub(crate) fn params_used(&self) -> Vec<String> {
-        let texts = [Some(&self.title), self.target.as_ref()];
         let contains = self
             .expect
             .as_ref()
-            .and_then(|expect| expect.contains.as_ref());
+            .and_then(|expect| expect.contains.as_deref());
+        let texts = [Some(self.title.as_str()), self.target.as_deref(), contains];
 
         let mut used: Vec<String> = texts
             .into_iter()
-            .chain([contains])
             .flatten()
-            .flat_map(|text| {
-                Template::parse(text)
-                    .params()
-                    .map(str::to_owned)
-                    .collect::<Vec<_>>()
-            })
+            .flat_map(|text| params_in(&Value::from(text)))
             .collect();
 
         used.extend(params_in(&Value::Object(self.params.clone())));
