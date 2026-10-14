@@ -55,6 +55,20 @@ pub(crate) enum Logs {
     Followed(StreamStarted),
 }
 
+impl LogsParams {
+    fn into_request(self) -> LogRequest {
+        LogRequest {
+            pod: self.pod,
+            namespace: self.namespace,
+            container: self.container,
+            tail_lines: self.tail,
+            since_seconds: self.since_seconds,
+            previous: self.previous,
+            timestamps: self.timestamps,
+        }
+    }
+}
+
 impl K8sLogs {
     pub(super) fn new(kube: Kube) -> Self {
         Self { kube }
@@ -64,12 +78,11 @@ impl K8sLogs {
         &self,
         context: &Context,
         cluster: Arc<Cluster>,
-        params: &LogsParams,
+        stream: Option<StreamId>,
         request: LogRequest,
     ) -> Result<Logs, ActionError> {
-        let stream = params
-            .stream
-            .ok_or_else(|| ActionError::InvalidParams("follow needs a stream".to_owned()))?;
+        let stream =
+            stream.ok_or_else(|| ActionError::InvalidParams("follow needs a stream".to_owned()))?;
 
         let pump = Pump::open(context, stream)?;
         let logs = cluster.follow_logs(&request).await.map_err(failed)?;
@@ -149,18 +162,11 @@ impl Action for K8sLogs {
     async fn run(&self, context: &Context, params: LogsParams) -> Result<Logs, ActionError> {
         let cluster = self.kube.cluster(context).await?;
 
-        let request = LogRequest {
-            pod: params.pod.clone(),
-            namespace: params.namespace.clone(),
-            container: params.container.clone(),
-            tail_lines: params.tail,
-            since_seconds: params.since_seconds,
-            previous: params.previous,
-            timestamps: params.timestamps,
-        };
+        let (follow, stream) = (params.follow, params.stream);
+        let request = params.into_request();
 
-        if params.follow {
-            return self.follow(context, cluster, &params, request).await;
+        if follow {
+            return self.follow(context, cluster, stream, request).await;
         }
 
         let text = cluster.logs(&request).await.map_err(failed)?;
