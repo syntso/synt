@@ -4,11 +4,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use synt_ssh::Target;
+use tokio::sync::broadcast;
 
 use super::personal::PERSONAL;
 use super::project::is_project_id;
 use super::{
-    OpenProject, Personal, Project, ProjectInfo, Resolved, Resource, ResourceEntry,
+    OpenProject, Personal, Project, ProjectChange, ProjectInfo, Resolved, Resource, ResourceEntry,
     ResourceListing, TargetRef,
 };
 use crate::CoreError;
@@ -17,10 +18,13 @@ use crate::state::State;
 
 type Opened = BTreeMap<String, OpenProject>;
 
+const CHANGES_KEPT: usize = 256;
+
 #[derive(Clone)]
 pub struct Projects {
     state: State,
     opened: Arc<Mutex<Opened>>,
+    changes: broadcast::Sender<ProjectChange>,
 }
 
 impl Projects {
@@ -28,6 +32,7 @@ impl Projects {
         let projects = Self {
             state,
             opened: Arc::default(),
+            changes: broadcast::channel(CHANGES_KEPT).0,
         };
 
         for path in projects.state.open_projects()? {
@@ -74,7 +79,7 @@ impl Projects {
             )));
         }
 
-        opened.insert(slug, OpenProject::start(project)?);
+        opened.insert(slug, OpenProject::start(project, self.changes.clone())?);
         self.state.remember_project(&path)?;
 
         Ok(info)
@@ -98,6 +103,20 @@ impl Projects {
         drop(closed);
 
         Ok(info)
+    }
+
+    pub fn changes(&self) -> broadcast::Receiver<ProjectChange> {
+        self.changes.subscribe()
+    }
+
+    pub(crate) fn folder(&self, project: &str) -> Result<(String, PathBuf), CoreError> {
+        if is_personal(project) {
+            return Err(Personal::read_only());
+        }
+
+        self.with_project(project, |project| {
+            Ok((project.id().to_owned(), project.path().to_owned()))
+        })
     }
 
     pub(crate) fn list(&self) -> Result<Vec<ProjectInfo>, CoreError> {
