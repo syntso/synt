@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::prepared::{Runnable, Running};
+use crate::runnable::{Runnable, Running};
 use crate::{Action, ActionError, Completed, Context};
 
 pub(crate) struct Bound<A: Action> {

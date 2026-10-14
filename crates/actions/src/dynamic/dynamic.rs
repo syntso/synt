@@ -5,7 +5,7 @@ use synt_journal::ResourceRef;
 
 use super::DynamicAction;
 use super::dynamic_bound::DynamicBound;
-use crate::handle::Erased;
+use crate::erased::Erased;
 use crate::{ActionError, Prepared, Risk};
 
 pub(crate) struct Dynamic<D> {
@@ -60,7 +60,7 @@ impl<D: DynamicAction> Erased for Dynamic<D> {
 
         let bound = DynamicBound::new(Arc::clone(&self.action), target.cloned(), params);
 
-        Ok(Prepared::new(risk, destination, false, Box::new(bound)))
+        Ok(Prepared::new(risk, destination, Box::new(bound)))
     }
 }
 

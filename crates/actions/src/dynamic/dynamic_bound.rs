@@ -4,7 +4,7 @@ use serde_json::Value;
 use synt_journal::ResourceRef;
 
 use super::DynamicAction;
-use crate::prepared::{Runnable, Running};
+use crate::runnable::{Runnable, Running};
 use crate::{Completed, Context};
 
 pub(super) struct DynamicBound<D> {

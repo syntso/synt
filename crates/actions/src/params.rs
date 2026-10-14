@@ -2,7 +2,10 @@ use std::any::TypeId;
 
 use schemars::JsonSchema;
 use schemars::generate::SchemaSettings;
+use serde::de::DeserializeOwned;
 use serde_json::{Map, Value, json};
+
+use crate::ActionError;
 
 pub(crate) fn schema<P: JsonSchema + 'static>() -> Value {
     if takes_none::<P>() {
@@ -25,7 +28,12 @@ pub(crate) fn schema<P: JsonSchema + 'static>() -> Value {
     schema
 }
 
-pub(crate) fn normalized<P: 'static>(params: Value) -> Value {
+pub(crate) fn parse<P: DeserializeOwned + 'static>(params: Value) -> Result<P, ActionError> {
+    serde_json::from_value(normalized::<P>(params))
+        .map_err(|error| ActionError::InvalidParams(error.to_string()))
+}
+
+fn normalized<P: 'static>(params: Value) -> Value {
     let takes_none = takes_none::<P>();
 
     match params {

@@ -5,12 +5,14 @@ mod completed;
 mod context;
 mod description;
 mod dynamic;
+mod erased;
 mod error;
 mod handle;
 mod params;
 mod prepared;
 mod registry;
 mod risk;
+mod runnable;
 
 pub use action::Action;
 pub use catalog::Catalog;
