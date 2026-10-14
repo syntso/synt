@@ -11,7 +11,7 @@ use synt_proto::StreamId;
 use super::Kube;
 use super::failure::failed;
 use super::names::{check_namespace, check_object_name};
-use super::streams::{StreamStarted, outbound, pump_logs};
+use super::streams::{Pump, StreamStarted};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sLogs {
@@ -71,7 +71,7 @@ impl K8sLogs {
             .stream
             .ok_or_else(|| ActionError::InvalidParams("follow needs a stream".to_owned()))?;
 
-        let outbound = outbound(context, stream)?;
+        let pump = Pump::open(context, stream)?;
         let logs = cluster.follow_logs(&request).await.map_err(failed)?;
 
         let about = json!({
@@ -83,7 +83,7 @@ impl K8sLogs {
         self.kube
             .streams()
             .start(context, Self::ID, about, move |stop| async move {
-                let ended = pump_logs(logs, outbound, stop).await;
+                let ended = pump.run(logs, stop).await;
                 drop(cluster);
                 ended
             });

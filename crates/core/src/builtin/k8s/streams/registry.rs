@@ -3,7 +3,7 @@ use std::fmt::{self, Debug, Formatter};
 use std::future::Future;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use serde_json::{Map, Value};
+use serde_json::Value;
 use synt_actions::{ActionError, Context};
 use synt_journal::{ActionId, Actor, EventKind, JournalWriter, Seq};
 use tokio_util::sync::CancellationToken;
@@ -40,10 +40,7 @@ impl Streams {
     {
         let stop = context.stop().child_token();
         let request = context.request();
-        let open = OpenStream {
-            actor: context.actor().clone(),
-            stop: stop.clone(),
-        };
+        let open = OpenStream::new(context.actor().clone(), stop.clone());
         self.lock().insert(request, open);
 
         let streams = self.clone();
@@ -66,13 +63,13 @@ impl Streams {
             )));
         };
 
-        if stream.actor != *actor && *actor != Actor::Person {
+        if !stream.may_be_closed_by(actor) {
             return Err(ActionError::Failed(format!(
                 "the stream of request {request} belongs to another caller"
             )));
         }
 
-        stream.stop.cancel();
+        stream.close();
 
         Ok(())
     }
@@ -97,7 +94,7 @@ impl Streams {
             action: &action,
             target: context.target(),
         };
-        let finished = Recorder::step(&call, EventKind::Finished, &summary(about, ended));
+        let finished = Recorder::step(&call, EventKind::Finished, &ended.summary(about));
 
         if let Err(error) = self
             .recorder
@@ -123,17 +120,4 @@ impl Debug for Streams {
             .field("open", &self.lock().len())
             .finish_non_exhaustive()
     }
-}
-
-fn summary(about: Value, ended: &StreamEnd) -> Value {
-    let mut fields = match about {
-        Value::Object(fields) => fields,
-        _ => Map::new(),
-    };
-
-    if let Ok(Value::Object(end)) = serde_json::to_value(ended) {
-        fields.extend(end);
-    }
-
-    Value::Object(fields)
 }

@@ -7,7 +7,7 @@ use synt_kube::{Namespaces, WatchRequest};
 use synt_proto::StreamId;
 
 use super::names::{check_kind, check_namespace};
-use super::streams::{StreamStarted, outbound, pump_watch};
+use super::streams::{Pump, StreamStarted};
 use super::{KindFacts, Kube};
 
 #[derive(Debug, Clone)]
@@ -98,7 +98,7 @@ impl Action for K8sWatch {
     ) -> Result<StreamStarted, ActionError> {
         let cluster = self.kube.cluster(context).await?;
         let kind = self.kube.kind(context, &cluster, &params.kind).await?;
-        let outbound = outbound(context, params.stream)?;
+        let pump = Pump::open(context, params.stream)?;
 
         let request = WatchRequest {
             namespaces: Namespaces::from_request(params.namespace, params.all_namespaces),
@@ -110,7 +110,7 @@ impl Action for K8sWatch {
         self.kube
             .streams()
             .start(context, Self::ID, about, move |stop| async move {
-                let ended = pump_watch(watch, outbound, stop).await;
+                let ended = pump.run(watch, stop).await;
                 drop(cluster);
                 ended
             });
