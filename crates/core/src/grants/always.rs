@@ -10,6 +10,7 @@ use crate::CoreError;
 use crate::access::AccessRequest;
 use crate::blocking::blocking;
 use crate::locked::locked;
+use crate::log::log;
 use crate::state::{NewGrant, State, StoredGrant};
 
 type Kept = BTreeMap<GrantId, (StoredGrant, StandingGrant)>;
@@ -35,7 +36,7 @@ impl AlwaysGrants {
                 Some(grant) => {
                     kept.insert(grant.id, (stored, grant));
                 }
-                None => eprintln!("synt-core: grant {id} names an unknown actor; it is ignored"),
+                None => log!("grant {id} names an unknown actor; it is ignored"),
             }
         }
 
@@ -76,7 +77,7 @@ impl AlwaysGrants {
 
     pub async fn revoke(&self, id: GrantId) -> Result<Option<(StandingGrant, usize)>, CoreError> {
         let grants = self.clone();
-        let Some(grant) = blocking(move || grants.forget(id)).await? else {
+        let Some(grant) = blocking::<_, CoreError>(move || grants.forget(id)).await? else {
             return Ok(None);
         };
 
@@ -127,8 +128,8 @@ impl AlwaysGrants {
         let removed = self.lock().remove(&id);
 
         if let Err(error) = self.seal.save(&self.stored()) {
-            eprintln!(
-                "synt-core: the grants could not be sealed after a revocation, so the next start \
+            log!(
+                "the grants could not be sealed after a revocation, so the next start \
                  drops them all: {error}"
             );
         }
@@ -155,8 +156,8 @@ fn sealed_grants(state: &State, seal: &GrantSeal) -> Result<Vec<StoredGrant>, Co
         return Ok(stored);
     }
 
-    eprintln!(
-        "synt-core: the standing grants were changed outside the core, so all {} of them are \
+    log!(
+        "the standing grants were changed outside the core, so all {} of them are \
          dropped; the person will be asked again",
         stored.len()
     );

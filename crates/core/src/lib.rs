@@ -13,6 +13,7 @@ mod idle;
 mod keys;
 mod link;
 mod locked;
+mod log;
 mod login_command;
 mod on_behalf;
 mod parsed_call;

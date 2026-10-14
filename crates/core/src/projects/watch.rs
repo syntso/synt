@@ -8,6 +8,7 @@ use super::project::RESOURCES;
 use super::{Project, ProjectChange};
 use crate::CoreError;
 use crate::locked::locked;
+use crate::log::log;
 
 pub(super) fn watch(
     project: &Arc<Mutex<Project>>,
@@ -50,11 +51,11 @@ fn changed(
     match event {
         Ok(event) if matches!(event.kind, EventKind::Access(_)) => return,
         Ok(_) => {}
-        Err(error) => eprintln!("synt-core: project {}: watching: {error}", project.slug()),
+        Err(error) => log!("project {}: watching: {error}", project.slug()),
     }
 
     for change in project.rescan() {
-        eprintln!("synt-core: project {}: {change}", project.slug());
+        log!("project {}: {change}", project.slug());
 
         let _ = changes.send(ProjectChange {
             project: project.id().to_owned(),

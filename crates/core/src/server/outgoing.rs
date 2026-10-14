@@ -1,3 +1,4 @@
+use crate::log::log;
 use bytes::Bytes;
 use futures_util::SinkExt;
 use synt_platform::LocalStream;
@@ -50,7 +51,7 @@ fn encode(message: &Message, limit: usize) -> Option<Bytes> {
         Ok(body) if body.len() <= limit => return Some(body),
         Ok(_) => "the reply exceeds the frame limit",
         Err(error) => {
-            eprintln!("synt-core: reply: {error}");
+            log!("reply: {error}");
             "the reply cannot be encoded"
         }
     };

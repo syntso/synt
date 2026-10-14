@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::RunbookParams;
-use crate::builtin::blocking::blocking;
+use crate::blocking::blocking;
 use crate::runbooks::{Runbooks, ShellScript};
 
 #[derive(Debug, Clone)]

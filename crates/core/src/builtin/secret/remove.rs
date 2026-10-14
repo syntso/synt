@@ -3,7 +3,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
 use super::name_params::SecretNameParams;
-use crate::builtin::blocking::blocking;
+use crate::blocking::blocking;
 use crate::secrets::{SecretInfo, Secrets};
 
 #[derive(Clone)]

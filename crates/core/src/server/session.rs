@@ -22,6 +22,7 @@ use super::outgoing;
 use crate::broker::Registration;
 use crate::core::Core;
 use crate::link::Link;
+use crate::log::log;
 
 const REQUEST_FRAME_LIMIT: usize = 1024 * 1024;
 const OUTGOING_BACKLOG: usize = 64;
@@ -208,7 +209,7 @@ async fn answer(
 
 fn encoded(value: &impl Serialize, what: &str, refusal: &str) -> Result<Value, RpcError> {
     serde_json::to_value(value).map_err(|error| {
-        eprintln!("synt-core: {what}: {error}");
+        log!("{what}: {error}");
         RpcError::internal(refusal)
     })
 }

@@ -16,7 +16,8 @@ use super::{
     K8sPortForward, K8sPortForwardClose, K8sPortForwardList, K8sRolloutRestart, K8sScale,
     K8sStreamClose, K8sWatch, KindFacts, Reach,
 };
-use crate::builtin::blocking::blocking;
+use crate::CoreError;
+use crate::blocking::blocking;
 use crate::projects::Projects;
 
 #[derive(Debug, Clone)]
@@ -127,7 +128,7 @@ impl Kube {
             .ok_or(ActionError::TargetRequired)?;
         let projects = self.projects.clone();
 
-        let reach = blocking(move || Reach::resolve(&projects, &target)).await?;
+        let reach = blocking::<_, CoreError>(move || Reach::resolve(&projects, &target)).await?;
         reach.check_admitted(context)?;
 
         self.clusters.connect(&reach).await

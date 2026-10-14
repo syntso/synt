@@ -12,6 +12,7 @@ use tokio::sync::mpsc;
 
 use super::{Console, ConsoleOutput, Ending, Origin, SessionId, Terminal, pump};
 use crate::locked::locked;
+use crate::log::log;
 use crate::recorder::{Call, Recorder};
 
 type Open = HashMap<SessionId, Arc<Terminal>>;
@@ -94,8 +95,8 @@ impl Terminals {
             .await;
 
         if let Err(error) = recorded {
-            eprintln!(
-                "synt-core: journal: session {} ended but was not journaled: {error}",
+            log!(
+                "journal: session {} ended but was not journaled: {error}",
                 terminal.id()
             );
         }

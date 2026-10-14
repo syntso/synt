@@ -4,7 +4,8 @@ use synt_journal::ResourceRef;
 use synt_ssh::Pool;
 
 use super::KeyNameParams;
-use crate::builtin::blocking::blocking;
+use crate::CoreError;
+use crate::blocking::blocking;
 use crate::ssh_keys::{KeyInfo, SshKeys};
 
 #[derive(Clone)]
@@ -44,7 +45,7 @@ impl Action for KeyRemove {
         let name = params.key_name()?;
         let keys = self.keys.clone();
 
-        let removed = blocking(move || keys.remove(&name)).await?;
+        let removed = blocking::<_, CoreError>(move || keys.remove(&name)).await?;
 
         self.pool.forget_vault_key(&removed.name);
 

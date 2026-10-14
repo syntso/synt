@@ -15,6 +15,7 @@ use super::{
 };
 use crate::CoreError;
 use crate::locked::locked;
+use crate::log::log;
 use crate::state::State;
 
 type Opened = BTreeMap<String, OpenProject>;
@@ -44,14 +45,13 @@ impl Projects {
 
         for path in projects.state.open_projects()? {
             match projects.open(&path) {
-                Ok(info) => eprintln!(
-                    "synt-core: reopened project {} ({} resources) at {}",
-                    info.slug, info.resources, info.path
+                Ok(info) => log!(
+                    "reopened project {} ({} resources) at {}",
+                    info.slug,
+                    info.resources,
+                    info.path
                 ),
-                Err(error) => eprintln!(
-                    "synt-core: cannot reopen the project at {}: {error}",
-                    path.display()
-                ),
+                Err(error) => log!("cannot reopen the project at {}: {error}", path.display()),
             }
         }
 

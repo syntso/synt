@@ -17,6 +17,7 @@ use crate::access::{AccessRequest, Decision, Gate, Scope};
 use crate::broker::{Broker, risk_level};
 use crate::grants::{GrantId, Hold};
 use crate::link::Link;
+use crate::log::log;
 use crate::on_behalf::OnBehalf;
 use crate::parsed_call::ParsedCall;
 use crate::recorder::{Call, Recorder};
@@ -410,7 +411,7 @@ fn stopped(halt: Option<&CancellationToken>) -> &'static str {
 }
 
 fn unavailable(error: &JournalError) -> RpcError {
-    eprintln!("synt-core: journal: {error}");
+    log!("journal: {error}");
     RpcError::new(ErrorCode::JOURNAL_UNAVAILABLE, "the journal is unavailable")
 }
 

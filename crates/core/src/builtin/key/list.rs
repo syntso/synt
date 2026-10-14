@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use crate::builtin::blocking::blocking;
+use crate::blocking::blocking;
 use crate::ssh_keys::{KeyInfo, SshKeys};
 
 #[derive(Clone)]

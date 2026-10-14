@@ -14,7 +14,8 @@ use zeroize::Zeroizing;
 use super::failure::failure;
 use super::open::OpenDatabase;
 use super::{DbExplain, DbPing, DbQuery, DbSchema, DbTables};
-use crate::builtin::blocking::blocking;
+use crate::CoreError;
+use crate::blocking::blocking;
 use crate::builtin::ssh::{failure as ssh_failure, is_root};
 use crate::projects::{Projects, ResolvedDatabase};
 use crate::secrets::Secrets;
@@ -142,7 +143,7 @@ impl Databases {
     ) -> Result<ResolvedDatabase, ActionError> {
         let projects = self.projects.clone();
         let text = target.as_str().to_owned();
-        let resolved = blocking(move || projects.database(&text)).await?;
+        let resolved = blocking::<_, CoreError>(move || projects.database(&text)).await?;
 
         if resolved.via.as_ref().is_some_and(|via| is_root(via.user()))
             && context.risk() != Risk::Privileged

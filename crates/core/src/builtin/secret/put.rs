@@ -4,7 +4,7 @@ use synt_journal::ResourceRef;
 use zeroize::Zeroizing;
 
 use super::put_params::PutParams;
-use crate::builtin::blocking::blocking;
+use crate::blocking::blocking;
 use crate::secrets::{SecretInfo, SecretName, Secrets};
 
 #[derive(Clone)]

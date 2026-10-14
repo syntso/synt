@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use crate::builtin::blocking::blocking;
+use crate::blocking::blocking;
 use crate::projects::{Projects, ResourceListing};
 
 #[derive(Debug, Clone)]

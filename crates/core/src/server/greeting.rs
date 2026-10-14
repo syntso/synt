@@ -9,6 +9,7 @@ use synt_proto::{
 
 use crate::VERSION;
 use crate::broker::requester;
+use crate::log::log;
 
 const UNVERIFIED_APP: &str = "unverified-app";
 
@@ -98,9 +99,7 @@ async fn app(peer: io::Result<Peer>, apps: &AppCheck) -> Result<Actor, RpcError>
         return Ok(Actor::Person);
     };
 
-    eprintln!(
-        "synt-core: {reason}; it acts as the agent {UNVERIFIED_APP} and cannot answer approvals"
-    );
+    log!("{reason}; it acts as the agent {UNVERIFIED_APP} and cannot answer approvals");
 
     Name::new(UNVERIFIED_APP)
         .map(Actor::Agent)

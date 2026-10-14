@@ -7,7 +7,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_ssh::StoredKey;
 
-use crate::builtin::blocking::blocking;
+use crate::blocking::blocking;
 use crate::ssh_keys::{KeyInfo, KeyName, SshKeys};
 
 #[derive(Clone)]

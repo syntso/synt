@@ -20,6 +20,7 @@ use super::rule::Rule;
 use super::waiting::Waiting;
 use crate::access::{AccessRequest, Decision, Gate, Scope};
 use crate::grants::{AlwaysGrants, GrantId, Hold};
+use crate::log::log;
 
 const PATIENCE: Duration = Duration::from_secs(120);
 
@@ -167,9 +168,7 @@ impl Broker {
         match always.give(request).await {
             Ok(grant) => Decision::Granted(grant),
             Err(error) => {
-                eprintln!(
-                    "synt-core: the grant could not be kept, so the call is approved once: {error}"
-                );
+                log!("the grant could not be kept, so the call is approved once: {error}");
                 Decision::Approved(Scope::Once)
             }
         }

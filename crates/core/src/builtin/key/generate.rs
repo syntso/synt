@@ -6,7 +6,7 @@ use synt_journal::ResourceRef;
 use synt_ssh::StoredKey;
 
 use super::KeyKind;
-use crate::builtin::blocking::blocking;
+use crate::blocking::blocking;
 use crate::ssh_keys::{KeyInfo, KeyName, SshKeys};
 
 const COMMENT_PREFIX: &str = "synt:";

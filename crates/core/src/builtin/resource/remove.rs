@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use crate::builtin::blocking::blocking;
+use crate::blocking::blocking;
 use crate::projects::{Projects, ResourceEntry};
 
 #[derive(Debug, Clone)]
