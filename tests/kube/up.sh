@@ -13,10 +13,17 @@ ssh-keygen -q -t ed25519 -N '' -C synt-kube-tests -f "$run/client_ed25519"
 ssh-keygen -q -t ed25519 -N '' -C bastion -f "$run/bastion/host_ed25519_key"
 cp "$run/client_ed25519.pub" "$run/bastion/authorized_keys"
 
-$compose up --build --detach --force-recreate --wait
+$compose up --build --detach --force-recreate --renew-anon-volumes --wait
 
 for attempt in $(seq 1 120); do
   if [ -s "$run/cluster/k3s.yaml" ] && $kubectl get --raw /readyz > /dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+for attempt in $(seq 1 60); do
+  if [ -n "$($kubectl get nodes --output name 2> /dev/null)" ]; then
     break
   fi
   sleep 1
