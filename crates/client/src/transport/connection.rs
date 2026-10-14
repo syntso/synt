@@ -6,16 +6,16 @@ use futures_util::SinkExt;
 use serde::Serialize;
 use serde_json::Value;
 use synt_proto::{
-    Frame, FrameCodec, FrameError, FrameWriter, Message, Method, Notification, Request, RequestId,
-    StreamId, split_framed,
+    Frame, FrameCodec, FrameWriter, Message, Method, Notification, ProtoError, Request, RequestId,
+    StreamId,
 };
 use tokio::sync::{Mutex, broadcast};
 use tokio::task::JoinHandle;
 
 use super::Duplex;
-use super::Streams;
 use super::pending::Pending;
-use super::reader;
+use super::router::Router;
+use crate::streams::Streams;
 use crate::{ClientError, StreamReceiver};
 
 type Outgoing = FrameWriter<Box<dyn Duplex>>;
@@ -30,27 +30,27 @@ pub(crate) struct Connection {
     streams: Arc<Streams>,
     next_id: AtomicU64,
     next_stream: AtomicU32,
-    reader: JoinHandle<()>,
+    router: JoinHandle<()>,
 }
 
 impl Connection {
     pub(crate) fn open(stream: impl Duplex + 'static) -> Self {
         let stream: Box<dyn Duplex> = Box::new(stream);
-        let (incoming, outgoing) = split_framed(stream, FrameCodec::DEFAULT_LIMIT);
+        let (incoming, outgoing) = FrameCodec::split(stream, FrameCodec::DEFAULT_LIMIT);
 
         let pending = Arc::new(Pending::new());
         let (notifications, _) = broadcast::channel(NOTIFICATION_BACKLOG);
 
         let streams = Arc::new(Streams::new());
 
-        let routed = reader::route(
+        let router = Router::new(
             incoming,
             Arc::clone(&pending),
             notifications.clone(),
             Arc::clone(&streams),
         );
         let notifications = notifications.downgrade();
-        let reader = tokio::spawn(routed);
+        let router = tokio::spawn(router.run());
 
         Self {
             outgoing: Mutex::new(outgoing),
@@ -58,8 +58,8 @@ impl Connection {
             notifications,
             streams,
             next_id: AtomicU64::new(1),
-            next_stream: AtomicU32::new(StreamId::FIRST_OPENED_BY_CLIENT.0),
-            reader,
+            next_stream: AtomicU32::new(StreamId::FIRST_OPENED_BY_CLIENT.get()),
+            router,
         }
     }
 
@@ -91,7 +91,7 @@ impl Connection {
     }
 
     pub(crate) fn open_stream(&self) -> StreamReceiver {
-        let stream = StreamId(self.next_stream.fetch_add(1, Ordering::Relaxed));
+        let stream = StreamId::new(self.next_stream.fetch_add(1, Ordering::Relaxed));
 
         self.streams.claim(stream)
     }
@@ -116,7 +116,7 @@ impl Connection {
     }
 
     fn next_id(&self) -> RequestId {
-        RequestId(self.next_id.fetch_add(1, Ordering::Relaxed))
+        RequestId::new(self.next_id.fetch_add(1, Ordering::Relaxed))
     }
 
     async fn send(&self, frame: Frame) -> Result<(), ClientError> {
@@ -124,7 +124,7 @@ impl Connection {
 
         match sent {
             Ok(()) => Ok(()),
-            Err(FrameError::Io(_)) => {
+            Err(ProtoError::Io(_)) => {
                 self.pending.close();
                 Err(ClientError::Disconnected)
             }
@@ -135,6 +135,6 @@ impl Connection {
 
 impl Drop for Connection {
     fn drop(&mut self) {
-        self.reader.abort();
+        self.router.abort();
     }
 }

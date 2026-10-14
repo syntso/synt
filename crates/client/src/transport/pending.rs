@@ -79,9 +79,9 @@ mod tests {
     #[tokio::test]
     async fn a_response_reaches_its_ticket() {
         let pending = Arc::new(Pending::new());
-        let ticket = pending.register(RequestId(3)).unwrap();
+        let ticket = pending.register(RequestId::new(3)).unwrap();
 
-        pending.resolve(Response::new(Some(RequestId(3)), Ok(json!("pong"))));
+        pending.resolve(Response::new(Some(RequestId::new(3)), Ok(json!("pong"))));
 
         assert_eq!(
             ticket.reply().await.unwrap(),
@@ -93,9 +93,9 @@ mod tests {
     #[test]
     fn responses_nobody_waits_for_are_ignored() {
         let pending = Arc::new(Pending::new());
-        let _ticket = pending.register(RequestId(1)).unwrap();
+        let _ticket = pending.register(RequestId::new(1)).unwrap();
 
-        pending.resolve(Response::new(Some(RequestId(2)), Ok(json!(null))));
+        pending.resolve(Response::new(Some(RequestId::new(2)), Ok(json!(null))));
         pending.resolve(Response::new(None, Ok(json!(null))));
 
         assert_eq!(waiting(&pending), 1);
@@ -104,7 +104,7 @@ mod tests {
     #[test]
     fn a_dropped_ticket_stops_waiting() {
         let pending = Arc::new(Pending::new());
-        let ticket = pending.register(RequestId(1)).unwrap();
+        let ticket = pending.register(RequestId::new(1)).unwrap();
 
         drop(ticket);
 
@@ -114,8 +114,8 @@ mod tests {
     #[tokio::test]
     async fn closing_wakes_every_ticket_with_disconnected() {
         let pending = Arc::new(Pending::new());
-        let first = pending.register(RequestId(1)).unwrap();
-        let second = pending.register(RequestId(2)).unwrap();
+        let first = pending.register(RequestId::new(1)).unwrap();
+        let second = pending.register(RequestId::new(2)).unwrap();
 
         pending.close();
 
@@ -135,7 +135,7 @@ mod tests {
         pending.close();
 
         assert!(matches!(
-            pending.register(RequestId(1)),
+            pending.register(RequestId::new(1)),
             Err(ClientError::Disconnected)
         ));
     }

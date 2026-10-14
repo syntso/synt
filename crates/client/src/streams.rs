@@ -1,3 +1,7 @@
+mod entry;
+mod event;
+mod receiver;
+
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -5,8 +9,10 @@ use synt_proto::StreamId;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 
-use super::StreamEntry;
-use crate::{StreamEvent, StreamReceiver};
+use self::entry::StreamEntry;
+
+pub use event::StreamEvent;
+pub use receiver::StreamReceiver;
 
 const STREAM_BACKLOG: usize = 512;
 const ENDED_UNCLAIMED_LIMIT: usize = 16;
@@ -23,7 +29,7 @@ impl Streams {
     }
 
     pub(crate) fn claim(self: &Arc<Self>, stream: StreamId) -> StreamReceiver {
-        let mut entries = self.lock();
+        let mut entries = self.entries();
 
         let receiver = match entries.remove(&stream) {
             Some(StreamEntry::Unclaimed { sender, receiver }) => {
@@ -44,7 +50,7 @@ impl Streams {
     }
 
     pub(crate) fn release(&self, stream: StreamId) {
-        let mut entries = self.lock();
+        let mut entries = self.entries();
 
         if let Some(entry @ StreamEntry::Claimed(_)) = entries.get_mut(&stream) {
             *entry = StreamEntry::Released;
@@ -52,32 +58,16 @@ impl Streams {
     }
 
     pub(crate) fn deliver(&self, stream: StreamId, event: StreamEvent) {
-        let mut entries = self.lock();
+        let mut entries = self.entries();
+        let entry = entries.entry(stream).or_insert_with(StreamEntry::unclaimed);
 
-        let entry = entries.entry(stream).or_insert_with(|| {
-            let (sender, receiver) = mpsc::channel(STREAM_BACKLOG);
-            StreamEntry::Unclaimed {
-                sender: Some(sender),
-                receiver,
-            }
-        });
-
-        let sent = match entry {
-            StreamEntry::Unclaimed {
-                sender: Some(sender),
-                ..
-            }
-            | StreamEntry::Claimed(sender) => sender.try_send(event),
-            StreamEntry::Unclaimed { sender: None, .. } | StreamEntry::Released => return,
-        };
-
-        if let Err(TrySendError::Full(_)) = sent {
+        if let Some(TrySendError::Full(_)) = entry.send(event) {
             *entry = StreamEntry::Released;
         }
     }
 
     pub(crate) fn end(&self, stream: StreamId) {
-        let mut entries = self.lock();
+        let mut entries = self.entries();
 
         match entries.get_mut(&stream) {
             Some(StreamEntry::Unclaimed { sender, .. }) => {
@@ -92,7 +82,7 @@ impl Streams {
     }
 
     pub(crate) fn close(&self) {
-        let closed: Vec<StreamEntry> = self.lock().drain().map(|(_, entry)| entry).collect();
+        let closed: Vec<StreamEntry> = self.entries().drain().map(|(_, entry)| entry).collect();
         drop(closed);
     }
 
@@ -115,7 +105,7 @@ impl Streams {
         }
     }
 
-    fn lock(&self) -> MutexGuard<'_, HashMap<StreamId, StreamEntry>> {
+    fn entries(&self) -> MutexGuard<'_, HashMap<StreamId, StreamEntry>> {
         self.entries.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }

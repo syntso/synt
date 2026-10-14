@@ -8,7 +8,7 @@ pub struct Transferred {
 }
 
 impl Transferred {
-    pub(super) fn hashed(bytes: u64, hasher: Sha256) -> Self {
+    pub(crate) fn hashed(bytes: u64, hasher: Sha256) -> Self {
         Self {
             bytes,
             sha256: HEXLOWER.encode(&hasher.finalize()),

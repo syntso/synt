@@ -82,10 +82,7 @@ async fn the_core_must_be_named_by_an_absolute_path() {
 
     let refused = place.connect(&Autostart::core().program("synt-core")).await;
 
-    assert!(matches!(
-        refused,
-        Err(ClientError::CoreStart { reason, .. }) if reason.contains("absolute path")
-    ));
+    assert!(matches!(refused, Err(ClientError::CoreNotAbsolute { .. })));
 }
 
 #[tokio::test(flavor = "multi_thread")]

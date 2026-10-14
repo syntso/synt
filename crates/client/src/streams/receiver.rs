@@ -3,8 +3,7 @@ use std::sync::Arc;
 use synt_proto::StreamId;
 use tokio::sync::mpsc;
 
-use crate::StreamEvent;
-use crate::transport::Streams;
+use super::{StreamEvent, Streams};
 
 pub struct StreamReceiver {
     stream: StreamId,
