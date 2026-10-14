@@ -62,10 +62,11 @@ impl<A: Action> Erased for A {
         let shown = Action::inspect(self.as_ref(), target, &mut params)?;
         let risk = Action::risk(self.as_ref(), target, &params);
         let destination = Action::destination(self.as_ref(), target, &params);
+        let finishes_later = Action::finishes_later(self.as_ref(), &params);
 
         let bound = Bound::new(self, params);
         let prepared = Prepared::new(risk, destination, Box::new(bound))
-            .with_finishes_later(A::FINISHES_LATER)
+            .with_finishes_later(finishes_later)
             .with_shown(shown);
 
         Ok(prepared)

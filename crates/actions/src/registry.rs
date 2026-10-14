@@ -97,6 +97,30 @@ mod tests {
         }
     }
 
+    struct Tail;
+
+    #[derive(Deserialize, JsonSchema)]
+    struct TailParams {
+        follow: bool,
+    }
+
+    impl Action for Tail {
+        const ID: &'static str = "test.tail";
+        const TITLE: &'static str = "Read now, or keep reading";
+        const RISK: Risk = Risk::Read;
+
+        type Params = TailParams;
+        type Output = ();
+
+        fn finishes_later(&self, params: &TailParams) -> bool {
+            params.follow
+        }
+
+        async fn run(&self, _context: &Context, _params: TailParams) -> Result<(), ActionError> {
+            Ok(())
+        }
+    }
+
     struct Broken;
 
     impl Action for Broken {
@@ -188,6 +212,22 @@ mod tests {
         let prepared = echo.prepare(None, json!({ "wrong": 1 }));
 
         assert!(matches!(prepared, Err(ActionError::InvalidParams(_))));
+    }
+
+    #[test]
+    fn a_call_can_say_it_finishes_later() {
+        let mut registry = registry();
+        registry.register(Tail).unwrap();
+        let tail = registry.get(&ActionId::new("test.tail").unwrap()).unwrap();
+        let echo = registry.get(&ActionId::new("test.echo").unwrap()).unwrap();
+
+        let following = tail.prepare(None, json!({ "follow": true })).unwrap();
+        let reading = tail.prepare(None, json!({ "follow": false })).unwrap();
+        let echoing = echo.prepare(None, json!({ "text": "hi" })).unwrap();
+
+        assert!(following.finishes_later());
+        assert!(!reading.finishes_later());
+        assert!(!echoing.finishes_later());
     }
 
     #[test]
