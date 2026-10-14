@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 serde_json = "1.0.154"
-synt-extension-api = { path = "../../../../extension-api" }
+synt-extension-api = { git = "https://github.com/syntso/extension-api", rev = "1893f0c14685819bc243ea2f0bf4044c210c7dc1" }
 
 [workspace]
 

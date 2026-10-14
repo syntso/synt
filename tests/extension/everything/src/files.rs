@@ -1,6 +1,6 @@
+use synt_extension_api::Error;
 use synt_extension_api::files::{self, Access};
 use synt_extension_api::serde_json::{Value, json};
-use synt_extension_api::Error;
 
 use crate::params::Params;
 

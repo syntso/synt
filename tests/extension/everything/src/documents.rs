@@ -1,6 +1,6 @@
+use synt_extension_api::Error;
 use synt_extension_api::documents::{self, DocumentInfo};
 use synt_extension_api::serde_json::{Value, json};
-use synt_extension_api::Error;
 
 use crate::params::Params;
 

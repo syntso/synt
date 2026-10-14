@@ -14,8 +14,8 @@ pub fn answer(panel: &str, message: &str) -> Result<String, Error> {
         return Err(Error::new("unknown_panel", panel));
     }
 
-    let message: Value =
-        serde_json::from_str(message).map_err(|error| Error::new("invalid_message", error.to_string()))?;
+    let message: Value = serde_json::from_str(message)
+        .map_err(|error| Error::new("invalid_message", error.to_string()))?;
     let pong = reach::ping()?;
 
     Ok(json!({ "echo": message, "pong": pong }).to_string())

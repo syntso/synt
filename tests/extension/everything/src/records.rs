@@ -15,7 +15,8 @@ pub fn remember(params: &Params) -> Result<Value, Error> {
 }
 
 pub fn recall(params: &Params) -> Result<Value, Error> {
-    let found = storage::get(params.text("key")?).map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
+    let found =
+        storage::get(params.text("key")?).map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
 
     Ok(json!({ "value": found }))
 }

@@ -8,7 +8,10 @@ const ACTIONS: [(&str, &str); 17] = [
     ("every.recall", "Read a value from storage"),
     ("every.arm", "Set a timer"),
     ("every.disarm", "Clear a timer"),
-    ("every.heard", "Report what events, timers and the start left in storage"),
+    (
+        "every.heard",
+        "Report what events, timers and the start left in storage",
+    ),
     ("every.write", "Write a note document"),
     ("every.read", "Read a note document"),
     ("every.list", "List the note documents"),
@@ -23,6 +26,8 @@ const ACTIONS: [(&str, &str); 17] = [
 pub fn all() -> Vec<ActionInfo> {
     ACTIONS
         .iter()
-        .map(|(id, title)| ActionInfo::new(*id, *title, Risk::Read).params_schema(r#"{"type":"object"}"#))
+        .map(|(id, title)| {
+            ActionInfo::new(*id, *title, Risk::Read).params_schema(r#"{"type":"object"}"#)
+        })
         .collect()
 }

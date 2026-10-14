@@ -1,6 +1,11 @@
 use synt_extension_api::Error;
 
-pub fn lines(kind: &str, _base: Option<&[u8]>, ours: &[u8], theirs: &[u8]) -> Result<Vec<u8>, Error> {
+pub fn lines(
+    kind: &str,
+    _base: Option<&[u8]>,
+    ours: &[u8],
+    theirs: &[u8],
+) -> Result<Vec<u8>, Error> {
     if kind != "ext.every.note" {
         return Err(Error::new("unknown_kind", kind));
     }

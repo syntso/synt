@@ -181,6 +181,7 @@ dependencies = [
 [[package]]
 name = "synt-extension-api"
 version = "0.2.0"
+source = "git+https://github.com/syntso/extension-api?rev=1893f0c14685819bc243ea2f0bf4044c210c7dc1#1893f0c14685819bc243ea2f0bf4044c210c7dc1"
 dependencies = [
  "serde_json",
  "thiserror",

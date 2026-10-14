@@ -4,8 +4,8 @@ mod files;
 mod merge;
 mod panel;
 mod params;
-mod records;
 mod reach;
+mod records;
 mod views;
 
 use synt_extension_api::{ActionInfo, Error, Event, Extension, register_extension};
@@ -70,7 +70,12 @@ impl Extension for Everything {
         records::beat(name)
     }
 
-    fn merge(kind: &str, base: Option<&[u8]>, ours: &[u8], theirs: &[u8]) -> Result<Vec<u8>, Error> {
+    fn merge(
+        kind: &str,
+        base: Option<&[u8]>,
+        ours: &[u8],
+        theirs: &[u8],
+    ) -> Result<Vec<u8>, Error> {
         merge::lines(kind, base, ours, theirs)
     }
 }
