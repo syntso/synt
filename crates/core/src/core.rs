@@ -4,7 +4,9 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use synt_actions::{ActionError, Completed, Context, Description, Handle, Prepared, Registry};
-use synt_journal::{Actor, EventKind, JournalError, JournalWriter, NewEvent, ResourceRef, Seq};
+use synt_journal::{
+    ActionId, Actor, EventKind, JournalError, JournalWriter, NewEvent, ResourceRef, Seq,
+};
 use synt_proto::{
     ActionCall, ActionDescription, ActionOutcome, ApprovalAnswer, ErrorCode, RequestSeq, RpcError,
 };
@@ -24,6 +26,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const STOP_GRACE: Duration = Duration::from_secs(10);
 const REVOKED: &str = "stopped: the standing grant this call used was revoked";
+const HALTED: &str = "stopped: the work this call belongs to was stopped";
 
 pub struct Core {
     registry: Registry,
@@ -71,6 +74,7 @@ impl Core {
         link: &Arc<Link>,
     ) -> Result<ActionOutcome, RpcError> {
         let parent = origin.map(|origin| origin.request);
+        let halt = origin.and_then(|origin| origin.stop);
         let ParsedCall {
             action,
             handle,
@@ -100,11 +104,13 @@ impl Core {
             target: call.target,
             destination: prepared.destination(),
             params: prepared.shown().unwrap_or(&shown_params),
+            run_approved: origin.is_some_and(|origin| origin.approved),
             departed,
         };
         let (request, grant) = self.admit(&call, request, &access).await?;
 
-        self.perform(&call, (request, grant), prepared, link).await
+        self.perform(&call, (request, grant), prepared, (link, halt))
+            .await
     }
 
     pub(crate) fn describe(&self, actor: &Actor) -> Vec<ActionDescription> {
@@ -128,6 +134,10 @@ impl Core {
 
     pub(crate) fn broker(&self) -> &Broker {
         &self.broker
+    }
+
+    pub(crate) fn action(&self, id: &ActionId) -> Option<Handle> {
+        self.registry.get(id)
     }
 
     async fn admit(
@@ -198,20 +208,20 @@ impl Core {
         call: &Call<'_>,
         (request, grant): (Seq, Option<GrantId>),
         prepared: Prepared,
-        link: &Arc<Link>,
+        (link, halt): (&Arc<Link>, Option<&CancellationToken>),
     ) -> Result<ActionOutcome, RpcError> {
         let finishes_later = prepared.finishes_later();
-        let stop = CancellationToken::new();
+        let stop = halt.map_or_else(CancellationToken::new, CancellationToken::child_token);
         let hold = grant.and_then(|grant| self.broker.hold(grant, &stop));
 
         if stop.is_cancelled() {
-            let error = ActionError::failed(REVOKED);
+            let error = ActionError::failed(stopped(halt));
             return Err(self.conclude(request, failed(call, failure(&error))).await);
         }
 
         let context = context(call, request, &prepared, link, &stop, hold);
 
-        let completed = match run_isolated(prepared, context, &stop).await {
+        let completed = match run_isolated(prepared, context, (&stop, halt)).await {
             Ok(completed) => completed,
             Err(error) => return Err(self.conclude(request, failed(call, failure(&error))).await),
         };
@@ -361,7 +371,7 @@ async fn prepare_blocking(
 async fn run_isolated(
     prepared: Prepared,
     context: Context,
-    stop: &CancellationToken,
+    (stop, halt): (&CancellationToken, Option<&CancellationToken>),
 ) -> Result<Completed, ActionError> {
     let mut running = tokio::spawn(async move { prepared.run(&context).await });
 
@@ -377,7 +387,14 @@ async fn run_isolated(
         running.abort();
     }
 
-    Err(ActionError::failed(REVOKED))
+    Err(ActionError::failed(stopped(halt)))
+}
+
+fn stopped(halt: Option<&CancellationToken>) -> &'static str {
+    match halt {
+        Some(halt) if halt.is_cancelled() => HALTED,
+        _ => REVOKED,
+    }
 }
 
 fn unavailable(error: &JournalError) -> RpcError {

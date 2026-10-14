@@ -6,4 +6,5 @@ pub(crate) enum Scope {
     Once,
     UntilRestart,
     Always,
+    Run,
 }

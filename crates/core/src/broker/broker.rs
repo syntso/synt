@@ -185,6 +185,7 @@ impl Gate for Broker {
     fn settled(&self, request: &AccessRequest<'_>) -> Option<Decision> {
         match Rule::for_request(request) {
             Rule::Allow => Some(Decision::Allow),
+            Rule::ApprovedWithRun => Some(Decision::Approved(Scope::Run)),
             Rule::Ask { grantable: true } => self.standing(request),
             Rule::Ask { grantable: false } => None,
         }
@@ -193,6 +194,7 @@ impl Gate for Broker {
     async fn decide(&self, request: &AccessRequest<'_>) -> Decision {
         match Rule::for_request(request) {
             Rule::Allow => Decision::Allow,
+            Rule::ApprovedWithRun => Decision::Approved(Scope::Run),
             Rule::Ask { grantable } => self.ask(request, grantable).await,
         }
     }

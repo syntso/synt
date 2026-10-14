@@ -43,6 +43,8 @@ impl CoreCaller {
         let origin = OnBehalf {
             actor: context.actor(),
             request: context.request(),
+            approved: false,
+            stop: Some(context.stop()),
         };
         let answer = core
             .dispatch_on_behalf(&actor, origin, request, context.stop(), &link)
