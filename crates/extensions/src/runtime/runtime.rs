@@ -2,15 +2,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
-use wasmtime::component::{Component, HasSelf, Linker};
+use wasmtime::component::{Component, HasSelf, InstancePre, Linker};
 use wasmtime::{Config, Engine, Store, Trap, UpdateDeadline};
 
 use super::budget::Budget;
 use super::ticker::Ticker;
-use super::{Compiled, GuestCall, Imports, QuotaSpent, Sandbox, wasi};
+use super::{Compiled, Imports, Instance, QuotaSpent, Sandbox, wasi};
 use crate::ExtensionError;
-use crate::bindings::synt::extension::types::{Action, Error};
-use crate::bindings::{Extension, ExtensionPre};
+use crate::bindings::{v1, v2};
+use crate::manifest::Api;
 
 const FUEL_PER_CALL: u64 = 10_000_000_000;
 const TIME_PER_CALL: Duration = Duration::from_secs(10);
@@ -46,56 +46,32 @@ impl Runtime {
         self
     }
 
-    pub(crate) fn compile(&self, bytes: &[u8]) -> Result<Compiled, ExtensionError> {
+    pub(crate) fn compile(&self, api: Api, bytes: &[u8]) -> Result<Compiled, ExtensionError> {
         let component =
             Component::new(&self.engine, bytes).map_err(|error| component_error(&error))?;
         let instance = self
             .linker
             .instantiate_pre(&component)
             .map_err(|error| component_error(&error))?;
-        let pre = ExtensionPre::new(instance).map_err(|error| component_error(&error))?;
 
-        Ok(Compiled::new(pre))
-    }
-
-    pub(crate) fn describe(
-        &self,
-        compiled: &Compiled,
-        imports: Box<dyn Imports>,
-    ) -> Result<Vec<Action>, ExtensionError> {
-        let stop = CancellationToken::new();
-
-        self.enter(compiled, imports, stop, |store, guest| {
-            guest.call_describe(store)
+        prepared(api, instance).map_err(|error| {
+            ExtensionError::Component(format!(
+                "the component is not an extension for api {api}: {error:#}"
+            ))
         })
     }
 
-    pub(crate) fn run(
-        &self,
-        compiled: &Compiled,
-        imports: Box<dyn Imports>,
-        call: &GuestCall,
-        stop: CancellationToken,
-    ) -> Result<Result<String, Error>, ExtensionError> {
-        self.enter(compiled, imports, stop, |store, guest| {
-            guest.call_run(store, &call.action, call.target.as_deref(), &call.params)
-        })
-    }
-
-    fn enter<T>(
+    pub(crate) fn enter<T>(
         &self,
         compiled: &Compiled,
         imports: Box<dyn Imports>,
         stop: CancellationToken,
-        work: impl FnOnce(&mut Store<Sandbox>, &Extension) -> wasmtime::Result<T>,
+        work: impl FnOnce(&mut Store<Sandbox>, &Instance) -> wasmtime::Result<T>,
     ) -> Result<T, ExtensionError> {
         let budget = Budget::new(self.time, stop);
         let mut store = self.store(Sandbox::new(budget, imports))?;
 
-        let entered = compiled
-            .pre()
-            .instantiate(&mut store)
-            .and_then(|guest| work(&mut store, &guest));
+        let entered = instantiate(compiled, &mut store).and_then(|guest| work(&mut store, &guest));
 
         entered.map_err(|error| failure(&error, store.data().budget()))
     }
@@ -122,6 +98,22 @@ impl Runtime {
     }
 }
 
+fn prepared(api: Api, instance: InstancePre<Sandbox>) -> wasmtime::Result<Compiled> {
+    match api {
+        Api::V0_1 => v1::ExtensionPre::new(instance).map(Compiled::V1),
+        Api::V0_2 => v2::ExtensionPre::new(instance).map(Compiled::V2),
+    }
+}
+
+fn instantiate(compiled: &Compiled, store: &mut Store<Sandbox>) -> wasmtime::Result<Instance> {
+    match compiled {
+        Compiled::V1(pre) => pre.instantiate(store).map(Instance::V1),
+        Compiled::V2(pre) => pre
+            .instantiate(store)
+            .map(|guest| Instance::V2(Box::new(guest))),
+    }
+}
+
 fn config() -> Config {
     let mut config = Config::new();
 
@@ -136,7 +128,9 @@ fn linker(engine: &Engine) -> Result<Linker<Sandbox>, ExtensionError> {
     let mut linker = Linker::new(engine);
 
     wasi::add_to_linker(&mut linker).map_err(|error| component_error(&error))?;
-    Extension::add_to_linker::<Sandbox, HasSelf<Sandbox>>(&mut linker, |sandbox| sandbox)
+    v1::Extension::add_to_linker::<Sandbox, HasSelf<Sandbox>>(&mut linker, |sandbox| sandbox)
+        .map_err(|error| component_error(&error))?;
+    v2::Extension::add_to_linker::<Sandbox, HasSelf<Sandbox>>(&mut linker, |sandbox| sandbox)
         .map_err(|error| component_error(&error))?;
 
     Ok(linker)
