@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use super::redis_command::RedisCommand;
 use super::sql::SqlText;
-use crate::{Effect, Engine};
+use crate::{Access, Effect, Engine};
 
 pub(super) const UNPARSABLE: &str = "unparsable";
 const SEVERAL: &str = "several statements";
@@ -25,6 +25,14 @@ impl Classification {
 
     pub fn is_read(&self) -> bool {
         self.effect == Effect::Read
+    }
+
+    pub fn access(&self) -> Access {
+        if self.is_read() {
+            Access::ReadOnly
+        } else {
+            Access::ReadWrite
+        }
     }
 
     pub fn is_one_statement(&self) -> bool {
@@ -54,7 +62,19 @@ impl Classification {
 #[cfg(test)]
 mod tests {
     use super::Classification;
-    use crate::Engine;
+    use crate::{Access, Engine};
+
+    #[test]
+    fn only_reads_run_read_only() {
+        assert_eq!(
+            Classification::of_sql(Engine::Postgres, "SELECT 1").access(),
+            Access::ReadOnly
+        );
+        assert_eq!(
+            Classification::of_command(&["SET", "k", "v"]).access(),
+            Access::ReadWrite
+        );
+    }
 
     #[test]
     fn only_a_single_parsed_statement_is_one_statement() {
