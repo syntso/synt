@@ -25,6 +25,7 @@ sha2.workspace = true
 synt-actions.workspace = true
 synt-extensions.workspace = true
 synt-journal.workspace = true
+synt-kube.workspace = true
 synt-platform.workspace = true
 synt-proto.workspace = true
 synt-ssh.workspace = true

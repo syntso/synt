@@ -11,7 +11,7 @@ pub(crate) fn login_risk(
     target: Option<&ResourceRef>,
     declared: Risk,
 ) -> Risk {
-    if logs_in_as_root(projects, target) {
+    if target_logs_in_as_root(projects, target) {
         return Risk::Privileged;
     }
 
@@ -32,10 +32,18 @@ pub(crate) async fn reach_host(
     let host = context.target().ok_or(ActionError::TargetRequired)?;
     let resolved = resolve_any(projects, host.as_str()).await?;
 
-    let Resolved::Host(target) = &resolved else {
-        return Err(ActionError::failed(format!(
-            "{host} is a tunnel, not a host; open it with tunnel.open"
-        )));
+    let target = match &resolved {
+        Resolved::Host(target) => target,
+        Resolved::Tunnel { .. } => {
+            return Err(ActionError::failed(format!(
+                "{host} is a tunnel, not a host; open it with tunnel.open"
+            )));
+        }
+        Resolved::Cluster { .. } => {
+            return Err(ActionError::failed(format!(
+                "{host} is a cluster, not a host; reach it with the k8s actions"
+            )));
+        }
     };
 
     check_reach(projects, context, &resolved)?;
@@ -50,7 +58,7 @@ pub(crate) fn check_reach(
 ) -> Result<(), ActionError> {
     let host = context.target().ok_or(ActionError::TargetRequired)?;
 
-    if is_root(resolved.host().user()) && context.risk() != Risk::Privileged {
+    if logs_in_as_root(resolved) && context.risk() != Risk::Privileged {
         return Err(hidden_root(host));
     }
 
@@ -70,13 +78,17 @@ pub(crate) async fn resolve_any(projects: &Projects, spec: &str) -> Result<Resol
     blocking(move || projects.resolve(&spec)).await
 }
 
-fn logs_in_as_root(projects: &Projects, target: Option<&ResourceRef>) -> bool {
+pub(crate) fn logs_in_as_root(resolved: &Resolved) -> bool {
+    resolved.host().is_some_and(|host| is_root(host.user()))
+}
+
+fn target_logs_in_as_root(projects: &Projects, target: Option<&ResourceRef>) -> bool {
     let Some(target) = target else {
         return false;
     };
 
     match projects.resolve(target.as_str()) {
-        Ok(resolved) => is_root(resolved.host().user()),
+        Ok(resolved) => logs_in_as_root(&resolved),
         Err(_) => true,
     }
 }

@@ -119,6 +119,18 @@ impl Project {
                     local: tunnel.local,
                 })
             }
+            Resource::Cluster(cluster) => {
+                let spec = cluster
+                    .spec()
+                    .map_err(|reason| self.broken(name, &reason))?;
+                let via = cluster
+                    .via
+                    .as_deref()
+                    .map(|via| self.host_target(via))
+                    .transpose()?;
+
+                Ok(Resolved::Cluster { spec, via })
+            }
         }
     }
 
@@ -205,10 +217,12 @@ impl Project {
                 ));
             }
 
-            let Resource::Host(host) = self.find(current)? else {
+            let resource = self.find(current)?;
+            let Resource::Host(host) = resource else {
                 return Err(CoreError::Project(format!(
-                    "{current} in project {} is a tunnel, not a host",
-                    self.slug
+                    "{current} in project {} is a {}, not a host",
+                    self.slug,
+                    resource.kind()
                 )));
             };
 

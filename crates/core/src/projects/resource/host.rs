@@ -4,12 +4,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use synt_ssh::Target;
 
+use crate::projects::local_path::local_path;
 use crate::projects::names::check_name;
 use crate::ssh_keys::KeyName;
 
 const DEFAULT_PORT: u16 = 22;
 const AGENT: &str = "agent";
-const HOME_PREFIX: &str = "~/";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -89,20 +89,12 @@ impl HostResource {
             return Ok(Vec::new());
         }
 
-        if let Some(rest) = identity.strip_prefix(HOME_PREFIX) {
-            let home = synt_platform::home_directory()
-                .map_err(|error| format!("there is no home folder to expand ~ in: {error}"))?;
-            return Ok(vec![home.join(rest)]);
-        }
-
-        let path = PathBuf::from(identity);
-
-        if !path.is_absolute() {
-            return Err(format!(
+        let path = local_path(identity).map_err(|_| {
+            format!(
                 "identity {identity:?} must be \"agent\", \"secret://<name>\", an absolute path, \
                  or a path starting with ~/"
-            ));
-        }
+            )
+        })?;
 
         Ok(vec![path])
     }

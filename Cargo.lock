@@ -3966,6 +3966,7 @@ dependencies = [
  "synt-client",
  "synt-extensions",
  "synt-journal",
+ "synt-kube",
  "synt-platform",
  "synt-proto",
  "synt-ssh",
