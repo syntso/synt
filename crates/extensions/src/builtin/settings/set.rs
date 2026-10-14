@@ -28,14 +28,15 @@ impl Action for ExtensionSettingsSet {
     type Params = SetParams;
     type Output = SettingsValues;
 
-    fn summary(&self, output: &SettingsValues) -> Value {
-        let keys: Vec<&String> = output
-            .values
-            .as_object()
-            .map(|values| values.keys().collect())
-            .unwrap_or_default();
+    fn recorded_params(&self, params: &Value) -> Value {
+        json!({
+            "extension": params.get("extension"),
+            "keys": keys(params.get("values")),
+        })
+    }
 
-        json!({ "extension": output.extension, "keys": keys })
+    fn summary(&self, output: &SettingsValues) -> Value {
+        json!({ "extension": output.extension, "keys": keys(Some(&output.values)) })
     }
 
     async fn run(
@@ -60,4 +61,11 @@ impl Action for ExtensionSettingsSet {
         })
         .await
     }
+}
+
+fn keys(values: Option<&Value>) -> Vec<&String> {
+    values
+        .and_then(Value::as_object)
+        .map(|values| values.keys().collect())
+        .unwrap_or_default()
 }
