@@ -77,6 +77,10 @@ impl Step {
     pub(crate) fn retry(&self) -> Retry {
         self.retry.unwrap_or(Retry::ONCE)
     }
+
+    pub(crate) fn exit_wanted(&self) -> i64 {
+        self.expect.as_ref().map_or(0, Expect::exit_wanted)
+    }
 }
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {
