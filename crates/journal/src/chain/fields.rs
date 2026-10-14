@@ -19,12 +19,12 @@ impl<'a> Fields<'a> {
         Self {
             seq,
             at,
-            actor: event.actor_bytes(),
-            kind: event.kind().code(),
-            call: event.call_seq(),
-            action: event.action_id().as_str(),
-            resource: event.resource_ref().map(ResourceRef::as_str),
-            details: event.payload().bytes(),
+            actor: &event.actor_bytes,
+            kind: event.kind.code(),
+            call: event.call,
+            action: event.action.as_str(),
+            resource: event.resource.as_ref().map(ResourceRef::as_str),
+            details: event.details.bytes(),
         }
     }
 

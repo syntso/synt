@@ -1,4 +1,4 @@
-use super::CodecError;
+use crate::error::CodecError;
 
 pub(crate) struct Decoder<'a> {
     input: &'a [u8],

@@ -1,7 +1,8 @@
 use serde_json::{Map, Number, Value};
 
-use super::DetailsError;
-use crate::codec::{CodecError, Decoder, Encoder};
+use crate::codec::{Decoder, Encoder};
+use crate::error::CodecError;
+use crate::error::DetailsError;
 
 pub(super) const MAX_DEPTH: usize = 32;
 
@@ -145,7 +146,7 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::{MAX_DEPTH, decode, encode};
-    use crate::payload::DetailsError;
+    use crate::error::DetailsError;
 
     fn bytes(value: &Value) -> Vec<u8> {
         let mut out = Vec::new();

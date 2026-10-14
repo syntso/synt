@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use thiserror::Error;
 
-use crate::anchor::KeyStoreError;
+use super::KeyStoreError;
 use crate::chain::JournalId;
 use crate::model::Seq;
 use crate::verify::Verification;

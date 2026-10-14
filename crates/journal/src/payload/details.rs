@@ -1,10 +1,10 @@
 use serde::{Serialize, Serializer};
 use serde_json::Value;
 
-use super::DetailsError;
 use super::encoding::{NULL, decode, encode};
 use super::key_material::contains_key_material;
-use crate::codec::CodecError;
+use crate::error::CodecError;
+use crate::error::DetailsError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Details {
@@ -75,7 +75,7 @@ mod tests {
     use serde_json::json;
 
     use super::Details;
-    use crate::payload::DetailsError;
+    use crate::error::DetailsError;
 
     #[derive(Serialize)]
     struct Exec<'a> {

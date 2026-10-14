@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 
-use super::{Anchors, KeyStore, KeyStoreError};
+use super::{Anchors, KeyStore};
 use crate::chain::{DeviceKey, JournalId};
+use crate::error::KeyStoreError;
 
 #[derive(Debug)]
 pub struct MemoryKeyStore {

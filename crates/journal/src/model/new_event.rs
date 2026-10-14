@@ -3,13 +3,13 @@ use crate::payload::Details;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewEvent {
-    actor: Actor,
-    actor_bytes: Vec<u8>,
-    kind: EventKind,
-    call: Option<Seq>,
-    action: ActionId,
-    resource: Option<ResourceRef>,
-    details: Details,
+    pub(crate) actor: Actor,
+    pub(crate) actor_bytes: Vec<u8>,
+    pub(crate) kind: EventKind,
+    pub(crate) call: Option<Seq>,
+    pub(crate) action: ActionId,
+    pub(crate) resource: Option<ResourceRef>,
+    pub(crate) details: Details,
 }
 
 impl NewEvent {
@@ -51,25 +51,5 @@ impl NewEvent {
 
     pub fn kind(&self) -> EventKind {
         self.kind
-    }
-
-    pub(crate) fn actor_bytes(&self) -> &[u8] {
-        &self.actor_bytes
-    }
-
-    pub(crate) fn call_seq(&self) -> Option<Seq> {
-        self.call
-    }
-
-    pub(crate) fn action_id(&self) -> &ActionId {
-        &self.action
-    }
-
-    pub(crate) fn resource_ref(&self) -> Option<&ResourceRef> {
-        self.resource.as_ref()
-    }
-
-    pub(crate) fn payload(&self) -> &Details {
-        &self.details
     }
 }

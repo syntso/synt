@@ -8,6 +8,7 @@ use crate::chain::{Fields, JournalId, JournalKey, Linker};
 use crate::error::JournalError;
 use crate::lock::WriterLock;
 use crate::model::{Clock, NewEvent, Seq, Timestamp};
+use crate::pruned::Pruned;
 use crate::reader::JournalReader;
 use crate::store::WriteDb;
 use crate::verify::{Damage, Verification, Walk};
@@ -23,12 +24,6 @@ pub struct Journal {
     last_at: Timestamp,
     scratch: Vec<u8>,
     _lock: WriterLock,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Pruned {
-    pub removed: u64,
-    pub floor: Seq,
 }
 
 impl Journal {

@@ -1,23 +1,12 @@
 use std::fmt;
 
 use serde::Serialize;
-use thiserror::Error;
+
+use crate::error::NameError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 #[serde(transparent)]
 pub struct Name(String);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub enum NameError {
-    #[error("name is empty")]
-    Empty,
-
-    #[error("name is {len} bytes, the limit is {}", Name::MAX_LEN)]
-    TooLong { len: usize },
-
-    #[error("name contains a control character")]
-    ControlCharacter,
-}
 
 impl Name {
     pub const MAX_LEN: usize = 256;
@@ -51,7 +40,8 @@ impl fmt::Display for Name {
 
 #[cfg(test)]
 mod tests {
-    use super::{Name, NameError};
+    use super::Name;
+    use crate::error::NameError;
 
     #[test]
     fn accepts_ordinary_names() {

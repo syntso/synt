@@ -1,7 +1,8 @@
 use serde::Serialize;
 
 use super::Name;
-use crate::codec::{CodecError, Decoder, Encoder};
+use crate::codec::{Decoder, Encoder};
+use crate::error::CodecError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[serde(tag = "type", content = "name", rename_all = "snake_case")]
