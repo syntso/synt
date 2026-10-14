@@ -44,6 +44,18 @@ impl Signer {
         bytes: &[u8],
         capabilities: &Value,
     ) -> Value {
+        self.listing_for("0.1", version, id, file, bytes, capabilities)
+    }
+
+    pub fn listing_for(
+        &self,
+        api: &str,
+        version: &str,
+        id: &str,
+        file: &str,
+        bytes: &[u8],
+        capabilities: &Value,
+    ) -> Value {
         let sha256 = sha256(bytes);
         let sealed = json!({
             "id": id,
@@ -59,7 +71,7 @@ impl Signer {
             "id": id,
             "name": "Test",
             "version": version,
-            "api": "0.1",
+            "api": api,
             "description": "Exercises the extension host.",
             "repository": "https://example.com/t",
             "file": file,

@@ -430,3 +430,49 @@ async fn an_edited_manifest_is_not_loaded() {
     assert_eq!(restarted.extensions.load_enabled().unwrap(), 0);
     assert!(restarted.handle("t.echo").is_none());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn installs_a_signed_api_0_2_extension_with_its_contributions() {
+    let signer = Signer::new();
+    let every = fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/extension/everything.wasm"
+    ))
+    .unwrap();
+    let capabilities = json!({ "call": ["core.ping"], "storage": true, "timers": true });
+    let mut listing = signer.listing_for(
+        "0.2",
+        "0.2.0",
+        "every",
+        "every-0.2.0.wasm",
+        &every,
+        &capabilities,
+    );
+    listing["contributes"] = json!({
+        "command": [{ "title": "Ping the core", "action": "every.ping" }],
+        "status": [{ "id": "beat", "title": "Beat", "view": "beat" }]
+    });
+
+    let server = FileServer::start();
+    publish(&server, &signer, &listing, SERIAL, later());
+    server.put("every-0.2.0.wasm", every);
+    let harness =
+        Harness::with_remote(Remote::new(server.address(), &signer.public_key()).unwrap());
+
+    let shown = harness
+        .prepare("extension.install", None, json!({ "id": "every" }))
+        .unwrap()
+        .shown()
+        .cloned()
+        .unwrap();
+    let installed = harness
+        .call("extension.install", None, json!({ "id": "every" }))
+        .await
+        .unwrap();
+
+    assert_eq!(shown["api"], "0.2");
+    assert_eq!(shown["capabilities"], capabilities);
+    assert_eq!(shown["contributes"]["status"][0]["view"], "beat");
+    assert_eq!(installed["api"], "0.2");
+    assert!(harness.handle("every.ping").is_some());
+}
