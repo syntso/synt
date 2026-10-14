@@ -71,3 +71,15 @@ tests/ssh/down.sh
 ```
 
 `up.sh` needs Docker and `ssh-keygen`. It generates fresh client and host keys in `tests/ssh/run/` (ignored by git) and starts two Alpine OpenSSH containers: `bastion`, published on a random port of `127.0.0.1`, and `target`, reachable only from the bastion as `target:22`. Both log in user `synt` with the client key or the vault key and run a TCP echo on port 7000. The tests write their own `known_hosts` into a temporary folder and never touch `~/.ssh`. CI runs them in the `ssh-integration` job.
+
+## Database integration tests
+
+The tests in `crates/db/tests/servers` and `crates/core/tests/database_servers.rs` talk to real PostgreSQL, MySQL, MariaDB and Redis servers. They are ignored by default and skip themselves unless `SYNT_DB_TESTS=1` is set. SQLite needs no server, so its tests always run.
+
+```bash
+tests/db/up.sh
+SYNT_DB_TESTS=1 cargo nextest run -p synt-db -p synt-core --test servers --test database_servers --run-ignored only
+tests/db/down.sh
+```
+
+`up.sh` needs Docker and `openssl`. It writes a throwaway self-signed certificate to `tests/db/run/` (ignored by git), starts the four servers on random ports of `127.0.0.1` with TLS on (Redis also on a separate TLS port), and writes the ports to `tests/db/run/ports`. Every server logs in user `synt` with password `synt-test-password` to database `synt`. When the SSH test servers are already up, `up.sh` also puts PostgreSQL on their inner network as `db-postgres`, so `crates/core/tests/servers` can reach it through two SSH hops (that test needs both switches). CI runs all of this in the `db-integration` job.
