@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used)]
 
 mod connections;
+mod database;
 mod exec;
 mod files;
 mod host_keys;

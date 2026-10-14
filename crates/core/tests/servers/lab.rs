@@ -7,15 +7,16 @@ use serde_json::{Value, json};
 use synt_actions::Registry;
 use synt_client::{Autostart, Client, ClientError};
 use synt_core::{
-    Broker, Core, Files, HostResource, ProjectOpen, Projects, Resource, SessionBlocks,
-    SessionClose, SessionList, SshConnections, SshExec, SshKeys, SshSessionOpen, State, Terminals,
-    TunnelClose, TunnelOpen, TunnelResource,
+    Broker, Core, DatabaseResource, Databases, Files, HostResource, PasswordSet, Passwords,
+    ProjectOpen, Projects, Resource, SessionBlocks, SessionClose, SessionList, SshConnections,
+    SshExec, SshKeys, SshSessionOpen, State, Terminals, TunnelClose, TunnelOpen, TunnelResource,
 };
+use synt_db::{Engine, TlsMode};
 use synt_journal::{Event, EventKind, Filter, Journal, JournalWriter, MemoryKeyStore, Seq};
 use synt_platform::Endpoint;
 use synt_proto::{ActionCall, ActionOutcome, ClientKind, Hello, RequestSeq};
 use synt_ssh::{Pool, Tunnels};
-use synt_test_servers::{SshHome, SshServers};
+use synt_test_servers::{DbServers, SshHome, SshServers};
 use tempfile::TempDir;
 use tokio::time;
 
@@ -26,6 +27,9 @@ pub const BASTION: &str = "@lab/bastion";
 pub const INNER: &str = "@lab/inner";
 pub const VAULTED: &str = "@lab/vaulted";
 pub const ECHO: &str = "@lab/echo";
+pub const POSTGRES: &str = "@lab/postgres";
+pub const POSTGRES_PASSWORD: &str = "lab-postgres";
+const POSTGRES_HOST: &str = "db-postgres";
 
 const PROJECT_ID: &str = "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e";
 const DEFAULT_GRACE: Duration = Duration::from_secs(30);
@@ -158,14 +162,16 @@ impl Lab {
         let journal = journal(directory.path());
         let state = State::open(&directory.path().join("state.sqlite")).unwrap();
         let projects = Projects::start(state.clone()).unwrap();
-        let keys = SshKeys::new(Arc::new(MemoryVault::default()), state);
+        let vault = Arc::new(MemoryVault::default());
+        let keys = SshKeys::new(vault.clone(), state.clone());
+        let passwords = Passwords::new(vault, state);
 
         let pool = Pool::builder()
             .key_vault(Arc::new(keys.clone()))
             .ssh_directory(home.path())
             .grace(grace)
             .build();
-        let registry = registry(&pool, &projects, &journal);
+        let registry = registry(&pool, &projects, &passwords, &journal);
 
         let endpoint = endpoint(directory.path());
         let core = Core::new(registry, journal.clone(), Broker::new());
@@ -192,7 +198,12 @@ impl Lab {
     }
 }
 
-fn registry(pool: &Pool, projects: &Projects, journal: &JournalWriter) -> Registry {
+fn registry(
+    pool: &Pool,
+    projects: &Projects,
+    passwords: &Passwords,
+    journal: &JournalWriter,
+) -> Registry {
     let mut registry = Registry::new();
     let terminals = Terminals::new(journal.clone());
     let tunnels = Tunnels::new(pool.clone());
@@ -225,6 +236,12 @@ fn registry(pool: &Pool, projects: &Projects, journal: &JournalWriter) -> Regist
         .unwrap();
     registry.register(SessionList::new(terminals)).unwrap();
     Files::new(pool.clone(), projects.clone())
+        .register(&mut registry)
+        .unwrap();
+    registry
+        .register(PasswordSet::new(passwords.clone()))
+        .unwrap();
+    Databases::new(pool.clone(), projects.clone(), passwords.clone())
         .register(&mut registry)
         .unwrap();
 
@@ -263,7 +280,7 @@ fn write_project(directory: &Path, servers: &SshServers) -> PathBuf {
     project
 }
 
-fn resources(servers: &SshServers) -> [(&'static str, Resource); 4] {
+fn resources(servers: &SshServers) -> [(&'static str, Resource); 5] {
     let key = servers.client_key().display().to_string();
     let bastion = host(
         SshServers::BASTION_ADDRESS,
@@ -293,7 +310,22 @@ fn resources(servers: &SshServers) -> [(&'static str, Resource); 4] {
             }),
         ),
         ("echo", Resource::Tunnel(echo)),
+        ("postgres", Resource::Database(postgres())),
     ]
+}
+
+fn postgres() -> DatabaseResource {
+    DatabaseResource {
+        engine: Engine::Postgres,
+        host: Some(POSTGRES_HOST.to_owned()),
+        port: None,
+        database: Some(DbServers::DATABASE.to_owned()),
+        path: None,
+        user: Some(DbServers::USER.to_owned()),
+        password: Some(format!("secret://{POSTGRES_PASSWORD}")),
+        via: Some("inner".to_owned()),
+        tls: Some(TlsMode::Require),
+    }
 }
 
 fn host(address: &str, port: Option<u16>, key: &str) -> HostResource {

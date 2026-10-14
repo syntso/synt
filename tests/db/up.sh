@@ -30,6 +30,13 @@ chmod 644 "$run/tls/server.key"
 
 $compose up --detach --force-recreate --wait
 
+ssh_network=synt-ssh-tests_inside
+
+if docker network inspect "$ssh_network" > /dev/null 2>&1; then
+  docker network connect --alias db-postgres "$ssh_network" "$($compose ps --quiet postgres)"
+  echo "postgres also answers as db-postgres:5432 inside the ssh test network"
+fi
+
 port() {
   $compose port "$1" "$2" | sed 's/.*://'
 }
