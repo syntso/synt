@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};
 use std::thread::{self, JoinHandle};
 
-use tokio::sync::oneshot;
+use tokio::sync::{broadcast, oneshot};
 
 use super::request::Request;
 use super::worker::serve;
@@ -12,8 +12,10 @@ use crate::anchor::KeyStore;
 use crate::chain::JournalId;
 use crate::error::JournalError;
 use crate::journal::Journal;
-use crate::model::{NewEvent, Seq};
+use crate::model::{Appended, NewEvent, Seq};
 use crate::reader::JournalReader;
+
+const WATCH_BACKLOG: usize = 1024;
 
 #[derive(Clone)]
 pub struct JournalWriter {
@@ -22,6 +24,7 @@ pub struct JournalWriter {
 
 struct Inner {
     id: JournalId,
+    watchers: broadcast::Sender<Appended>,
     path: PathBuf,
     keys: Arc<dyn KeyStore>,
     requests: Option<Sender<Request>>,
@@ -35,12 +38,15 @@ impl JournalWriter {
         let keys = journal.keys();
 
         let (requests, incoming) = mpsc::channel();
+        let (watchers, _) = broadcast::channel(WATCH_BACKLOG);
+        let announcing = watchers.clone();
         let thread = thread::Builder::new()
             .name(format!("synt-journal-{id}"))
-            .spawn(move || serve(journal, &incoming))?;
+            .spawn(move || serve(journal, &incoming, &announcing))?;
 
         let inner = Inner {
             id,
+            watchers,
             path,
             keys,
             requests: Some(requests),
@@ -82,6 +88,10 @@ impl JournalWriter {
         let answer = self.submit(events, true)?;
 
         answer.await.map_err(|_| JournalError::WriterClosed)?
+    }
+
+    pub fn watch(&self) -> broadcast::Receiver<Appended> {
+        self.inner.watchers.subscribe()
     }
 
     pub fn reader(&self) -> Result<JournalReader, JournalError> {

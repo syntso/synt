@@ -1,5 +1,6 @@
 mod action_id;
 mod actor;
+mod appended;
 mod clock;
 mod event;
 mod kind;
@@ -12,6 +13,7 @@ mod timestamp;
 
 pub use action_id::ActionId;
 pub use actor::Actor;
+pub use appended::Appended;
 pub use clock::Clock;
 pub use event::Event;
 pub use kind::EventKind;

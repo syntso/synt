@@ -28,6 +28,12 @@ impl Link {
         }
     }
 
+    pub(crate) fn detached() -> Self {
+        let (frames, _) = mpsc::channel(1);
+
+        Self::new(frames)
+    }
+
     pub(crate) fn frames(&self) -> mpsc::Sender<Frame> {
         self.frames.clone()
     }

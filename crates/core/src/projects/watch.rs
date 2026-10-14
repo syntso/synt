@@ -2,15 +2,17 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, Weak};
 
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use tokio::sync::broadcast;
 
-use super::Project;
 use super::project::RESOURCES;
+use super::{Project, ProjectChange};
 use crate::CoreError;
 use crate::locked::locked;
 
 pub(super) fn watch(
     project: &Arc<Mutex<Project>>,
     path: &Path,
+    changes: broadcast::Sender<ProjectChange>,
 ) -> Result<RecommendedWatcher, CoreError> {
     let reloaded = Arc::downgrade(project);
     let cannot_watch = |error: notify::Error| {
@@ -18,7 +20,7 @@ pub(super) fn watch(
     };
 
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<Event>| {
-        changed(&reloaded, event);
+        changed(&reloaded, event, &changes);
     })
     .map_err(cannot_watch)?;
 
@@ -34,7 +36,11 @@ pub(super) fn watch(
     Ok(watcher)
 }
 
-fn changed(reloaded: &Weak<Mutex<Project>>, event: notify::Result<Event>) {
+fn changed(
+    reloaded: &Weak<Mutex<Project>>,
+    event: notify::Result<Event>,
+    changes: &broadcast::Sender<ProjectChange>,
+) {
     let Some(project) = reloaded.upgrade() else {
         return;
     };
@@ -49,5 +55,10 @@ fn changed(reloaded: &Weak<Mutex<Project>>, event: notify::Result<Event>) {
 
     for change in project.rescan() {
         eprintln!("synt-core: project {}: {change}", project.slug());
+
+        let _ = changes.send(ProjectChange {
+            project: project.id().to_owned(),
+            change,
+        });
     }
 }

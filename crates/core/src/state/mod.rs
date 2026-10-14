@@ -1,5 +1,6 @@
 mod new_grant;
 mod schema;
+mod secrets;
 mod state;
 mod stored_grant;
 

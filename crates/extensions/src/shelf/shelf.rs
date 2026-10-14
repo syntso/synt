@@ -138,6 +138,8 @@ impl Shelf {
         let transaction = connection.transaction()?;
 
         transaction.execute("DELETE FROM extension_items WHERE extension = ?1", [id])?;
+        transaction.execute("DELETE FROM extension_settings WHERE extension = ?1", [id])?;
+        transaction.execute("DELETE FROM extension_files WHERE extension = ?1", [id])?;
         let removed = transaction.execute("DELETE FROM extensions WHERE id = ?1", [id])?;
 
         transaction.commit()?;
@@ -193,7 +195,7 @@ impl Shelf {
         Ok(())
     }
 
-    fn lock(&self) -> MutexGuard<'_, Connection> {
+    pub(super) fn lock(&self) -> MutexGuard<'_, Connection> {
         self.connection
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -228,11 +230,11 @@ fn installed(row: &Row<'_>) -> rusqlite::Result<Installed> {
     })
 }
 
-fn signed_number(value: u64) -> i64 {
+pub(super) fn signed_number(value: u64) -> i64 {
     i64::try_from(value).unwrap_or(i64::MAX)
 }
 
-fn unsigned_number(value: i64) -> u64 {
+pub(super) fn unsigned_number(value: i64) -> u64 {
     u64::try_from(value).unwrap_or_default()
 }
 

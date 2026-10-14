@@ -9,5 +9,5 @@ use super::{CallFailure, ExtensionCall};
 pub type CallFuture<'a> = Pin<Box<dyn Future<Output = Result<Value, CallFailure>> + Send + 'a>>;
 
 pub trait Caller: Send + Sync + 'static {
-    fn call<'a>(&'a self, call: ExtensionCall, context: &'a Context) -> CallFuture<'a>;
+    fn call<'a>(&'a self, call: ExtensionCall, origin: Option<&'a Context>) -> CallFuture<'a>;
 }

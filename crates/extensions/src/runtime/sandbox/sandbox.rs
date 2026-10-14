@@ -2,11 +2,9 @@ use wasmtime::component::ResourceTable;
 use wasmtime::{StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
-use super::Imports;
-use super::budget::Budget;
-use super::quota::Quota;
-use crate::bindings::ExtensionImports;
-use crate::bindings::synt::extension::types::{self, Error, Level};
+use crate::runtime::Imports;
+use crate::runtime::budget::Budget;
+use crate::runtime::quota::Quota;
 
 const MEMORY_LIMIT: usize = 64 * 1024 * 1024;
 const MEMORIES: usize = 4;
@@ -24,7 +22,7 @@ pub(crate) struct Sandbox {
 }
 
 impl Sandbox {
-    pub(super) fn new(budget: Budget, imports: Box<dyn Imports>) -> Self {
+    pub(in crate::runtime) fn new(budget: Budget, imports: Box<dyn Imports>) -> Self {
         Self {
             wasi: empty_wasi(),
             table: ResourceTable::new(),
@@ -35,12 +33,45 @@ impl Sandbox {
         }
     }
 
-    pub(super) fn limits(&mut self) -> &mut StoreLimits {
+    pub(in crate::runtime) fn limits(&mut self) -> &mut StoreLimits {
         &mut self.limits
     }
 
-    pub(super) fn budget(&self) -> &Budget {
+    pub(in crate::runtime) fn budget(&self) -> &Budget {
         &self.budget
+    }
+
+    pub(super) fn reach_out<T>(
+        &mut self,
+        work: impl FnOnce(&mut dyn Imports) -> T,
+    ) -> wasmtime::Result<T> {
+        self.quota.take_call()?;
+
+        let imports = &mut self.imports;
+        Ok(self.budget.outside(|| work(imports.as_mut())))
+    }
+
+    pub(super) fn keep<T>(
+        &mut self,
+        work: impl FnOnce(&mut dyn Imports) -> T,
+    ) -> wasmtime::Result<T> {
+        self.quota.take_storage()?;
+
+        let imports = &mut self.imports;
+        Ok(self.budget.outside(|| work(imports.as_mut())))
+    }
+
+    pub(super) fn tell<T>(
+        &mut self,
+        work: impl FnOnce(&mut dyn Imports) -> T,
+    ) -> wasmtime::Result<T> {
+        self.quota.take_message()?;
+
+        Ok(work(self.imports.as_mut()))
+    }
+
+    pub(super) fn quietly<T>(&mut self, work: impl FnOnce(&mut dyn Imports) -> T) -> T {
+        work(self.imports.as_mut())
     }
 }
 
@@ -50,42 +81,6 @@ impl WasiView for Sandbox {
             ctx: &mut self.wasi,
             table: &mut self.table,
         }
-    }
-}
-
-impl types::Host for Sandbox {}
-
-impl ExtensionImports for Sandbox {
-    fn call(
-        &mut self,
-        action: String,
-        target: Option<String>,
-        params: String,
-    ) -> wasmtime::Result<Result<String, Error>> {
-        self.quota.take_call()?;
-
-        let imports = &mut self.imports;
-        let answer = self.budget.outside(|| imports.call(action, target, params));
-
-        Ok(answer)
-    }
-
-    fn storage_get(&mut self, key: String) -> wasmtime::Result<Option<Vec<u8>>> {
-        self.quota.take_storage()?;
-
-        Ok(self.imports.storage_get(key))
-    }
-
-    fn storage_set(&mut self, key: String, value: Vec<u8>) -> wasmtime::Result<Result<(), Error>> {
-        self.quota.take_storage()?;
-
-        Ok(self.imports.storage_set(key, value))
-    }
-
-    fn log(&mut self, level: Level, message: String) -> wasmtime::Result<()> {
-        self.imports.log(level, message);
-
-        Ok(())
     }
 }
 

@@ -35,6 +35,12 @@ impl SshKeys {
             )));
         }
 
+        if self.state.secret(name.as_str())?.is_some() {
+            return Err(CoreError::SshKey(format!(
+                "secret://{name} already names a secret; pick another name"
+            )));
+        }
+
         let created_at = u64::try_from(unix_millis()).unwrap_or_default();
         let info = KeyInfo::new(name, key.summary(), created_at);
         self.vault.write(&name.vault_item(), key.private_bytes())?;

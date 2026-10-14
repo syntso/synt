@@ -25,8 +25,8 @@ pub use error::{DetailsError, JournalError, KeyStoreError, NameError};
 pub use filter::Filter;
 pub use journal::Journal;
 pub use model::{
-    ActionId, Actor, Clock, Event, EventKind, Name, NewEvent, ResourceRef, Seq, SystemClock,
-    Timestamp,
+    ActionId, Actor, Appended, Clock, Event, EventKind, Name, NewEvent, ResourceRef, Seq,
+    SystemClock, Timestamp,
 };
 pub use payload::Details;
 pub use pruned::Pruned;

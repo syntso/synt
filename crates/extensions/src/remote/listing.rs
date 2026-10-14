@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use crate::manifest::{Capabilities, Manifest};
+use crate::ExtensionError;
+use crate::manifest::{Api, Capabilities, Contributions, Manifest};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Listing {
@@ -21,19 +22,25 @@ pub struct Listing {
 
     #[serde(default)]
     pub capabilities: Capabilities,
+
+    #[serde(default, skip_serializing_if = "Contributions::is_empty")]
+    pub contributes: Contributions,
 }
 
 impl Listing {
-    pub(crate) fn manifest(&self) -> Manifest {
-        Manifest {
+    pub(crate) fn manifest(&self) -> Result<Manifest, ExtensionError> {
+        let api = Api::parse(&self.api).map_err(ExtensionError::Manifest)?;
+
+        Ok(Manifest {
             id: self.id.clone(),
             name: self.name.clone(),
             version: self.version.clone(),
-            api: self.api.clone(),
+            api,
             description: self.description.clone(),
             repository: self.repository.clone(),
             capabilities: self.capabilities.clone(),
-        }
+            contributes: self.contributes.clone(),
+        })
     }
 
     pub(crate) fn matches(&self, query: &str) -> bool {

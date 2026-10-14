@@ -19,7 +19,7 @@ impl FakeCaller {
 }
 
 impl Caller for FakeCaller {
-    fn call<'a>(&'a self, call: ExtensionCall, _context: &'a Context) -> CallFuture<'a> {
+    fn call<'a>(&'a self, call: ExtensionCall, _origin: Option<&'a Context>) -> CallFuture<'a> {
         Box::pin(async move {
             self.calls
                 .lock()

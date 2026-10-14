@@ -2,9 +2,9 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use ureq::Agent;
-use ureq::tls::{Certificate, RootCerts, TlsConfig, TlsProvider};
 
 use crate::ExtensionError;
+use crate::tls::trusted_tls;
 
 const TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -41,29 +41,9 @@ impl Fetcher {
 }
 
 fn agent() -> Agent {
-    let tls = TlsConfig::builder()
-        .provider(TlsProvider::Rustls)
-        .root_certs(system_roots())
-        .unversioned_rustls_crypto_provider(Arc::new(rustls::crypto::ring::default_provider()))
-        .build();
-
     Agent::config_builder()
-        .tls_config(tls)
+        .tls_config(trusted_tls())
         .timeout_global(Some(TIMEOUT))
         .build()
         .new_agent()
-}
-
-fn system_roots() -> RootCerts {
-    let found = rustls_native_certs::load_native_certs();
-
-    for error in &found.errors {
-        eprintln!("synt-core: extensions: a system certificate was skipped: {error}");
-    }
-
-    found
-        .certs
-        .iter()
-        .map(|certificate| Certificate::from_der(certificate.as_ref()).to_owned())
-        .into()
 }

@@ -1,17 +1,8 @@
 use super::Sandbox;
-use crate::bindings::ExtensionPre;
+use crate::bindings::{v1, v2};
 
 #[derive(Clone)]
-pub(crate) struct Compiled {
-    pre: ExtensionPre<Sandbox>,
-}
-
-impl Compiled {
-    pub(super) fn new(pre: ExtensionPre<Sandbox>) -> Self {
-        Self { pre }
-    }
-
-    pub(super) fn pre(&self) -> &ExtensionPre<Sandbox> {
-        &self.pre
-    }
+pub(crate) enum Compiled {
+    V1(v1::ExtensionPre<Sandbox>),
+    V2(v2::ExtensionPre<Sandbox>),
 }

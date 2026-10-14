@@ -8,12 +8,13 @@ use std::time::Duration;
 
 use synt_actions::{ActionError, Registry};
 use synt_core::{
-    AlwaysGrants, Broker, Core, CoreCaller, Files, GrantList, GrantRevoke, IdleWatch, JournalPage,
-    JournalVerify, KeyGenerate, KeyImport, KeyList, KeyRemove, LocalSessionOpen, LoginCommand,
-    Ping, ProjectClose, ProjectList, ProjectOpen, Projects, ResourceGet, ResourceList, ResourcePut,
-    ResourceRemove, Server, SessionAttach, SessionBlocks, SessionClose, SessionIntegration,
-    SessionList, SessionResize, SshConnections, SshExec, SshKeys, SshSessionOpen, SshWarm, Storage,
-    Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
+    AlwaysGrants, Broker, Core, CoreCaller, CoreScreen, EventFeed, Files, GrantList, GrantRevoke,
+    IdleWatch, JournalPage, JournalVerify, KeyGenerate, KeyImport, KeyList, KeyRemove,
+    LocalSessionOpen, LoginCommand, Ping, ProjectClose, ProjectList, ProjectOpen, Projects,
+    ResourceGet, ResourceList, ResourcePut, ResourceRemove, SecretList, SecretPut, SecretRemove,
+    Secrets, Server, SessionAttach, SessionBlocks, SessionClose, SessionIntegration, SessionList,
+    SessionResize, SshConnections, SshExec, SshKeys, SshSessionOpen, SshWarm, Storage, Terminals,
+    TunnelClose, TunnelList, TunnelOpen, VERSION,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Journal, JournalWriter};
@@ -66,6 +67,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let journal = JournalWriter::spawn(journal)?;
     let state = storage.state()?;
     let keys = SshKeys::new(storage.vault(), state.clone());
+    let secrets = Secrets::new(storage.vault(), state.clone());
     let projects = Projects::start(state.clone())?;
     let always = AlwaysGrants::load(state, storage.grant_seal()?)?;
 
@@ -78,18 +80,29 @@ async fn run() -> Result<(), Box<dyn Error>> {
     register_sessions(&mut registry, &pool, &projects, &terminals)?;
     register_records(&mut registry, &journal, &projects, &always)?;
     register_keys(&mut registry, &keys, &pool)?;
+    register_secrets(&mut registry, &secrets)?;
 
     let extensions = Extensions::open(
         &data,
         &storage.state_path(),
         Runtime::new()?,
         Remote::official()?,
-    )?;
+    )?
+    .with_secrets(Arc::new(secrets))
+    .with_projects(Arc::new(projects.clone()));
     extensions.register(&mut registry)?;
     load_extensions(&extensions).await?;
 
-    let core = Arc::new(Core::new(registry, journal, Broker::with_always(always)));
-    extensions.connect(Arc::new(CoreCaller::new(&core)));
+    let core = Arc::new(Core::new(
+        registry,
+        journal.clone(),
+        Broker::with_always(always),
+    ));
+    extensions.connect(
+        Arc::new(CoreCaller::new(&core)),
+        Arc::new(CoreScreen::new(&core)),
+    );
+    let _feed = EventFeed::start(&extensions, &journal, &projects);
     let server = Server::bind(&endpoint, core, apps()?)?;
 
     eprintln!(
@@ -166,6 +179,12 @@ fn register_keys(registry: &mut Registry, keys: &SshKeys, pool: &Pool) -> Result
     registry.register(KeyGenerate::new(keys.clone()))?;
     registry.register(KeyList::new(keys.clone()))?;
     registry.register(KeyRemove::new(keys.clone(), pool.clone()))
+}
+
+fn register_secrets(registry: &mut Registry, secrets: &Secrets) -> Result<(), ActionError> {
+    registry.register(SecretPut::new(secrets.clone()))?;
+    registry.register(SecretList::new(secrets.clone()))?;
+    registry.register(SecretRemove::new(secrets.clone()))
 }
 
 async fn serve(server: Server, idle: Option<Duration>, terminals: Terminals, tunnels: Tunnels) {

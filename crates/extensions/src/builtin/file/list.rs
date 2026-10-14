@@ -1,0 +1,50 @@
+use serde_json::{Value, json};
+use synt_actions::{Action, ActionError, Context, Risk};
+
+use super::file_entry::FileEntry;
+use crate::Extensions;
+use crate::builtin::blocking::blocking;
+use crate::builtin::extension_params::ExtensionParams;
+
+#[derive(Clone)]
+pub(crate) struct ExtensionFileList {
+    extensions: Extensions,
+}
+
+impl ExtensionFileList {
+    pub(crate) fn new(extensions: Extensions) -> Self {
+        Self { extensions }
+    }
+}
+
+impl Action for ExtensionFileList {
+    const ID: &'static str = "extension.file.list";
+    const TITLE: &'static str = "List the files the person picked for an extension";
+    const RISK: Risk = Risk::Read;
+    const PERSON_ONLY: bool = true;
+
+    type Params = ExtensionParams;
+    type Output = Vec<FileEntry>;
+
+    fn summary(&self, output: &Vec<FileEntry>) -> Value {
+        json!({ "files": output.len() })
+    }
+
+    async fn run(
+        &self,
+        _context: &Context,
+        params: ExtensionParams,
+    ) -> Result<Vec<FileEntry>, ActionError> {
+        let extensions = self.extensions.clone();
+
+        blocking(move || {
+            let picks = extensions.services().shelf.picks(&params.extension)?;
+
+            Ok(picks
+                .into_iter()
+                .map(|picked| FileEntry::new(&params.extension, picked))
+                .collect())
+        })
+        .await
+    }
+}

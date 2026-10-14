@@ -7,34 +7,36 @@ use std::sync::{
 use semver::Version;
 use synt_actions::{ActionError, Catalog, Description, Handle, Registry, Risk};
 use synt_journal::ActionId;
+use tokio::runtime::Handle as RuntimeHandle;
 
 use crate::ExtensionError;
-use crate::builtin::{
-    ExtensionDisable, ExtensionEnable, ExtensionInfo, ExtensionInstall, ExtensionInstallLocal,
-    ExtensionList, ExtensionRemove, ExtensionSearch, SearchHit,
-};
+use crate::builtin::{self, ExtensionInfo, SearchHit};
 use crate::caller::Caller;
-use crate::extension::{CallerCell, Candidate, Guest, Loaded};
+use crate::documents::ProjectFolders;
+use crate::events::ExtensionEvent;
+use crate::extension::{Candidate, Guest, Loaded, Services};
+use crate::http::SecretSource;
 use crate::install_folder::InstallFolder;
 use crate::local_build::LocalBuild;
-use crate::manifest::Manifest;
+use crate::manifest::{FileAccess, Manifest};
 use crate::package::{Package, sha256};
 use crate::remote::{Index, Remote};
 use crate::runtime::Runtime;
+use crate::screen::Screen;
 use crate::shelf::{Installed, Shelf, now};
 
 const FOLDER: &str = "extensions";
 const RESERVED: [&str; 2] = ["core", "extension"];
+const OWN_NAMESPACE: &str = "extension.";
 
 #[derive(Clone)]
 pub struct Extensions {
     runtime: Runtime,
-    shelf: Shelf,
+    services: Arc<Services>,
     folder: InstallFolder,
     remote: Remote,
     reserved: Arc<OnceLock<BTreeSet<String>>>,
     core_risks: Arc<OnceLock<BTreeMap<String, Risk>>>,
-    caller: CallerCell,
     loaded: Arc<RwLock<BTreeMap<String, Arc<Loaded>>>>,
     problems: Arc<RwLock<BTreeMap<String, String>>>,
     changing: Arc<Mutex<()>>,
@@ -49,30 +51,44 @@ impl Extensions {
     ) -> Result<Self, ExtensionError> {
         Ok(Self {
             runtime,
-            shelf: Shelf::open(state)?,
+            services: Arc::new(Services::new(Shelf::open(state)?)),
             folder: InstallFolder::open(data.join(FOLDER))?,
             remote,
             reserved: Arc::new(OnceLock::new()),
             core_risks: Arc::new(OnceLock::new()),
-            caller: Arc::new(OnceLock::new()),
             loaded: Arc::default(),
             problems: Arc::default(),
             changing: Arc::default(),
         })
     }
 
-    pub fn connect(&self, caller: Arc<dyn Caller>) {
-        let _ = self.caller.set(caller);
+    #[must_use]
+    pub fn with_secrets(self, secrets: Arc<dyn SecretSource>) -> Self {
+        let _ = self.services.secrets.set(secrets);
+        self
+    }
+
+    #[must_use]
+    pub fn with_projects(self, folders: Arc<dyn ProjectFolders>) -> Self {
+        let _ = self.services.folders.set(folders);
+        self
+    }
+
+    pub fn connect(&self, caller: Arc<dyn Caller>, screen: Arc<dyn Screen>) {
+        let _ = self.services.caller.set(caller);
+        let _ = self.services.screen.set(screen);
+
+        if let Ok(handle) = RuntimeHandle::try_current() {
+            let _ = self.services.background.set(handle);
+        }
+
+        for loaded in read(&self.loaded).values() {
+            loaded.wake_up();
+        }
     }
 
     pub fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
-        registry.register(ExtensionSearch::new(self.clone()))?;
-        registry.register(ExtensionInstall::new(self.clone()))?;
-        registry.register(ExtensionInstallLocal::new(self.clone()))?;
-        registry.register(ExtensionList::new(self.clone()))?;
-        registry.register(ExtensionEnable::new(self.clone()))?;
-        registry.register(ExtensionDisable::new(self.clone()))?;
-        registry.register(ExtensionRemove::new(self.clone()))?;
+        builtin::register(self, registry)?;
 
         let _ = self.reserved.set(namespaces(registry));
         let _ = self.core_risks.set(callable(registry));
@@ -84,7 +100,7 @@ impl Extensions {
     pub fn load_enabled(&self) -> Result<usize, ExtensionError> {
         let _changing = self.begin_change();
         let enabled = self
-            .shelf
+            .shelf()
             .installed()?
             .into_iter()
             .filter(|entry| entry.enabled);
@@ -102,10 +118,32 @@ impl Extensions {
         Ok(loaded)
     }
 
+    pub fn publish(&self, event: &ExtensionEvent) -> usize {
+        read(&self.loaded)
+            .values()
+            .filter(|loaded| loaded.hear(event))
+            .count()
+    }
+
+    pub(crate) fn loaded(&self, id: &str) -> Result<Arc<Loaded>, ExtensionError> {
+        read(&self.loaded)
+            .get(id)
+            .cloned()
+            .ok_or_else(|| ExtensionError::NotInstalled(id.to_owned()))
+    }
+
+    pub(crate) fn all_loaded(&self) -> Vec<Arc<Loaded>> {
+        read(&self.loaded).values().cloned().collect()
+    }
+
+    pub(crate) fn services(&self) -> &Services {
+        &self.services
+    }
+
     pub(crate) fn search(&self, query: Option<&str>) -> Result<Vec<SearchHit>, ExtensionError> {
         let index = self.fresh_index()?;
         let installed: BTreeMap<String, Installed> = self
-            .shelf
+            .shelf()
             .installed()?
             .into_iter()
             .map(|entry| (entry.id.clone(), entry))
@@ -127,7 +165,7 @@ impl Extensions {
             .find(id)
             .ok_or_else(|| ExtensionError::NotListed(id.to_owned()))?;
 
-        check_not_older(&listing.version, self.shelf.find(id)?.as_ref())?;
+        check_not_older(&listing.version, self.shelf().find(id)?.as_ref())?;
         let package = self.remote.download(listing)?;
 
         self.examine(package)
@@ -145,10 +183,11 @@ impl Extensions {
             package,
             guest,
             specs,
+            ceiling,
             ..
         } = candidate;
 
-        let current = self.shelf.find(&package.manifest.id)?;
+        let current = self.shelf().find(&package.manifest.id)?;
         if package.signed {
             check_not_older(&package.manifest.version, current.as_ref())?;
         }
@@ -165,9 +204,9 @@ impl Extensions {
             enabled: true,
             added_at: now(),
         };
-        self.shelf.record(&installed, clear_items)?;
+        self.shelf().record(&installed, clear_items)?;
 
-        let loaded = Arc::new(Loaded::new(guest, specs, installed));
+        let loaded = Arc::new(Loaded::new(guest, specs, ceiling, installed));
         let info = ExtensionInfo::loaded(&loaded);
         self.put_loaded(loaded);
 
@@ -175,7 +214,7 @@ impl Extensions {
     }
 
     pub(crate) fn list(&self) -> Result<Vec<ExtensionInfo>, ExtensionError> {
-        let installed = self.shelf.installed()?;
+        let installed = self.shelf().installed()?;
 
         Ok(installed
             .into_iter()
@@ -188,7 +227,7 @@ impl Extensions {
         let mut entry = self.installed(id)?;
 
         entry.enabled = true;
-        self.shelf.set_enabled(id, true)?;
+        self.shelf().set_enabled(id, true)?;
 
         if let Err(error) = self.activate(entry.clone()) {
             self.note_problem(id, &error);
@@ -202,7 +241,7 @@ impl Extensions {
         let mut entry = self.installed(id)?;
 
         entry.enabled = false;
-        self.shelf.set_enabled(id, false)?;
+        self.shelf().set_enabled(id, false)?;
         self.take_loaded(id);
 
         Ok(self.info(entry))
@@ -215,7 +254,7 @@ impl Extensions {
 
         self.take_loaded(id);
         self.folder.remove(id)?;
-        self.shelf.forget(id)?;
+        self.shelf().forget(id)?;
 
         Ok(info)
     }
@@ -223,7 +262,7 @@ impl Extensions {
     fn fresh_index(&self) -> Result<Index, ExtensionError> {
         let index = self.remote.index()?;
 
-        self.shelf.accept_index(index.serial)?;
+        self.shelf().accept_index(index.serial)?;
         Ok(index)
     }
 
@@ -231,27 +270,28 @@ impl Extensions {
         let manifest = package.manifest.clone();
         manifest.check()?;
         self.check_reserved(&manifest.id)?;
-        let ceiling = self.call_ceiling(&manifest)?;
-        let replaces = self.shelf.find(&manifest.id)?;
+        let ceiling = self.call_ceiling(&manifest)?.max(reach_ceiling(&manifest));
+        let replaces = self.shelf().find(&manifest.id)?;
 
-        let compiled = self.runtime.compile(&package.wasm)?;
+        let compiled = self.runtime.compile(manifest.api, &package.wasm)?;
         let guest = Arc::new(Guest::new(
             manifest,
             compiled,
             self.runtime.clone(),
-            self.shelf.clone(),
-            Arc::clone(&self.caller),
+            Arc::clone(&self.services),
         ));
-        let specs = guest
+        let specs: Vec<_> = guest
             .describe()?
             .into_iter()
             .map(|spec| spec.at_least(ceiling))
             .collect();
+        check_contributed_actions(&guest)?;
 
         Ok(Candidate {
             package,
             guest,
             specs,
+            ceiling,
             replaces,
         })
     }
@@ -272,7 +312,7 @@ impl Extensions {
         let package = Package::new(manifest, wasm, entry.signed);
         let candidate = self.examine(package)?;
 
-        let loaded = Loaded::new(candidate.guest, candidate.specs, entry);
+        let loaded = Loaded::new(candidate.guest, candidate.specs, candidate.ceiling, entry);
         self.put_loaded(Arc::new(loaded));
 
         Ok(())
@@ -290,7 +330,7 @@ impl Extensions {
     }
 
     fn installed(&self, id: &str) -> Result<Installed, ExtensionError> {
-        self.shelf
+        self.shelf()
             .find(id)?
             .ok_or_else(|| ExtensionError::NotInstalled(id.to_owned()))
     }
@@ -350,6 +390,10 @@ impl Extensions {
         written(&self.problems).remove(id);
     }
 
+    fn shelf(&self) -> &Shelf {
+        &self.services.shelf
+    }
+
     fn begin_change(&self) -> MutexGuard<'_, ()> {
         self.changing.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -375,8 +419,35 @@ fn callable(registry: &Registry) -> BTreeMap<String, Risk> {
         .describe()
         .into_iter()
         .filter(|description| !description.person_only)
+        .filter(|description| !description.id.as_str().starts_with(OWN_NAMESPACE))
         .map(|description| (description.id.as_str().to_owned(), description.risk))
         .collect()
+}
+
+fn reach_ceiling(manifest: &Manifest) -> Risk {
+    let capabilities = &manifest.capabilities;
+    let writes_files = capabilities.files == Some(FileAccess::ReadWrite);
+
+    if capabilities.http.is_empty() && !capabilities.documents && !writes_files {
+        return Risk::Read;
+    }
+
+    Risk::Write
+}
+
+fn check_contributed_actions(guest: &Guest) -> Result<(), ExtensionError> {
+    let missing = guest
+        .manifest()
+        .contributes
+        .actions()
+        .find(|action| !guest.owns_action(action));
+
+    match missing {
+        Some(action) => Err(ExtensionError::Component(format!(
+            "the manifest contributes {action}, which the extension does not describe"
+        ))),
+        None => Ok(()),
+    }
 }
 
 fn check_not_older(listed: &str, installed: Option<&Installed>) -> Result<(), ExtensionError> {

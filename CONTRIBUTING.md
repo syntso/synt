@@ -71,3 +71,15 @@ tests/ssh/down.sh
 ```
 
 `up.sh` needs Docker and `ssh-keygen`. It generates fresh client and host keys in `tests/ssh/run/` (ignored by git) and starts two Alpine OpenSSH containers: `bastion`, published on a random port of `127.0.0.1`, and `target`, reachable only from the bastion as `target:22`. Both log in user `synt` with the client key or the vault key and run a TCP echo on port 7000. The tests write their own `known_hosts` into a temporary folder and never touch `~/.ssh`. CI runs them in the `ssh-integration` job.
+
+## Extension tests
+
+`tests/extension/everything` is an extension built with the [extension SDK](https://github.com/syntso/extension-api) that uses every capability and contribution point of API 0.2. Its build, `tests/extension/everything.wasm`, is committed, so `cargo test --workspace` needs no WebAssembly toolchain. After changing the fixture, build it and commit the new `.wasm`:
+
+```bash
+rustup target add wasm32-wasip2
+cargo build --manifest-path tests/extension/everything/Cargo.toml --target wasm32-wasip2 --release
+cp tests/extension/everything/target/wasm32-wasip2/release/everything.wasm tests/extension/
+```
+
+`SYNT_EVERYTHING_WASM=<path>` makes the tests load another build instead. CI's `extension-fixture` job rebuilds the fixture from source and runs `crates/extensions/tests/{api,install}.rs` and `crates/core/tests/everything` against it.
