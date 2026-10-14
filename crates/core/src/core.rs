@@ -126,6 +126,17 @@ impl Core {
         self.broker.answer(responder, answer)
     }
 
+    pub(crate) async fn dispatch_unprompted(
+        &self,
+        actor: &Actor,
+        call: ActionCall,
+    ) -> Result<ActionOutcome, RpcError> {
+        let departed = CancellationToken::new();
+        let link = Arc::new(Link::detached());
+
+        self.dispatch_for(actor, None, call, &departed, &link).await
+    }
+
     pub(crate) fn broker(&self) -> &Broker {
         &self.broker
     }

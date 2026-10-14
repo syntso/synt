@@ -1,9 +1,10 @@
 use std::sync::{Arc, Weak};
 
+use serde_json::Value;
 use synt_actions::Context;
 use synt_extensions::{CallFailure, CallFuture, Caller, ExtensionCall};
 use synt_journal::Actor;
-use synt_proto::{ActionCall, ErrorCode};
+use synt_proto::{ActionCall, ActionOutcome, ErrorCode, RpcError};
 
 use crate::core::Core;
 use crate::link::Link;
@@ -23,15 +24,12 @@ impl CoreCaller {
     async fn dispatch(
         &self,
         call: ExtensionCall,
-        context: &Context,
-    ) -> Result<serde_json::Value, CallFailure> {
+        origin: Option<&Context>,
+    ) -> Result<Value, CallFailure> {
         let core = self
             .core
             .upgrade()
             .ok_or_else(|| CallFailure::new("unavailable", "the core is stopping"))?;
-        let link = context
-            .connection::<Link>()
-            .ok_or_else(|| CallFailure::new("unavailable", "the call came without a connection"))?;
 
         let actor = Actor::Plugin(call.extension);
         let request = ActionCall {
@@ -40,25 +38,41 @@ impl CoreCaller {
             params: call.params,
         };
 
-        let origin = OnBehalf {
-            actor: context.actor(),
-            request: context.request(),
+        let answer = match origin {
+            Some(origin) => on_behalf(&core, &actor, origin, request).await?,
+            None => core.dispatch_unprompted(&actor, request).await,
         };
-        let answer = core
-            .dispatch_on_behalf(&actor, origin, request, context.stop(), &link)
-            .await;
 
-        match answer {
-            Ok(outcome) => Ok(outcome.value),
-            Err(error) => Err(CallFailure::new(code_name(error.code), error.message)),
-        }
+        answer
+            .map(|outcome| outcome.value)
+            .map_err(|error| CallFailure::new(code_name(error.code), error.message))
     }
 }
 
 impl Caller for CoreCaller {
-    fn call<'a>(&'a self, call: ExtensionCall, context: &'a Context) -> CallFuture<'a> {
-        Box::pin(self.dispatch(call, context))
+    fn call<'a>(&'a self, call: ExtensionCall, origin: Option<&'a Context>) -> CallFuture<'a> {
+        Box::pin(self.dispatch(call, origin))
     }
+}
+
+async fn on_behalf(
+    core: &Core,
+    actor: &Actor,
+    origin: &Context,
+    request: ActionCall,
+) -> Result<Result<ActionOutcome, RpcError>, CallFailure> {
+    let link = origin
+        .connection::<Link>()
+        .ok_or_else(|| CallFailure::new("unavailable", "the call came without a connection"))?;
+
+    let behalf = OnBehalf {
+        actor: origin.actor(),
+        request: origin.request(),
+    };
+
+    Ok(core
+        .dispatch_on_behalf(actor, behalf, request, origin.stop(), &link)
+        .await)
 }
 
 fn code_name(code: ErrorCode) -> &'static str {

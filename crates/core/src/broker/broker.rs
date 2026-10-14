@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use synt_journal::Actor;
 use synt_proto::{
-    ApprovalAnswer, ApprovalDecision, ApprovalId, ErrorCode, Message, Notice, RpcError,
+    ApprovalAnswer, ApprovalDecision, ApprovalId, ErrorCode, Message, Notice, Notification,
+    RpcError,
 };
 use tokio::sync::mpsc;
 use tokio::time;
@@ -70,6 +71,10 @@ impl Broker {
 
     pub(crate) fn register(&self, outgoing: mpsc::Sender<Message>) -> Registration {
         self.apps.join(outgoing)
+    }
+
+    pub(crate) fn tell_apps(&self, notification: &Notification) -> usize {
+        self.apps.broadcast(notification)
     }
 
     pub(crate) fn answer(&self, responder: &Actor, answer: ApprovalAnswer) -> Result<(), RpcError> {

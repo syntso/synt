@@ -8,7 +8,7 @@ use std::sync::Arc;
 use common::{ExecStub, Grounds, Harness, rejection};
 use serde_json::{Value, json};
 use synt_actions::Action;
-use synt_core::{Broker, Core, CoreCaller};
+use synt_core::{Broker, Core, CoreCaller, CoreScreen};
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Actor, EventKind, Filter, Name, ResourceRef, Seq};
 use synt_proto::{ActionCall, ApprovalDecision, ErrorCode, Requester, RiskLevel};
@@ -44,7 +44,10 @@ async fn start() -> Harness {
     extensions.register(&mut registry).unwrap();
 
     let core = Arc::new(Core::new(registry, grounds.journal(), Broker::new()));
-    extensions.connect(Arc::new(CoreCaller::new(&core)));
+    extensions.connect(
+        Arc::new(CoreCaller::new(&core)),
+        Arc::new(CoreScreen::new(&core)),
+    );
 
     let harness = Harness::serve(grounds, core);
     install(&harness).await;
