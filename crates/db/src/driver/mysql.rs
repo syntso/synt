@@ -1,10 +1,17 @@
+mod catalog;
+mod cell;
+mod error;
+mod options;
+mod params;
+mod results;
+
 use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, DriverError, Error, Opts};
 use serde_json::Value;
 
-use super::catalog::Catalog;
-use super::params::params;
-use super::results::collect;
+use self::catalog::Catalog;
+use self::params::params;
+use self::results::collect;
 use crate::driver::{Answer, Driver};
 use crate::{DbError, Engine, Query, Rows, Schema, Server, TableName, TlsMode};
 

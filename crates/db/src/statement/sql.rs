@@ -1,20 +1,24 @@
+mod effects;
+mod risky;
+mod single;
+
 use sqlparser::ast::Statement;
 use sqlparser::parser::Parser;
 
-use super::single::SingleStatement;
+use self::single::SingleStatement;
 use crate::{Classification, Engine};
 
-pub(in crate::statement) struct SqlText<'a> {
+pub(super) struct SqlText<'a> {
     engine: Engine,
     text: &'a str,
 }
 
 impl<'a> SqlText<'a> {
-    pub(in crate::statement) fn new(engine: Engine, text: &'a str) -> Self {
+    pub(super) fn new(engine: Engine, text: &'a str) -> Self {
         Self { engine, text }
     }
 
-    pub(in crate::statement) fn classification(&self) -> Classification {
+    pub(super) fn classification(&self) -> Classification {
         let Some(statements) = self.parse() else {
             return Classification::unparsable();
         };

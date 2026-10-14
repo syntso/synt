@@ -1,3 +1,12 @@
+mod catalog;
+mod cell;
+mod error;
+mod numeric;
+mod options;
+mod row;
+mod session;
+mod text_param;
+
 use std::sync::Arc;
 
 use rustls::ClientConfig;
@@ -7,7 +16,7 @@ use tokio::task::JoinHandle;
 use tokio_postgres::{Client, Config, Connection, NoTls, Transaction};
 use tokio_postgres_rustls::MakeRustlsConnect;
 
-use super::session::Session;
+use self::session::Session;
 use crate::driver::{Answer, Driver};
 use crate::{DbError, Engine, Query, Rows, Schema, Server, TableName};
 

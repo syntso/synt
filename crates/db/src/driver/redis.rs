@@ -1,3 +1,7 @@
+mod error;
+mod options;
+mod reply;
+
 use std::sync::Arc;
 
 use redis::aio::MultiplexedConnection;
@@ -9,7 +13,7 @@ use tokio::task::JoinHandle;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::client::TlsStream;
 
-use super::reply::Reply;
+use self::reply::Reply;
 use crate::driver::{Answer, Driver};
 use crate::paging::Collector;
 use crate::{DbError, Engine, Page, Rows, Server, TlsMode};

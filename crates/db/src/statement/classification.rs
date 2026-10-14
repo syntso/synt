@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use super::redis_command::RedisCommand;
+use super::command::RedisCommand;
 use super::sql::SqlText;
 use crate::{Access, Effect, Engine};
 

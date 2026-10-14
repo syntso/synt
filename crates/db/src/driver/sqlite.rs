@@ -1,3 +1,7 @@
+mod catalog;
+mod cells;
+mod error;
+
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -7,8 +11,8 @@ use rusqlite::{Connection, InterruptHandle, OpenFlags, Row, params_from_iter};
 use serde_json::{Value, json};
 use tokio::task;
 
-use super::catalog::Catalog;
-use super::cells::{from_json, to_json};
+use self::catalog::Catalog;
+use self::cells::{from_json, to_json};
 use crate::driver::{Answer, Driver};
 use crate::paging::Collector;
 use crate::{Access, DbError, Engine, Place, Query, Rows, Schema, Server, TableName};

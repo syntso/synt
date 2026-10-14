@@ -4,7 +4,6 @@ mod catalog;
 mod cells;
 mod database;
 mod driver;
-mod drivers;
 mod effect;
 mod engine;
 mod error;

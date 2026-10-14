@@ -1,7 +1,7 @@
 mod classification;
-mod masking;
-mod redis_command;
+mod masked;
+mod command;
 mod sql;
 
 pub use classification::Classification;
-pub use masking::masked;
+pub use masked::masked;

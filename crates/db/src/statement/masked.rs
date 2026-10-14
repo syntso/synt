@@ -1,5 +1,8 @@
-use super::part::Part;
-use super::scanner::Scanner;
+mod part;
+mod scanner;
+
+use self::part::Part;
+use self::scanner::Scanner;
 
 const MASK: char = '?';
 const LONGEST: usize = 2048;
