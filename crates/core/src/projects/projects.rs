@@ -3,7 +3,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use synt_kube::KubeconfigSource;
+use synt_kube::{ClusterSpec, KubeconfigSource};
 use synt_ssh::Target;
 use tokio::sync::broadcast;
 
@@ -233,9 +233,12 @@ impl Projects {
             return self.personal.resolve(reference.resource);
         }
 
-        self.with_project(reference.project, |project| {
+        let resolved = self.with_project(reference.project, |project| {
             project.resolve(reference.resource)
-        })
+        })?;
+        self.check_kubeconfig(&resolved)?;
+
+        Ok(resolved)
     }
 
     pub(crate) fn resolve_cluster(&self, text: &str) -> Result<Resolved, CoreError> {
@@ -303,6 +306,38 @@ impl Projects {
         format!("@{id}/{}", reference.resource)
     }
 
+    fn check_kubeconfig(&self, resolved: &Resolved) -> Result<(), CoreError> {
+        let Resolved::Cluster {
+            spec:
+                ClusterSpec {
+                    kubeconfig: KubeconfigSource::File(path),
+                    ..
+                },
+            ..
+        } = resolved
+        else {
+            return Ok(());
+        };
+
+        let settled = settled_path(path);
+        let roots: Vec<PathBuf> = self
+            .lock()
+            .values()
+            .map(|open| open.lock().path().to_owned())
+            .collect();
+
+        let Some(root) = roots.iter().find(|root| settled.starts_with(root)) else {
+            return Ok(());
+        };
+
+        Err(CoreError::Project(format!(
+            "the kubeconfig {} lies inside the project folder {}; files there can arrive from \
+             other members through sync, so keep kubeconfigs outside every project folder",
+            path.display(),
+            root.display()
+        )))
+    }
+
     fn with_project<T>(
         &self,
         project: &str,
@@ -328,6 +363,19 @@ impl fmt::Debug for Projects {
             .debug_struct("Projects")
             .field("opened", &slugs)
             .finish_non_exhaustive()
+    }
+}
+
+fn settled_path(path: &Path) -> PathBuf {
+    if let Ok(found) = path.canonicalize() {
+        return found;
+    }
+
+    let parent = path.parent().and_then(|parent| parent.canonicalize().ok());
+
+    match (parent, path.file_name()) {
+        (Some(parent), Some(name)) => parent.join(name),
+        _ => path.to_owned(),
     }
 }
 

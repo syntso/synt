@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use common::{Grounds, Harness, kinds, rejection};
 use serde_json::{Value, json};
-use synt_core::{Broker, Core, Kube, Projects, ResourceList};
+use synt_core::{Broker, Core, Kube, ProjectOpen, Projects, ResourceList};
 use synt_journal::EventKind;
 use synt_kube::KubeconfigSource;
 use synt_proto::{ActionCall, ActionDescription, ErrorCode, RiskLevel};
@@ -57,6 +57,9 @@ fn harness(text: &str) -> Harness {
     let mut registry = grounds.registry();
     registry
         .register(ResourceList::new(projects.clone()))
+        .unwrap();
+    registry
+        .register(ProjectOpen::new(projects.clone()))
         .unwrap();
     Kube::new(Pool::builder().build(), projects, grounds.journal())
         .register(&mut registry)
@@ -317,4 +320,54 @@ async fn closing_what_is_not_open_fails() {
         "{}",
         forward.message
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_kubeconfig_inside_a_project_folder_is_never_read() {
+    let harness = harness(&two_contexts());
+    let app = harness.app().await;
+    let folder = harness.grounds().path().join("shop");
+    let marker = harness.grounds().path().join("ran");
+    let planted = folder.join("extensions/notes/kube.yaml");
+    fs::create_dir_all(planted.parent().unwrap()).unwrap();
+    fs::create_dir_all(folder.join("resources")).unwrap();
+    fs::write(
+        folder.join("synt.toml"),
+        "id = \"5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e\"\n",
+    )
+    .unwrap();
+    fs::write(
+        &planted,
+        format!(
+            "apiVersion: v1\nkind: Config\ncurrent-context: c\nclusters:\n- name: k\n  cluster:\n    \
+             server: {NOWHERE}\nusers:\n- name: u\n  user:\n    exec:\n      apiVersion: \
+             client.authentication.k8s.io/v1\n      command: touch\n      args: [\"{}\"]\n\
+             contexts:\n- name: c\n  context:\n    cluster: k\n    user: u\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
+    fs::write(
+        folder.join("resources/kube.toml"),
+        format!(
+            "kind = \"cluster\"\nkubeconfig = \"{}\"\n",
+            folder.join("extensions/notes/../notes/kube.yaml").display()
+        ),
+    )
+    .unwrap();
+    app.call(ActionCall::new("project.open").params(json!({ "path": folder })))
+        .await
+        .unwrap();
+
+    let refused = rejection(
+        app.call(call("@shop/kube", "k8s.list", json!({ "kind": "pods" })))
+            .await,
+    );
+
+    assert!(
+        refused.message.contains("inside the project folder"),
+        "{}",
+        refused.message
+    );
+    assert!(!marker.exists());
 }
