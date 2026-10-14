@@ -6,7 +6,7 @@ use synt_platform::Vault;
 
 use crate::CoreError;
 use crate::grants::GrantSeal;
-use crate::keys::VaultKeyStore;
+use crate::journal_keys::JournalKeys;
 use crate::state::State;
 
 const JOURNALS: &str = "journals";
@@ -38,7 +38,7 @@ impl Storage {
 
     pub fn journal(&self) -> Result<Journal, CoreError> {
         let path = self.journals.join(JOURNAL_FILE);
-        let keys = Arc::new(VaultKeyStore::new(Arc::clone(&self.vault)));
+        let keys = Arc::new(JournalKeys::new(Arc::clone(&self.vault)));
         let exists = path.try_exists()?;
 
         match self.remembered_id()? {
@@ -68,8 +68,8 @@ impl Storage {
         GrantSeal::open(Arc::clone(&self.vault))
     }
 
-    fn create(&self, path: &Path, keys: Arc<VaultKeyStore>) -> Result<Journal, CoreError> {
-        let id = JournalId::generate().map_err(|error| CoreError::Random(error.to_string()))?;
+    fn create(&self, path: &Path, keys: Arc<JournalKeys>) -> Result<Journal, CoreError> {
+        let id = JournalId::generate()?;
         self.vault.write(JOURNAL_ITEM, id.as_bytes())?;
 
         Ok(JournalBuilder::new(keys).id(id).create(path)?)
@@ -79,7 +79,7 @@ impl Storage {
         &self,
         path: &Path,
         id: JournalId,
-        keys: Arc<VaultKeyStore>,
+        keys: Arc<JournalKeys>,
     ) -> Result<Journal, CoreError> {
         if keys.anchors(id).map_err(JournalError::from)?.is_some() {
             return Err(CoreError::JournalMissing {
