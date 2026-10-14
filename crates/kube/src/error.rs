@@ -3,6 +3,8 @@ use std::time::Duration;
 
 use thiserror::Error;
 
+use crate::ObjectRef;
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum KubeError {
     #[error("kubeconfig {place}: {reason}")]
@@ -42,6 +44,15 @@ pub enum KubeError {
 impl KubeError {
     pub fn invalid(reason: impl Into<String>) -> Self {
         Self::Invalid(reason.into())
+    }
+
+    #[must_use]
+    pub(crate) fn concerning(self, object: &ObjectRef) -> Self {
+        match self {
+            Self::Api(reason) => Self::Api(format!("{object}: {reason}")),
+            Self::NotFound(reason) => Self::NotFound(format!("{object}: {reason}")),
+            other => other,
+        }
     }
 }
 

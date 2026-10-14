@@ -2,6 +2,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::NoticeKind;
+use crate::objects::Fields;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct WatchNotice {
@@ -23,13 +24,7 @@ pub struct WatchNotice {
 
 impl WatchNotice {
     pub(crate) fn about(kind: NoticeKind, object: Value) -> Self {
-        let metadata = object.get("metadata");
-        let field = |name: &str| {
-            metadata
-                .and_then(|metadata| metadata.get(name))
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-        };
+        let field = |name: &str| object.metadata_text(name).map(str::to_owned);
 
         Self {
             kind,

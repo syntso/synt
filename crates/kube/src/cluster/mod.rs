@@ -4,6 +4,7 @@ mod connection;
 mod executing;
 mod forwarding;
 mod logging;
+mod placed;
 mod reading;
 mod watching;
 
