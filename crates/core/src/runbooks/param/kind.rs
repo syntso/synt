@@ -2,10 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-const LONGEST_TEXT: usize = 4096;
-const LONGEST_WORD: usize = 256;
-const WORD_SYMBOLS: &str = "-_.:/@=+,%";
-const WILDCARDS: [char; 2] = ['*', '?'];
+use super::given::Given;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -21,98 +18,27 @@ pub enum ParamKind {
 
 impl ParamKind {
     pub(crate) fn accept(self, value: &Value) -> Result<Value, String> {
+        let given = Given::new(value);
+
         match self {
-            Self::String | Self::Choice => text(value).map(Value::from),
-            Self::Word => word(value).map(Value::from),
-            Self::Integer => integer(value).map(Value::from),
-            Self::Boolean => boolean(value).map(Value::from),
-            Self::Target => target(value).map(Value::from),
-            Self::Path => path(value).map(Value::from),
+            Self::String | Self::Choice => given.text().map(Value::from),
+            Self::Word => given.word().map(Value::from),
+            Self::Integer => given.integer().map(Value::from),
+            Self::Boolean => given.boolean().map(Value::from),
+            Self::Target => given.target().map(Value::from),
+            Self::Path => given.path().map(Value::from),
         }
     }
 
     pub(crate) fn of_literal(text: &str) -> Self {
-        if word(&Value::from(text)).is_ok() {
+        let literal = Value::from(text);
+
+        if Given::new(&literal).word().is_ok() {
             return Self::Word;
         }
 
         Self::String
     }
-}
-
-fn text(value: &Value) -> Result<&str, String> {
-    let Some(text) = value.as_str() else {
-        return Err(format!("expected text, got {value}"));
-    };
-
-    if text.len() > LONGEST_TEXT {
-        return Err(format!("text is longer than {LONGEST_TEXT} bytes"));
-    }
-
-    if text.contains(char::is_control) {
-        return Err("text cannot hold control characters such as new lines".to_owned());
-    }
-
-    Ok(text)
-}
-
-fn word(value: &Value) -> Result<&str, String> {
-    let word = text(value)?;
-    let allowed =
-        |character: char| character.is_ascii_alphanumeric() || WORD_SYMBOLS.contains(character);
-
-    if word.is_empty() || word.len() > LONGEST_WORD || !word.chars().all(allowed) {
-        return Err(format!(
-            "{word:?} is not a word: use 1 to {LONGEST_WORD} letters, digits or {WORD_SYMBOLS}"
-        ));
-    }
-
-    Ok(word)
-}
-
-fn integer(value: &Value) -> Result<i64, String> {
-    let parsed = match value {
-        Value::Number(number) => number.as_i64(),
-        Value::String(text) => text.trim().parse().ok(),
-        _ => None,
-    };
-
-    parsed.ok_or_else(|| format!("expected a whole number, got {value}"))
-}
-
-fn boolean(value: &Value) -> Result<bool, String> {
-    match value {
-        Value::Bool(flag) => Ok(*flag),
-        Value::String(text) if text == "true" => Ok(true),
-        Value::String(text) if text == "false" => Ok(false),
-        _ => Err(format!("expected true or false, got {value}")),
-    }
-}
-
-fn target(value: &Value) -> Result<&str, String> {
-    let target = text(value)?;
-    let plain = !target.is_empty()
-        && !target.starts_with('-')
-        && !target.contains(char::is_whitespace)
-        && !target.contains(WILDCARDS);
-
-    if !plain {
-        return Err(format!(
-            "{target:?} is not a target: name one host, such as @project/api-1 or deploy@10.0.1.12"
-        ));
-    }
-
-    Ok(target)
-}
-
-fn path(value: &Value) -> Result<&str, String> {
-    let path = text(value)?;
-
-    if path.is_empty() {
-        return Err("a path cannot be empty".to_owned());
-    }
-
-    Ok(path)
 }
 
 #[cfg(test)]
