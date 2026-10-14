@@ -4,7 +4,9 @@ use std::sync::Arc;
 use synt_journal::JournalWriter;
 use synt_platform::Vault;
 
-use super::{Engine, ProjectFolders, Syncer};
+use super::Syncer;
+use super::engine::Engine;
+use super::project::ProjectFolders;
 use crate::SyncError;
 use crate::history::History;
 use crate::merge::DocumentMerger;

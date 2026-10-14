@@ -3,7 +3,10 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use synt_journal::JournalWriter;
 use synt_platform::Vault;
 
-use super::{Notes, OpenFolder, ProjectFolders, Reports, Round};
+use super::notes::Notes;
+use super::project::{OpenFolder, ProjectFolders};
+use super::reports::Reports;
+use super::round::Round;
 use crate::SyncError;
 use crate::clock::unix_millis;
 use crate::document::{DocumentPath, ProjectFiles};
