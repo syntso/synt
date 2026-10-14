@@ -4,7 +4,7 @@ use serde_json::{Map, Value};
 use synt_journal::ResourceRef;
 
 use super::DynamicAction;
-use super::dynamic_bound::DynamicBound;
+use super::bound::DynamicBound;
 use crate::erased::Erased;
 use crate::{ActionError, Prepared, Risk};
 
