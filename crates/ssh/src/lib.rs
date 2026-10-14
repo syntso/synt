@@ -9,6 +9,7 @@ mod pool;
 mod session;
 mod sftp;
 mod shell;
+mod stored_key;
 mod target;
 mod tunnel;
 
@@ -20,5 +21,6 @@ pub use pool::{ConnectionState, ConnectionStatus, Lease, Pool};
 pub use session::Algorithms;
 pub use sftp::{Directory, Download, FileEntry, FileKind, FileSessions, Sftp, Upload, WriteMode};
 pub use shell::{Shell, ShellEnd, ShellOutput, TerminalSize};
+pub use stored_key::{KeySummary, KeyVault, StoredKey};
 pub use target::Target;
 pub use tunnel::{Destination, TunnelId, TunnelStatus, Tunnels};

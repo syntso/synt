@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 use synt_ssh::Target;
 
 use crate::projects::names::check_name;
+use crate::ssh_keys::KeyName;
 
 const DEFAULT_PORT: u16 = 22;
 const AGENT: &str = "agent";
-const SECRET_PREFIX: &str = "secret://";
 const HOME_PREFIX: &str = "~/";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -52,6 +52,7 @@ impl HostResource {
             check_name(via).map_err(|reason| format!("via: {reason}"))?;
         }
 
+        self.vault_key()?;
         self.identity_files().map(|_| ())
     }
 
@@ -65,7 +66,18 @@ impl HostResource {
         let target = Target::new(&self.address, self.port.unwrap_or(DEFAULT_PORT), user)
             .with_identity_files(self.identity_files()?);
 
-        Ok(target)
+        match self.vault_key()? {
+            Some(name) => Ok(target.with_vault_key(name.as_str())),
+            None => Ok(target),
+        }
+    }
+
+    fn vault_key(&self) -> Result<Option<KeyName>, String> {
+        let Some(identity) = self.identity.as_deref() else {
+            return Ok(None);
+        };
+
+        KeyName::from_reference(identity).transpose()
     }
 
     fn identity_files(&self) -> Result<Vec<PathBuf>, String> {
@@ -73,15 +85,8 @@ impl HostResource {
             return Ok(Vec::new());
         };
 
-        if identity == AGENT {
+        if identity == AGENT || KeyName::from_reference(identity).is_some() {
             return Ok(Vec::new());
-        }
-
-        if identity.starts_with(SECRET_PREFIX) {
-            return Err(format!(
-                "identity {identity:?}: secret references are not supported yet; \
-                 use \"agent\" or the path of a key file"
-            ));
         }
 
         if let Some(rest) = identity.strip_prefix(HOME_PREFIX) {
@@ -94,7 +99,8 @@ impl HostResource {
 
         if !path.is_absolute() {
             return Err(format!(
-                "identity {identity:?} must be \"agent\", an absolute path, or a path starting with ~/"
+                "identity {identity:?} must be \"agent\", \"secret://<name>\", an absolute path, \
+                 or a path starting with ~/"
             ));
         }
 
@@ -105,4 +111,36 @@ impl HostResource {
 fn is_plain_word(text: &str) -> bool {
     !text.is_empty()
         && !text.contains(|character: char| character.is_whitespace() || character.is_control())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HostResource;
+
+    fn host(identity: &str) -> HostResource {
+        HostResource {
+            address: "203.0.113.7".to_owned(),
+            port: None,
+            user: Some("root".to_owned()),
+            via: None,
+            identity: Some(identity.to_owned()),
+        }
+    }
+
+    #[test]
+    fn a_secret_identity_names_a_vault_key_and_no_files() {
+        let resource = host("secret://night");
+
+        let target = resource.target().expect("target");
+
+        assert!(resource.check().is_ok());
+        assert_eq!(target.vault_key(), Some("night"));
+        assert!(target.identity_files().is_empty());
+    }
+
+    #[test]
+    fn a_secret_identity_with_a_bad_name_is_refused() {
+        assert!(host("secret://../night").check().is_err());
+        assert!(host("secret://").target().is_err());
+    }
 }

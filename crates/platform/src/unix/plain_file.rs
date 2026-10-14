@@ -14,6 +14,13 @@ pub(crate) fn open_no_follow(path: &Path) -> io::Result<File> {
         .open(path)
 }
 
+pub(crate) fn open_without_waiting(path: &Path) -> io::Result<File> {
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(O_NONBLOCK)
+        .open(path)
+}
+
 pub(crate) fn create_new_file(path: &Path) -> io::Result<File> {
     let file = OpenOptions::new()
         .write(true)

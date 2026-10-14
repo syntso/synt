@@ -3,12 +3,12 @@ use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use synt_proto::EndReason;
-use synt_ssh::{Shell, ShellEnd, TerminalSize};
+use synt_ssh::{ShellEnd, TerminalSize};
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
-use super::{Attached, Attachment, Ending, Origin, Screen, SessionId};
+use super::{Attached, Attachment, Block, Console, Ending, Origin, Screen, SessionId, SessionKind};
 use crate::link::Link;
 
 const INPUT_BACKLOG: usize = 256;
@@ -17,7 +17,7 @@ const CLOSE_GRACE: Duration = Duration::from_secs(5);
 pub(crate) struct Terminal {
     id: SessionId,
     origin: Origin,
-    shell: Shell,
+    console: Console,
     input: mpsc::Sender<Bytes>,
     screen: AsyncMutex<Screen>,
     started: Instant,
@@ -31,7 +31,7 @@ impl Terminal {
     pub(super) fn new(
         id: SessionId,
         origin: Origin,
-        shell: Shell,
+        console: Console,
         size: TerminalSize,
     ) -> (Arc<Self>, mpsc::Receiver<Bytes>) {
         let (input, typed) = mpsc::channel(INPUT_BACKLOG);
@@ -39,9 +39,9 @@ impl Terminal {
         let terminal = Arc::new(Self {
             id,
             origin,
-            shell,
+            console,
             input,
-            screen: AsyncMutex::new(Screen::new(size)),
+            screen: AsyncMutex::new(Screen::new(id, size)),
             started: Instant::now(),
             requested_end: Mutex::new(None),
             stop: CancellationToken::new(),
@@ -61,7 +61,11 @@ impl Terminal {
     }
 
     pub(crate) fn host(&self) -> String {
-        self.shell.target().label()
+        self.console.label()
+    }
+
+    pub(crate) fn kind(&self) -> SessionKind {
+        self.console.kind()
     }
 
     pub(crate) fn age(&self) -> Duration {
@@ -74,6 +78,10 @@ impl Terminal {
 
     pub(crate) async fn attached(&self) -> usize {
         self.screen.lock().await.attached()
+    }
+
+    pub(crate) async fn blocks(&self) -> Vec<Block> {
+        self.screen.lock().await.blocks()
     }
 
     pub(crate) async fn attach(&self, link: &Arc<Link>) -> Attached {
@@ -93,10 +101,7 @@ impl Terminal {
     pub(crate) async fn resize(&self, size: TerminalSize) -> Result<(), String> {
         let mut screen = self.screen.lock().await;
 
-        self.shell
-            .resize(size)
-            .await
-            .map_err(|error| error.to_string())?;
+        self.console.resize(size).await?;
         screen.resize(size);
 
         Ok(())
@@ -105,11 +110,11 @@ impl Terminal {
     pub(crate) async fn close(&self, reason: EndReason) -> Option<Ending> {
         self.request_end(reason);
 
-        let hung_up = self.shell.hang_up().await.is_ok();
+        let hung_up = self.console.hang_up().await;
         let ended = hung_up && self.wait_for_end().await;
 
         if !ended {
-            self.shell.close().await;
+            self.console.close().await;
             self.stop.cancel();
             self.finished.cancelled().await;
         }
@@ -132,7 +137,7 @@ impl Terminal {
                 return;
             };
 
-            if self.shell.write(data).await.is_err() {
+            if self.console.write(data).await.is_err() {
                 return;
             }
         }
@@ -148,7 +153,7 @@ impl Terminal {
 
     pub(super) async fn end(&self, end: ShellEnd) -> Ending {
         let mut screen = self.screen.lock().await;
-        let algorithms = self.shell.algorithms();
+        let algorithms = self.console.algorithms();
 
         let ending = Ending {
             session: self.id,
@@ -157,6 +162,7 @@ impl Terminal {
             signal: end.signal,
             duration_ms: milliseconds(self.started.elapsed()),
             output_bytes: screen.output_bytes(),
+            blocks: screen.block_count(),
             kex: algorithms.map(|negotiated| negotiated.kex.clone()),
             cipher: algorithms.map(|negotiated| negotiated.cipher.clone()),
         };

@@ -9,4 +9,6 @@ pub trait Vault: Send + Sync {
     fn read(&self, name: &str) -> Result<Option<Zeroizing<Vec<u8>>>, PlatformError>;
 
     fn write(&self, name: &str, bytes: &[u8]) -> Result<(), PlatformError>;
+
+    fn remove(&self, name: &str) -> Result<(), PlatformError>;
 }

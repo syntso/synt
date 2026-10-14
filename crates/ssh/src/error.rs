@@ -37,6 +37,12 @@ pub enum SshError {
     #[error("key {} is encrypted; add it to ssh-agent with `ssh-add`", path.display())]
     EncryptedKey { path: PathBuf },
 
+    #[error("{reason}")]
+    KeyStore { reason: String },
+
+    #[error("key secret://{name}: {reason}")]
+    VaultKey { name: String, reason: String },
+
     #[error("channel: {0}")]
     Channel(String),
 

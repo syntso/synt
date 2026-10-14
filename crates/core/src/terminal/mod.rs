@@ -1,5 +1,7 @@
 mod attached;
 mod attachment;
+mod blocks;
+mod console;
 mod ending;
 mod origin;
 mod pump;
@@ -11,6 +13,10 @@ mod terminals;
 
 pub(crate) use attached::Attached;
 use attachment::Attachment;
+pub use blocks::Block;
+use blocks::{Blocks, Scanner};
+pub use console::SessionKind;
+pub(crate) use console::{Console, ConsoleOutput};
 pub use ending::Ending;
 pub(crate) use origin::Origin;
 use pump::pump;

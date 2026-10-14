@@ -11,6 +11,7 @@ pub struct Ending {
     pub signal: Option<String>,
     pub duration_ms: u64,
     pub output_bytes: u64,
+    pub blocks: u64,
     pub kex: Option<String>,
     pub cipher: Option<String>,
 }

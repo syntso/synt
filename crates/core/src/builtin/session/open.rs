@@ -1,22 +1,18 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use schemars::JsonSchema;
 use serde::Deserialize;
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
-use synt_proto::EndReason;
-use synt_ssh::{Pool, Shell, ShellOutput, Target, TerminalSize};
+use synt_ssh::{Pool, Shell, Target, TerminalSize};
 use tokio::time;
 
 use super::AttachedSession;
-use super::checks::{connection, terminal_size};
+use super::checks::{connection, term, terminal_size};
+use super::revocation::close_when_revoked;
 use crate::builtin::ssh::{destination, failure, logs_in_as_root, reach_host};
 use crate::projects::Projects;
-use crate::terminal::{Origin, SessionId, Terminal, Terminals};
-
-const DEFAULT_TERM: &str = "xterm-256color";
-const LONGEST_TERM: usize = 64;
+use crate::terminal::{Console, ConsoleOutput, Origin, SessionId, Terminals};
 const CONNECT_LIMIT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone)]
@@ -50,7 +46,7 @@ impl SshSessionOpen {
         target: &Target,
         term: &str,
         size: TerminalSize,
-    ) -> Result<(Shell, ShellOutput), ActionError> {
+    ) -> Result<(Console, ConsoleOutput), ActionError> {
         let lease = time::timeout(CONNECT_LIMIT, self.pool.acquire(target))
             .await
             .map_err(|_| {
@@ -61,9 +57,11 @@ impl SshSessionOpen {
             })?
             .map_err(|error| failure(&error))?;
 
-        Shell::open(lease, term, size)
+        let (shell, output) = Shell::open(lease, term, size)
             .await
-            .map_err(|error| failure(&error))
+            .map_err(|error| failure(&error))?;
+
+        Ok((Console::Remote(shell), ConsoleOutput::Remote(output)))
     }
 }
 
@@ -111,8 +109,9 @@ impl Action for SshSessionOpen {
 
         let id = SessionId::from(context.request());
         let origin = Origin {
+            action: Self::ID,
             actor: context.actor().clone(),
-            target: host.clone(),
+            target: Some(host.clone()),
             request: context.request(),
             risk,
         };
@@ -127,38 +126,4 @@ impl Action for SshSessionOpen {
 
         Ok(AttachedSession::new(id, &attached))
     }
-}
-
-fn close_when_revoked(context: &Context, terminal: Arc<Terminal>) {
-    let Some(hold) = context.hold() else {
-        return;
-    };
-    let stop = context.stop().clone();
-
-    tokio::spawn(async move {
-        tokio::select! {
-            () = stop.cancelled() => {
-                terminal.close(EndReason::Closed).await;
-            }
-            () = terminal.finished() => {}
-        }
-
-        drop(hold);
-    });
-}
-
-fn term(requested: Option<&str>) -> Result<&str, ActionError> {
-    let Some(term) = requested else {
-        return Ok(DEFAULT_TERM);
-    };
-
-    let allowed = |character: char| character.is_ascii_alphanumeric() || "-_.+".contains(character);
-
-    if term.is_empty() || term.len() > LONGEST_TERM || !term.chars().all(allowed) {
-        return Err(ActionError::InvalidParams(format!(
-            "term must be 1 to {LONGEST_TERM} letters, digits or -_.+"
-        )));
-    }
-
-    Ok(term)
 }

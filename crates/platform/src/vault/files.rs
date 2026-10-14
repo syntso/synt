@@ -40,4 +40,12 @@ impl Vault for Files {
             bytes,
         )?)
     }
+
+    fn remove(&self, name: &str) -> Result<(), PlatformError> {
+        match fs::remove_file(self.directory.join(name)) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        }
+    }
 }

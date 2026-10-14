@@ -80,4 +80,12 @@ impl Vault for Keychain {
     fn write(&self, name: &str, bytes: &[u8]) -> Result<(), PlatformError> {
         Ok(set_generic_password_options(bytes, self.options(name))?)
     }
+
+    fn remove(&self, name: &str) -> Result<(), PlatformError> {
+        match delete_generic_password_options(self.options(name)) {
+            Ok(()) => Ok(()),
+            Err(error) if error.code() == ITEM_NOT_FOUND => Ok(()),
+            Err(error) => Err(error.into()),
+        }
+    }
 }

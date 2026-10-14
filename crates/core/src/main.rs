@@ -8,12 +8,14 @@ use std::time::Duration;
 
 use synt_actions::Registry;
 use synt_core::Files;
-use synt_core::{AlwaysGrants, GrantList, GrantRevoke, GrantSeal, Projects, State};
+use synt_core::{AlwaysGrants, GrantList, GrantRevoke, Projects};
 use synt_core::{
     Broker, Core, JournalPage, JournalVerify, Ping, Server, SshConnections, SshExec, SshWarm,
     Storage, VERSION,
 };
 use synt_core::{CoreCaller, IdleWatch, LoginCommand};
+use synt_core::{KeyGenerate, KeyImport, KeyList, KeyRemove, SshKeys};
+use synt_core::{LocalSessionOpen, SessionBlocks, SessionIntegration};
 use synt_core::{
     ProjectClose, ProjectList, ProjectOpen, ResourceGet, ResourceList, ResourcePut, ResourceRemove,
 };
@@ -71,13 +73,17 @@ async fn run() -> Result<(), Box<dyn Error>> {
         None => data_directory()?,
     };
 
-    let (journal, state, seal, state_path) = journal(&data, arguments.weak_vault)?;
+    let (journal, storage) = journal(&data, arguments.weak_vault)?;
     let journal = JournalWriter::spawn(journal)?;
+    let state = storage.state()?;
+    let state_path = storage.state_path();
+    let seal = storage.grant_seal()?;
+    let keys = SshKeys::new(storage.vault(), state.clone());
 
     let projects = Projects::start(state.clone())?;
     let always = AlwaysGrants::load(state, seal)?;
 
-    let pool = Pool::new();
+    let pool = Pool::with_key_vault(Arc::new(keys.clone()));
 
     let mut registry = Registry::new();
     registry.register(Ping)?;
@@ -100,9 +106,12 @@ async fn run() -> Result<(), Box<dyn Error>> {
     registry.register(SessionResize::new(terminals.clone()))?;
     registry.register(SessionClose::new(terminals.clone()))?;
     registry.register(SessionList::new(terminals.clone()))?;
+    registry.register(LocalSessionOpen::new(terminals.clone()))?;
+    registry.register(SessionBlocks::new(terminals.clone()))?;
+    registry.register(SessionIntegration)?;
 
     registry.register(SshWarm::new(pool.clone(), projects.clone()))?;
-    registry.register(SshConnections::new(pool))?;
+    registry.register(SshConnections::new(pool.clone()))?;
     registry.register(JournalPage::new(journal.clone()))?;
     registry.register(JournalVerify::new(journal.clone()))?;
 
@@ -115,6 +124,10 @@ async fn run() -> Result<(), Box<dyn Error>> {
     registry.register(ResourceRemove::new(projects))?;
     registry.register(GrantList::new(always.clone()))?;
     registry.register(GrantRevoke::new(always.clone(), journal.clone()))?;
+    registry.register(KeyImport::new(keys.clone()))?;
+    registry.register(KeyGenerate::new(keys.clone()))?;
+    registry.register(KeyList::new(keys.clone()))?;
+    registry.register(KeyRemove::new(keys, pool))?;
 
     let extensions = Extensions::open(&data, &state_path, Runtime::new()?, Remote::official()?)?;
     extensions.register(&mut registry)?;
@@ -157,10 +170,7 @@ async fn load_extensions(extensions: &Extensions) -> Result<(), Box<dyn Error>> 
     Ok(())
 }
 
-fn journal(
-    data: &Path,
-    weak_vault: WeakVault,
-) -> Result<(Journal, State, GrantSeal, PathBuf), Box<dyn Error>> {
+fn journal(data: &Path, weak_vault: WeakVault) -> Result<(Journal, Storage), Box<dyn Error>> {
     let vault = open_vault(data, weak_vault)?;
     let place = vault.place();
     eprintln!("journal keys are kept in {place}");
@@ -172,9 +182,6 @@ fn journal(
 
     let storage = Storage::prepare(data, vault)?;
     let journal = storage.journal()?;
-    let state = storage.state()?;
-    let state_path = storage.state_path();
-    let seal = storage.grant_seal()?;
 
     eprintln!(
         "journal {} at {}, last event {}",
@@ -183,7 +190,7 @@ fn journal(
         journal.anchors().head.seq
     );
 
-    Ok((journal, state, seal, state_path))
+    Ok((journal, storage))
 }
 
 fn apps() -> Result<AppCheck, Box<dyn Error>> {

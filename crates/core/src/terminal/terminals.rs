@@ -7,13 +7,11 @@ use bytes::Bytes;
 use futures_util::future::join_all;
 use synt_journal::{ActionId, EventKind, JournalWriter};
 use synt_proto::EndReason;
-use synt_ssh::{Shell, ShellOutput, TerminalSize};
+use synt_ssh::TerminalSize;
 use tokio::sync::mpsc;
 
-use super::{Ending, Origin, SessionId, Terminal, pump};
+use super::{Console, ConsoleOutput, Ending, Origin, SessionId, Terminal, pump};
 use crate::recorder::{Call, Recorder};
-
-const OPEN_ACTION: &str = "ssh.session.open";
 
 type Open = HashMap<SessionId, Arc<Terminal>>;
 
@@ -51,10 +49,10 @@ impl Terminals {
         &self,
         id: SessionId,
         origin: Origin,
-        (shell, output): (Shell, ShellOutput),
+        (console, output): (Console, ConsoleOutput),
         size: TerminalSize,
     ) -> Option<Arc<Terminal>> {
-        let (terminal, typed) = self.admit(id, origin, shell, size)?;
+        let (terminal, typed) = self.admit(id, origin, console, size)?;
 
         tokio::spawn(Arc::clone(&terminal).type_in(typed));
         tokio::spawn(pump(self.clone(), Arc::clone(&terminal), output));
@@ -76,15 +74,16 @@ impl Terminals {
     pub(super) async fn retire(&self, terminal: &Terminal, ending: &Ending) {
         self.lock().remove(&terminal.id());
 
-        let Ok(action) = ActionId::new(OPEN_ACTION) else {
+        let origin = terminal.origin();
+
+        let Ok(action) = ActionId::new(origin.action) else {
             return;
         };
 
-        let origin = terminal.origin();
         let call = Call {
             actor: &origin.actor,
             action: &action,
-            target: Some(&origin.target),
+            target: origin.target.as_ref(),
         };
 
         let finished = Recorder::step(&call, EventKind::Finished, ending);
@@ -105,18 +104,18 @@ impl Terminals {
         &self,
         id: SessionId,
         origin: Origin,
-        shell: Shell,
+        console: Console,
         size: TerminalSize,
     ) -> Option<(Arc<Terminal>, mpsc::Receiver<Bytes>)> {
         let mut open = self.lock();
 
         if self.closing.load(Ordering::SeqCst) {
             drop(open);
-            tokio::spawn(async move { shell.close().await });
+            tokio::spawn(async move { console.close().await });
             return None;
         }
 
-        let (terminal, typed) = Terminal::new(id, origin, shell, size);
+        let (terminal, typed) = Terminal::new(id, origin, console, size);
         open.insert(id, Arc::clone(&terminal));
 
         Some((terminal, typed))

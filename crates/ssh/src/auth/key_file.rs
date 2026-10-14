@@ -2,7 +2,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use russh::keys::{self, PrivateKey, PublicKey};
-use tokio::io::AsyncReadExt;
+use synt_platform::read_owned_file;
 use zeroize::Zeroizing;
 
 const PUBLIC_SUFFIX: &str = ".pub";
@@ -66,24 +66,25 @@ async fn read_public(path: &Path) -> Option<PublicKey> {
     PublicKey::from_openssh(text.trim()).ok()
 }
 
-async fn read_key_text(path: &Path) -> io::Result<Zeroizing<String>> {
-    if !tokio::fs::metadata(path).await?.is_file() {
-        return Err(not_a_key_file(path, "it is not a regular file"));
-    }
-
-    let file = tokio::fs::File::open(path).await?;
-    let mut bytes = Zeroizing::new(Vec::new());
-    file.take(LARGEST_KEY_FILE + 1)
-        .read_to_end(&mut bytes)
-        .await?;
-
-    if bytes.len() as u64 > LARGEST_KEY_FILE {
-        return Err(not_a_key_file(path, "it is too large"));
-    }
+pub(crate) async fn read_key_text(path: &Path) -> io::Result<Zeroizing<String>> {
+    let owned = path.to_owned();
+    let bytes = tokio::task::spawn_blocking(move || read_owned_file(&owned, LARGEST_KEY_FILE))
+        .await
+        .map_err(io::Error::other)?
+        .map(Zeroizing::new)
+        .map_err(|error| refusal(path, error))?;
 
     let text = std::str::from_utf8(&bytes).map_err(|_| not_a_key_file(path, "it is not text"))?;
 
     Ok(Zeroizing::new(text.to_owned()))
+}
+
+fn refusal(path: &Path, error: io::Error) -> io::Error {
+    if error.kind() == io::ErrorKind::InvalidData {
+        return not_a_key_file(path, &error.to_string());
+    }
+
+    error
 }
 
 fn not_a_key_file(path: &Path, reason: &str) -> io::Error {

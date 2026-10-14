@@ -4,4 +4,5 @@ use std::path::PathBuf;
 pub(super) enum KeySource {
     Agent,
     File(PathBuf),
+    Vault(String),
 }

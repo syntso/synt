@@ -1,0 +1,73 @@
+use std::path::PathBuf;
+
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::{Value, json};
+use synt_actions::{Action, ActionError, Context, Risk};
+use synt_journal::ResourceRef;
+use synt_ssh::StoredKey;
+
+use crate::blocking::blocking;
+use crate::ssh_keys::{KeyInfo, KeyName, SshKeys};
+
+#[derive(Clone)]
+pub struct KeyImport {
+    keys: SshKeys,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ImportParams {
+    pub name: String,
+    pub private_key_path: PathBuf,
+}
+
+impl KeyImport {
+    pub fn new(keys: SshKeys) -> Self {
+        Self { keys }
+    }
+}
+
+impl Action for KeyImport {
+    const ID: &'static str = "key.import";
+    const TITLE: &'static str = "Import an SSH private key file into the core's vault";
+    const RISK: Risk = Risk::Privileged;
+    const PERSON_ONLY: bool = true;
+
+    type Params = ImportParams;
+    type Output = KeyInfo;
+
+    fn check(
+        &self,
+        _target: Option<&ResourceRef>,
+        params: &ImportParams,
+    ) -> Result<(), ActionError> {
+        KeyName::parse(&params.name).map_err(ActionError::InvalidParams)?;
+
+        if !params.private_key_path.is_absolute() {
+            return Err(ActionError::InvalidParams(
+                "private_key_path must be an absolute path".to_owned(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn summary(&self, output: &KeyInfo) -> Value {
+        json!({ "name": output.name, "kind": output.kind, "fingerprint": output.fingerprint })
+    }
+
+    async fn run(&self, _context: &Context, params: ImportParams) -> Result<KeyInfo, ActionError> {
+        let name = KeyName::parse(&params.name).map_err(ActionError::InvalidParams)?;
+
+        let key = StoredKey::import(&params.private_key_path)
+            .await
+            .map_err(|error| ActionError::Failed(error.to_string()))?;
+
+        let keys = self.keys.clone();
+
+        blocking(move || keys.store(&name, &key))
+            .await
+            .map_err(|error| ActionError::Failed(error.to_string()))
+    }
+}

@@ -15,6 +15,7 @@ mod parsed_call;
 mod projects;
 mod recorder;
 mod server;
+mod ssh_keys;
 mod state;
 mod storage;
 mod terminal;
@@ -35,9 +36,17 @@ pub use builtin::{
     WriteResult,
 };
 pub use builtin::{
+    GenerateParams, ImportParams, KeyGenerate, KeyImport, KeyKind, KeyList, KeyNameParams,
+    KeyRemove,
+};
+pub use builtin::{
     GrantInfo, GrantList, GrantRevoke, ProjectClose, ProjectIdParams, ProjectList, ProjectOpen,
     ProjectPathParams, ResourceGet, ResourceList, ResourceListParams, ResourceParams, ResourcePut,
     ResourcePutParams, ResourceRemove, RevokeParams, Revoked,
+};
+pub use builtin::{
+    IntegrationParams, IntegrationShell, LocalSessionOpen, SessionBlocks, SessionBlocksParams,
+    SessionIntegration, ShellSnippet,
 };
 pub use core::{Core, VERSION};
 pub use error::CoreError;
@@ -50,6 +59,7 @@ pub use projects::{
     TunnelResource,
 };
 pub use server::Server;
+pub use ssh_keys::{KeyInfo, KeyName, SshKeys};
 pub use state::State;
 pub use storage::Storage;
-pub use terminal::{Ending, SessionId, Terminals};
+pub use terminal::{Block, Ending, SessionId, SessionKind, Terminals};

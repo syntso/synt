@@ -13,11 +13,11 @@ pub(crate) struct Slots {
 }
 
 impl Slots {
-    pub(crate) fn new(grace: Duration) -> Arc<Self> {
+    pub(crate) fn new(grace: Duration, connector: Connector) -> Arc<Self> {
         Arc::new(Self {
             by_target: Mutex::new(HashMap::new()),
             grace,
-            connector: Connector::default(),
+            connector,
         })
     }
 
@@ -62,6 +62,15 @@ impl Slots {
         }
 
         true
+    }
+
+    pub(crate) fn forget(&self, matches: impl Fn(&Target) -> bool) -> usize {
+        let mut slots = locked(&self.by_target);
+        let before = slots.len();
+
+        slots.retain(|target, _| !matches(target));
+
+        before - slots.len()
     }
 
     pub(crate) fn statuses(&self) -> Vec<ConnectionStatus> {

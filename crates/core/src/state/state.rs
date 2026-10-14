@@ -7,6 +7,7 @@ use rusqlite::{Connection, OptionalExtension, Row};
 use super::schema;
 use super::{NewGrant, StoredGrant};
 use crate::CoreError;
+use crate::ssh_keys::{KeyInfo, KeyName};
 
 #[derive(Debug, Clone)]
 pub struct State {
@@ -116,6 +117,56 @@ impl State {
         Ok(true)
     }
 
+    pub(crate) fn ssh_keys(&self) -> Result<Vec<KeyInfo>, CoreError> {
+        let connection = self.lock();
+        let mut statement = connection.prepare(
+            "SELECT name, kind, public_key, fingerprint, created_at FROM ssh_keys ORDER BY name",
+        )?;
+
+        let keys = statement
+            .query_map([], stored_ssh_key)?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(keys)
+    }
+
+    pub(crate) fn ssh_key(&self, name: &str) -> Result<Option<KeyInfo>, CoreError> {
+        let key = self
+            .lock()
+            .query_row(
+                "SELECT name, kind, public_key, fingerprint, created_at FROM ssh_keys \
+                 WHERE name = ?1",
+                [name],
+                stored_ssh_key,
+            )
+            .optional()?;
+
+        Ok(key)
+    }
+
+    pub(crate) fn insert_ssh_key(&self, key: &KeyInfo) -> Result<(), CoreError> {
+        self.lock().execute(
+            "INSERT INTO ssh_keys (name, kind, public_key, fingerprint, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            (
+                &key.name,
+                &key.kind,
+                &key.public_key,
+                &key.fingerprint,
+                i64::try_from(key.created_at).unwrap_or(i64::MAX),
+            ),
+        )?;
+
+        Ok(())
+    }
+
+    pub(crate) fn delete_ssh_key(&self, name: &str) -> Result<(), CoreError> {
+        self.lock()
+            .execute("DELETE FROM ssh_keys WHERE name = ?1", [name])?;
+
+        Ok(())
+    }
+
     fn prepare(connection: Connection) -> Result<Self, CoreError> {
         connection.pragma_update(None, "journal_mode", "WAL")?;
         connection.pragma_update(None, "synchronous", "FULL")?;
@@ -147,6 +198,19 @@ fn stored_grant(row: &Row<'_>) -> rusqlite::Result<StoredGrant> {
         resource: row.get(3)?,
         destination: row.get(4)?,
         created_at: unsigned(row.get(5)?),
+    })
+}
+
+fn stored_ssh_key(row: &Row<'_>) -> rusqlite::Result<KeyInfo> {
+    let name: String = row.get(0)?;
+
+    Ok(KeyInfo {
+        reference: KeyName::reference(&name),
+        name,
+        kind: row.get(1)?,
+        public_key: row.get(2)?,
+        fingerprint: row.get(3)?,
+        created_at: unsigned(row.get(4)?),
     })
 }
 

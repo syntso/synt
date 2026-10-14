@@ -1,10 +1,8 @@
 use std::sync::Arc;
 
-use synt_ssh::ShellOutput;
+use super::{ConsoleOutput, Terminal, Terminals};
 
-use super::{Terminal, Terminals};
-
-pub(super) async fn pump(terminals: Terminals, terminal: Arc<Terminal>, mut output: ShellOutput) {
+pub(super) async fn pump(terminals: Terminals, terminal: Arc<Terminal>, mut output: ConsoleOutput) {
     loop {
         let data = tokio::select! {
             biased;

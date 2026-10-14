@@ -32,8 +32,9 @@ interprocess = { version = "2.4.5", features = ["tokio"] }
 keyring-core = "1.0.1"
 minisign = "0.10.0"
 minisign-verify = "0.3.0"
-nix = { version = "0.31.3", default-features = false, features = ["socket", "user"] }
+nix = { version = "0.31.3", default-features = false, features = ["signal", "socket", "user"] }
 notify = "8.2.0"
+portable-pty = "0.9.0"
 proptest = "1.12.0"
 russh = { version = "0.64.1", default-features = false, features = ["ring"] }
 russh-sftp = "3.0.1"
@@ -54,7 +55,9 @@ thiserror = "2.0.21"
 tokio = "1.53.2"
 tokio-util = { version = "0.7.20", features = ["codec"] }
 toml = "1.1.8"
+uniffi = { version = "0.32.2", default-features = false, features = ["tokio"] }
 ureq = { version = "3.4.2", default-features = false, features = ["rustls-no-provider"] }
+vte = { version = "0.15.0", default-features = false }
 wasmtime = { version = "49.0.2", default-features = false, features = ["component-model", "cranelift", "runtime", "std"] }
 wasmtime-wasi = { version = "49.0.2", default-features = false, features = ["p2"] }
 wat = "1.262.0"

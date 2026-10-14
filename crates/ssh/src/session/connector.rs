@@ -9,15 +9,23 @@ use super::{Algorithms, ClientHandler, Connection, HandshakeError, client_config
 use crate::auth::{Authenticator, Credentials, Logins};
 use crate::dial::{Addresses, race};
 use crate::known_hosts::KnownHosts;
-use crate::{SshError, Target};
+use crate::{KeyVault, SshError, Target};
 
 #[derive(Default)]
 pub(crate) struct Connector {
     addresses: Addresses,
     logins: Logins,
+    vault: Option<Arc<dyn KeyVault>>,
 }
 
 impl Connector {
+    pub(crate) fn with_vault(vault: Arc<dyn KeyVault>) -> Self {
+        Self {
+            vault: Some(vault),
+            ..Self::default()
+        }
+    }
+
     pub(crate) async fn open(
         &self,
         hop: &Target,
@@ -32,7 +40,7 @@ impl Connector {
         let (reached, credentials) = tokio::join!(reaching, gathering);
         let mut handle = reached?;
 
-        let authenticator = Authenticator::new(hop, credentials);
+        let authenticator = Authenticator::new(hop, credentials, self.vault.clone());
         let accepted = authenticator.authenticate(&mut handle).await?;
         self.logins.remember(hop, accepted);
 

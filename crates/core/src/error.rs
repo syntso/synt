@@ -37,6 +37,9 @@ pub enum CoreError {
     #[error("{0}")]
     Grant(String),
 
+    #[error("{0}")]
+    SshKey(String),
+
     #[error("system random source: {0}")]
     Random(String),
 

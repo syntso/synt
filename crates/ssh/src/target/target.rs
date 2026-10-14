@@ -15,6 +15,7 @@ pub struct Target {
     port: u16,
     user: String,
     identity_files: Vec<PathBuf>,
+    vault_key: Option<String>,
     jumps: Vec<Target>,
 }
 
@@ -25,6 +26,7 @@ impl Target {
             port,
             user: user.into(),
             identity_files: Vec::new(),
+            vault_key: None,
             jumps: Vec::new(),
         }
     }
@@ -38,6 +40,12 @@ impl Target {
     #[must_use]
     pub fn with_identity_files(mut self, identity_files: Vec<PathBuf>) -> Self {
         self.identity_files = identity_files;
+        self
+    }
+
+    #[must_use]
+    pub fn with_vault_key(mut self, name: impl Into<String>) -> Self {
+        self.vault_key = Some(name.into());
         self
     }
 
@@ -63,8 +71,16 @@ impl Target {
         &self.identity_files
     }
 
+    pub fn vault_key(&self) -> Option<&str> {
+        self.vault_key.as_deref()
+    }
+
     pub fn jumps(&self) -> &[Target] {
         &self.jumps
+    }
+
+    pub fn uses_vault_key(&self, name: &str) -> bool {
+        self.vault_key() == Some(name) || self.jumps.iter().any(|jump| jump.uses_vault_key(name))
     }
 
     pub fn label(&self) -> String {
@@ -154,6 +170,7 @@ impl Target {
             port,
             user,
             identity_files: settings.identity_files,
+            vault_key: None,
             jumps,
         })
     }

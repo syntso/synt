@@ -5,13 +5,18 @@ use std::sync::Arc;
 
 use russh::AgentAuthError;
 use russh::client::{AuthResult, Handle, Handler};
-use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey};
+use russh::keys::{HashAlg, PrivateKey, PrivateKeyWithHashAlg, PublicKey};
+use tokio::task;
 
 use super::{Agent, Candidate, Credentials, KeyFile, KeySource};
-use crate::{SshError, Target};
+use crate::stored_key::decode_private_key;
+use crate::{KeyVault, SshError, Target};
+
+const SECRET_PREFIX: &str = "secret://";
 
 pub(crate) struct Authenticator<'a> {
     target: &'a Target,
+    vault: Option<Arc<dyn KeyVault>>,
     agent: Option<Agent>,
     candidates: Vec<Candidate>,
     tried: Vec<String>,
@@ -19,9 +24,14 @@ pub(crate) struct Authenticator<'a> {
 }
 
 impl<'a> Authenticator<'a> {
-    pub(crate) fn new(target: &'a Target, credentials: Credentials) -> Self {
+    pub(crate) fn new(
+        target: &'a Target,
+        credentials: Credentials,
+        vault: Option<Arc<dyn KeyVault>>,
+    ) -> Self {
         Self {
             target,
+            vault,
             agent: credentials.agent,
             candidates: credentials.candidates,
             tried: Vec::new(),
@@ -52,6 +62,7 @@ impl<'a> Authenticator<'a> {
         match (candidate.source, candidate.key) {
             (KeySource::Agent, Some(key)) => self.try_agent_key(handle, key).await,
             (KeySource::File(path), _) => self.try_key_file(handle, &path).await,
+            (KeySource::Vault(name), _) => self.try_vault_key(handle, &name).await,
             (KeySource::Agent, None) => Ok(None),
         }
     }
@@ -119,6 +130,25 @@ impl<'a> Authenticator<'a> {
         Ok(accepted(&result).then_some(public))
     }
 
+    async fn try_vault_key<H: Handler>(
+        &mut self,
+        handle: &mut Handle<H>,
+        name: &str,
+    ) -> Result<Option<PublicKey>, SshError> {
+        let key = read_vault_key(self.vault.clone(), name).await?;
+        let public = key.public_key().clone();
+        let hash = rsa_hash(handle, &public).await;
+        let signing = PrivateKeyWithHashAlg::new(Arc::new(key), hash);
+        self.tried.push(format!("{SECRET_PREFIX}{name}"));
+
+        let result = handle
+            .authenticate_publickey(self.target.user(), signing)
+            .await
+            .map_err(|error| self.lost(&error))?;
+
+        Ok(accepted(&result).then_some(public))
+    }
+
     fn failure(self) -> SshError {
         match self.encrypted {
             Some(path) => SshError::EncryptedKey { path },
@@ -142,6 +172,34 @@ async fn rsa_hash<H: Handler>(handle: &Handle<H>, key: &PublicKey) -> Option<Has
     match handle.best_supported_rsa_hash().await {
         Ok(Some(Some(hash))) => Some(hash),
         _ => Some(HashAlg::Sha256),
+    }
+}
+
+async fn read_vault_key(
+    vault: Option<Arc<dyn KeyVault>>,
+    name: &str,
+) -> Result<PrivateKey, SshError> {
+    let Some(vault) = vault else {
+        return Err(vault_error(name, "this core has no key vault"));
+    };
+
+    let owned = name.to_owned();
+    let reading = task::spawn_blocking(move || vault.private_key(&owned));
+
+    let bytes = match reading.await {
+        Ok(Ok(Some(bytes))) => bytes,
+        Ok(Ok(None)) => return Err(vault_error(name, "there is no such key in the vault")),
+        Ok(Err(reason)) => return Err(vault_error(name, &reason)),
+        Err(_) => return Err(vault_error(name, "reading the vault stopped unexpectedly")),
+    };
+
+    decode_private_key(&bytes).ok_or_else(|| vault_error(name, "the key in the vault is damaged"))
+}
+
+fn vault_error(name: &str, reason: &str) -> SshError {
+    SshError::VaultKey {
+        name: name.to_owned(),
+        reason: reason.to_owned(),
     }
 }
 

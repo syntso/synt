@@ -32,6 +32,7 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "sync", "time"] }
 tokio-util = { workspace = true, features = ["rt"] }
 toml.workspace = true
+vte.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]

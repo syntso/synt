@@ -1,3 +1,6 @@
+[graph]
+all-features = true
+
 [licenses]
 allow = [
     "0BSD",
@@ -16,6 +19,38 @@ unused-allowed-license = "allow"
 
 [[licenses.exceptions]]
 crate = "option-ext"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "uniffi"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "uniffi_bindgen"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "uniffi_core"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "uniffi_internal_macros"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "uniffi_macros"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "uniffi_meta"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "uniffi_pipeline"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "uniffi_udl"
 allow = ["MPL-2.0"]
 
 [licenses.private]

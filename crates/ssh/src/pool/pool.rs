@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use super::{ConnectionState, ConnectionStatus, Lease, Slots};
 use crate::known_hosts::KnownHosts;
-use crate::{SshError, Target};
+use crate::session::Connector;
+use crate::{KeyVault, SshError, Target};
 
 const GRACE: Duration = Duration::from_secs(30);
 
@@ -20,7 +21,13 @@ impl Pool {
 
     pub fn with_grace(grace: Duration) -> Self {
         Self {
-            slots: Slots::new(grace),
+            slots: Slots::new(grace, Connector::default()),
+        }
+    }
+
+    pub fn with_key_vault(vault: Arc<dyn KeyVault>) -> Self {
+        Self {
+            slots: Slots::new(GRACE, Connector::with_vault(vault)),
         }
     }
 
@@ -42,6 +49,10 @@ impl Pool {
 
     pub fn connections(&self) -> Vec<ConnectionStatus> {
         self.slots.statuses()
+    }
+
+    pub fn forget_vault_key(&self, name: &str) -> usize {
+        self.slots.forget(|target| target.uses_vault_key(name))
     }
 }
 
@@ -83,4 +94,31 @@ fn hops(target: &Target) -> Vec<&Target> {
     all.push(target);
 
     all
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn forgetting_a_vault_key_drops_the_connections_that_use_it() {
+        let pool = Pool::new();
+        let keyed = Target::new("keyed.example", 22, "root").with_vault_key("night");
+        let jumped = Target::new("inner.example", 22, "root").through(vec![keyed.clone()]);
+        let plain = Target::new("plain.example", 22, "root");
+
+        drop(pool.slots.lease(&keyed));
+        drop(pool.slots.lease(&jumped));
+        drop(pool.slots.lease(&plain));
+
+        assert_eq!(pool.forget_vault_key("day"), 0);
+        assert_eq!(pool.forget_vault_key("night"), 2);
+
+        let left: Vec<String> = pool
+            .connections()
+            .into_iter()
+            .map(|status| status.target)
+            .collect();
+        assert_eq!(left, vec!["root@plain.example".to_string()]);
+    }
 }

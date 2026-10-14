@@ -12,6 +12,10 @@ pub(crate) fn open_no_follow(path: &Path) -> io::Result<File> {
         .open(path)
 }
 
+pub(crate) fn open_without_waiting(path: &Path) -> io::Result<File> {
+    File::open(path)
+}
+
 pub(crate) fn create_new_file(path: &Path) -> io::Result<File> {
     OpenOptions::new()
         .write(true)

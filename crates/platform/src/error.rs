@@ -24,6 +24,9 @@ pub enum PlatformError {
     )]
     WeakVault { place: KeyPlace, flag: &'static str },
 
+    #[error("terminal: {0}")]
+    Pty(String),
+
     #[error("{tool}: {reason}")]
     Tool { tool: String, reason: String },
 

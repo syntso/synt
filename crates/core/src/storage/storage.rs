@@ -60,6 +60,10 @@ impl Storage {
         self.state.join(STATE_FILE)
     }
 
+    pub fn vault(&self) -> Arc<dyn Vault> {
+        Arc::clone(&self.vault)
+    }
+
     pub fn grant_seal(&self) -> Result<GrantSeal, CoreError> {
         GrantSeal::open(Arc::clone(&self.vault))
     }

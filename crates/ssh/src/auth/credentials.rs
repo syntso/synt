@@ -17,6 +17,10 @@ pub(crate) struct Credentials {
 
 impl Credentials {
     pub(crate) async fn gather(target: &Target, accepted_before: Option<PublicKey>) -> Self {
+        if let Some(name) = target.vault_key() {
+            return Self::vault_only(name);
+        }
+
         let mut agent = agent::connect().await;
         let held = match agent.as_mut() {
             Some(agent) => held_keys(agent).await,
@@ -37,6 +41,18 @@ impl Credentials {
         candidates.truncate(MOST_ATTEMPTS);
 
         Self { agent, candidates }
+    }
+
+    fn vault_only(name: &str) -> Self {
+        let candidate = Candidate {
+            key: None,
+            source: KeySource::Vault(name.to_owned()),
+        };
+
+        Self {
+            agent: None,
+            candidates: vec![candidate],
+        }
     }
 }
 

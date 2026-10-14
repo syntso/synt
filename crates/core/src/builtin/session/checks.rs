@@ -7,6 +7,8 @@ use crate::link::Link;
 use crate::terminal::{SessionId, Terminal, Terminals};
 
 const LARGEST_SIDE: u16 = 1000;
+const DEFAULT_TERM: &str = "xterm-256color";
+const LONGEST_TERM: usize = 64;
 
 pub(super) fn connection(context: &Context) -> Result<Arc<Link>, ActionError> {
     context
@@ -30,4 +32,20 @@ pub(super) fn terminal_size(columns: u16, rows: u16) -> Result<TerminalSize, Act
     }
 
     Ok(TerminalSize { columns, rows })
+}
+
+pub(super) fn term(requested: Option<&str>) -> Result<&str, ActionError> {
+    let Some(term) = requested else {
+        return Ok(DEFAULT_TERM);
+    };
+
+    let allowed = |character: char| character.is_ascii_alphanumeric() || "-_.+".contains(character);
+
+    if term.is_empty() || term.len() > LONGEST_TERM || !term.chars().all(allowed) {
+        return Err(ActionError::InvalidParams(format!(
+            "term must be 1 to {LONGEST_TERM} letters, digits or -_.+"
+        )));
+    }
+
+    Ok(term)
 }

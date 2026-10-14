@@ -47,13 +47,18 @@ async fn describe(terminal: &Arc<Terminal>) -> SessionInfo {
 
     SessionInfo {
         session: terminal.id(),
-        target: origin.target.as_str().to_owned(),
+        kind: terminal.kind(),
+        target: origin
+            .target
+            .as_ref()
+            .map(|target| target.as_str().to_owned()),
         host: terminal.host(),
         actor: requester(&origin.actor),
         risk: origin.risk,
         columns: size.columns,
         rows: size.rows,
         attached: terminal.attached().await,
+        blocks: terminal.blocks().await.len(),
         age_ms: u64::try_from(terminal.age().as_millis()).unwrap_or(u64::MAX),
     }
 }

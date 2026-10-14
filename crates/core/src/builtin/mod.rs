@@ -1,5 +1,6 @@
 mod grant;
 mod journal;
+mod key;
 mod ping;
 mod project;
 mod resource;
@@ -10,6 +11,10 @@ mod tunnel;
 
 pub use grant::{GrantInfo, GrantList, GrantRevoke, RevokeParams, Revoked};
 pub use journal::{JournalPage, JournalVerify, Page, PageQuery};
+pub use key::{
+    GenerateParams, ImportParams, KeyGenerate, KeyImport, KeyKind, KeyList, KeyNameParams,
+    KeyRemove,
+};
 pub use ping::{Ping, Pong};
 pub use project::{ProjectClose, ProjectIdParams, ProjectList, ProjectOpen, ProjectPathParams};
 pub use resource::{
@@ -20,6 +25,10 @@ pub use session::{
     AttachedSession, SessionAttach, SessionAttachParams, SessionClose, SessionCloseParams,
     SessionInfo, SessionList, SessionOpenParams, SessionResize, SessionResizeParams, SessionSize,
     SshSessionOpen,
+};
+pub use session::{
+    IntegrationParams, IntegrationShell, LocalSessionOpen, SessionBlocks, SessionBlocksParams,
+    SessionIntegration, ShellSnippet,
 };
 pub use sftp::{
     DownloadParams, Downloaded, FileInfo, Files, Listing, Made, PathParams, ReadParams, ReadResult,

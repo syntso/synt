@@ -51,6 +51,13 @@ impl Vault for Credentials {
     fn write(&self, name: &str, bytes: &[u8]) -> Result<(), PlatformError> {
         self.entry(name)?.set_secret(bytes).map_err(credentials)
     }
+
+    fn remove(&self, name: &str) -> Result<(), PlatformError> {
+        match self.entry(name)?.delete_credential() {
+            Ok(()) | Err(Error::NoEntry) => Ok(()),
+            Err(error) => Err(credentials(error)),
+        }
+    }
 }
 
 fn credentials(error: impl Display) -> PlatformError {
