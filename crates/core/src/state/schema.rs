@@ -28,11 +28,6 @@ CREATE TABLE IF NOT EXISTS ssh_keys (
     fingerprint TEXT NOT NULL,
     created_at INTEGER NOT NULL
 );
-
-CREATE TABLE IF NOT EXISTS passwords (
-    name TEXT PRIMARY KEY,
-    updated_at INTEGER NOT NULL
-);
 ";
 
 pub(super) const FROM_VERSION_1: &str = "ALTER TABLE grants ADD COLUMN destination TEXT;";

@@ -15,8 +15,8 @@ async fn a_database_behind_two_ssh_hops_answers_through_a_private_tunnel() {
     let Some(lab) = Lab::start().await else {
         return;
     };
-    let storing = ActionCall::new("password.set")
-        .params(json!({ "name": POSTGRES_PASSWORD, "password": DbServers::PASSWORD }));
+    let storing = ActionCall::new("secret.put")
+        .params(json!({ "name": POSTGRES_PASSWORD, "value": DbServers::PASSWORD }));
     lab.client.call(storing).await.unwrap();
 
     let seen = lab

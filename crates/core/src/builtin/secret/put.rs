@@ -21,7 +21,7 @@ impl SecretPut {
 impl Action for SecretPut {
     const ID: &'static str = "secret.put";
     const TITLE: &'static str =
-        "Keep a secret in the core's vault for extensions to attach by name";
+        "Keep a secret in the core's vault, for database passwords and extensions";
     const RISK: Risk = Risk::Write;
     const PERSON_ONLY: bool = true;
 

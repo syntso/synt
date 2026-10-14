@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::ssh_keys::KeyName;
 
+const SECRET_PREFIX: &str = "secret://";
 const VAULT_PREFIX: &str = "secret.";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -13,6 +14,12 @@ impl SecretName {
             KeyName::parse(text).map_err(|reason| reason.replace("a key name", "a secret name"))?;
 
         Ok(Self(checked.as_str().to_owned()))
+    }
+
+    pub fn from_reference(reference: &str) -> Option<Result<Self, String>> {
+        let name = reference.strip_prefix(SECRET_PREFIX)?;
+
+        Some(Self::parse(name))
     }
 
     pub fn as_str(&self) -> &str {
@@ -44,6 +51,21 @@ mod tests {
 
         assert_eq!(name.vault_item(), "secret.grafana.token");
         assert_eq!(name.reference(), "secret://grafana/token");
+    }
+
+    #[test]
+    fn a_reference_names_the_secret_after_its_scheme() {
+        let name = SecretName::from_reference("secret://prod/orders-db")
+            .expect("a reference")
+            .expect("a valid name");
+
+        assert_eq!(name.as_str(), "prod/orders-db");
+        assert!(SecretName::from_reference("hunter2").is_none());
+        assert!(
+            SecretName::from_reference("secret://../escape")
+                .unwrap()
+                .is_err()
+        );
     }
 
     #[test]

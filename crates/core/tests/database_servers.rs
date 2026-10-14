@@ -8,7 +8,7 @@ use std::path::Path;
 use common::{Approver, Grounds, Harness, rejection};
 use serde_json::{Value, json};
 use synt_client::Client;
-use synt_core::{Broker, Core, Databases, PasswordSet, Passwords, ProjectOpen, Projects};
+use synt_core::{Broker, Core, Databases, ProjectOpen, Projects, SecretPut, Secrets};
 use synt_journal::EventKind;
 use synt_proto::{ActionCall, ApprovalDecision, ErrorCode, RiskLevel};
 use synt_ssh::Pool;
@@ -58,16 +58,14 @@ impl Data {
 
 fn core(grounds: &Grounds) -> Core {
     let projects = Projects::start(grounds.state()).unwrap();
-    let passwords = Passwords::new(grounds.vault(), grounds.state());
+    let secrets = Secrets::new(grounds.vault(), grounds.state());
     let mut registry = grounds.registry();
 
     registry
         .register(ProjectOpen::new(projects.clone()))
         .unwrap();
-    registry
-        .register(PasswordSet::new(passwords.clone()))
-        .unwrap();
-    Databases::new(Pool::new(), projects, passwords)
+    registry.register(SecretPut::new(secrets.clone())).unwrap();
+    Databases::new(Pool::new(), projects, secrets)
         .register(&mut registry)
         .unwrap();
 
@@ -75,8 +73,7 @@ fn core(grounds: &Grounds) -> Core {
 }
 
 async fn store_password(app: &Client, name: &str, password: &str) {
-    let call =
-        ActionCall::new("password.set").params(json!({ "name": name, "password": password }));
+    let call = ActionCall::new("secret.put").params(json!({ "name": name, "value": password }));
 
     app.call(call).await.unwrap();
 }

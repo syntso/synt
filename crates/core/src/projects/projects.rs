@@ -270,7 +270,7 @@ impl Projects {
 
         if is_personal(reference.project) {
             return Err(CoreError::Project(
-                "the Personal project holds ssh hosts only; put databases in a project".to_owned(),
+                "the Personal project has no databases; put them in a project".to_owned(),
             ));
         }
 

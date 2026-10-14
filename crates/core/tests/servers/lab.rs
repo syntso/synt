@@ -7,8 +7,8 @@ use serde_json::{Value, json};
 use synt_actions::Registry;
 use synt_client::{Autostart, Client, ClientError};
 use synt_core::{
-    Broker, Core, DatabaseResource, Databases, Files, HostResource, PasswordSet, Passwords,
-    ProjectOpen, Projects, Resource, Runbooks, SessionBlocks, SessionClose, SessionList,
+    Broker, Core, DatabaseResource, Databases, Files, HostResource, ProjectOpen, Projects,
+    Resource, Runbooks, SecretPut, Secrets, SessionBlocks, SessionClose, SessionList,
     SshConnections, SshExec, SshKeys, SshSessionOpen, State, Terminals, TunnelClose, TunnelOpen,
     TunnelResource,
 };
@@ -165,7 +165,7 @@ impl Lab {
         let projects = Projects::start(state.clone()).unwrap();
         let vault = Arc::new(MemoryVault::default());
         let keys = SshKeys::new(vault.clone(), state.clone());
-        let passwords = Passwords::new(vault, state);
+        let secrets = Secrets::new(vault, state);
 
         let pool = Pool::builder()
             .key_vault(Arc::new(keys.clone()))
@@ -174,7 +174,7 @@ impl Lab {
             .build();
         let terminals = Terminals::new(journal.clone());
         let runbooks = Runbooks::new(projects.clone(), journal.clone(), terminals.clone());
-        let mut registry = registry(&pool, &projects, &terminals, &passwords);
+        let mut registry = registry(&pool, &projects, &terminals, &secrets);
         runbooks.register(&mut registry).unwrap();
 
         let endpoint = endpoint(directory.path());
@@ -207,7 +207,7 @@ fn registry(
     pool: &Pool,
     projects: &Projects,
     terminals: &Terminals,
-    passwords: &Passwords,
+    secrets: &Secrets,
 ) -> Registry {
     let mut registry = Registry::new();
     let tunnels = Tunnels::new(pool.clone());
@@ -244,10 +244,8 @@ fn registry(
     Files::new(pool.clone(), projects.clone())
         .register(&mut registry)
         .unwrap();
-    registry
-        .register(PasswordSet::new(passwords.clone()))
-        .unwrap();
-    Databases::new(pool.clone(), projects.clone(), passwords.clone())
+    registry.register(SecretPut::new(secrets.clone())).unwrap();
+    Databases::new(pool.clone(), projects.clone(), secrets.clone())
         .register(&mut registry)
         .unwrap();
 

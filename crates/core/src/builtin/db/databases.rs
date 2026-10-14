@@ -15,24 +15,24 @@ use super::open_database::OpenDatabase;
 use super::{DbExplain, DbPing, DbQuery, DbSchema, DbTables};
 use crate::builtin::blocking::blocking;
 use crate::builtin::ssh::{failure as ssh_failure, is_root};
-use crate::passwords::Passwords;
 use crate::projects::{Projects, ResolvedDatabase};
+use crate::secrets::Secrets;
 
 const CONCURRENT_CALLS: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct Databases {
     projects: Projects,
-    passwords: Passwords,
+    secrets: Secrets,
     tunnels: Tunnels,
     calls: Arc<Semaphore>,
 }
 
 impl Databases {
-    pub fn new(pool: Pool, projects: Projects, passwords: Passwords) -> Self {
+    pub fn new(pool: Pool, projects: Projects, secrets: Secrets) -> Self {
         Self {
             projects,
-            passwords,
+            secrets,
             tunnels: Tunnels::new(pool),
             calls: Arc::new(Semaphore::new(CONCURRENT_CALLS)),
         }
@@ -180,9 +180,9 @@ impl Databases {
             return Ok(None);
         };
 
-        let passwords = self.passwords.clone();
+        let secrets = self.secrets.clone();
 
-        blocking(move || passwords.read(&name)).await.map(Some)
+        blocking(move || secrets.read_text(&name)).await.map(Some)
     }
 
     async fn tunnel(

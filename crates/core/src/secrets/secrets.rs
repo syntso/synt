@@ -1,3 +1,5 @@
+use std::fmt::{self, Debug, Formatter};
+use std::str;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use synt_extensions::SecretSource;
@@ -73,8 +75,30 @@ impl Secrets {
         Ok(info)
     }
 
+    pub(crate) fn read_text(&self, name: &SecretName) -> Result<Zeroizing<String>, CoreError> {
+        let missing = || {
+            CoreError::Secret(format!(
+                "secret {}: there is no such secret in the vault; store it with secret.put",
+                name.reference()
+            ))
+        };
+
+        let bytes = self.vault.read(&name.vault_item())?.ok_or_else(missing)?;
+        let text = str::from_utf8(&bytes).map_err(|_| {
+            CoreError::Secret(format!("secret {} is not UTF-8 text", name.reference()))
+        })?;
+
+        Ok(Zeroizing::new(text.to_owned()))
+    }
+
     fn change(&self) -> MutexGuard<'_, ()> {
         locked(&self.changes)
+    }
+}
+
+impl Debug for Secrets {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        formatter.debug_struct("Secrets").finish_non_exhaustive()
     }
 }
 

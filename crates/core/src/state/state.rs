@@ -8,7 +8,6 @@ use super::{NewGrant, StoredGrant};
 use crate::CoreError;
 use crate::clock::unix_millis;
 use crate::locked::locked;
-use crate::passwords::{PasswordInfo, PasswordName};
 use crate::ssh_keys::{KeyInfo, KeyName};
 
 const GRANT_COLUMNS: &str = "id, actor, action, resource, destination, created_at";
@@ -169,51 +168,6 @@ impl State {
         Ok(())
     }
 
-    pub(crate) fn passwords(&self) -> Result<Vec<PasswordInfo>, CoreError> {
-        let connection = self.lock();
-        let mut statement =
-            connection.prepare("SELECT name, updated_at FROM passwords ORDER BY name")?;
-
-        let passwords = statement
-            .query_map([], stored_password)?
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(passwords)
-    }
-
-    pub(crate) fn password(&self, name: &str) -> Result<Option<PasswordInfo>, CoreError> {
-        let password = self
-            .lock()
-            .query_row(
-                "SELECT name, updated_at FROM passwords WHERE name = ?1",
-                [name],
-                stored_password,
-            )
-            .optional()?;
-
-        Ok(password)
-    }
-
-    pub(crate) fn save_password(&self, password: &PasswordInfo) -> Result<(), CoreError> {
-        self.lock().execute(
-            "INSERT INTO passwords (name, updated_at) VALUES (?1, ?2) \
-             ON CONFLICT (name) DO UPDATE SET updated_at = excluded.updated_at",
-            (
-                &password.name,
-                i64::try_from(password.updated_at).unwrap_or(i64::MAX),
-            ),
-        )?;
-
-        Ok(())
-    }
-
-    pub(crate) fn delete_password(&self, name: &str) -> Result<(), CoreError> {
-        self.lock()
-            .execute("DELETE FROM passwords WHERE name = ?1", [name])?;
-
-        Ok(())
-    }
-
     fn prepare(connection: Connection) -> Result<Self, CoreError> {
         connection.pragma_update(None, "journal_mode", "WAL")?;
         connection.pragma_update(None, "synchronous", "FULL")?;
@@ -256,19 +210,6 @@ fn stored_ssh_key(row: &Row<'_>) -> rusqlite::Result<KeyInfo> {
         public_key: row.get(2)?,
         fingerprint: row.get(3)?,
         created_at: unsigned(row.get(4)?),
-    })
-}
-
-fn stored_password(row: &Row<'_>) -> rusqlite::Result<PasswordInfo> {
-    let name: String = row.get(0)?;
-    let reference = PasswordName::parse(&name)
-        .map(|parsed| parsed.reference())
-        .unwrap_or_default();
-
-    Ok(PasswordInfo {
-        name,
-        reference,
-        updated_at: unsigned(row.get(1)?),
     })
 }
 

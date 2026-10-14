@@ -10,8 +10,7 @@ use rusqlite::Connection;
 use serde_json::{Value, json};
 use synt_client::Client;
 use synt_core::{
-    Broker, Core, Databases, PasswordList, PasswordRemove, PasswordSet, Passwords, ProjectOpen,
-    Projects,
+    Broker, Core, Databases, ProjectOpen, Projects, SecretList, SecretPut, SecretRemove, Secrets,
 };
 use synt_journal::EventKind;
 use synt_proto::{ActionCall, ActionOutcome, ApprovalDecision, ErrorCode, RiskLevel};
@@ -87,22 +86,18 @@ impl Shop {
 
 fn core(grounds: &Grounds) -> Core {
     let projects = Projects::start(grounds.state()).unwrap();
-    let passwords = Passwords::new(grounds.vault(), grounds.state());
+    let secrets = Secrets::new(grounds.vault(), grounds.state());
     let mut registry = grounds.registry();
 
     registry
         .register(ProjectOpen::new(projects.clone()))
         .unwrap();
+    registry.register(SecretPut::new(secrets.clone())).unwrap();
+    registry.register(SecretList::new(secrets.clone())).unwrap();
     registry
-        .register(PasswordSet::new(passwords.clone()))
+        .register(SecretRemove::new(secrets.clone()))
         .unwrap();
-    registry
-        .register(PasswordList::new(passwords.clone()))
-        .unwrap();
-    registry
-        .register(PasswordRemove::new(passwords.clone()))
-        .unwrap();
-    Databases::new(Pool::new(), projects, passwords)
+    Databases::new(Pool::new(), projects, secrets)
         .register(&mut registry)
         .unwrap();
 
@@ -378,5 +373,5 @@ async fn database_actions_are_described_with_their_risks_and_params() {
     assert_eq!(find("db.explain").risk, RiskLevel::Read);
     assert_eq!(find("db.ping").risk, RiskLevel::Read);
     assert!(find("db.ping").takes_target);
-    assert!(described.iter().all(|action| action.id != "password.set"));
+    assert!(described.iter().all(|action| action.id != "secret.put"));
 }

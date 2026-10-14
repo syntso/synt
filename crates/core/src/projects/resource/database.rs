@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use synt_db::{Engine, Server, TlsMode};
 use zeroize::Zeroizing;
 
-use crate::passwords::PasswordName;
 use crate::projects::names::check_name;
+use crate::secrets::SecretName;
 
 const HOME_PREFIX: &str = "~/";
 
@@ -49,14 +49,14 @@ impl DatabaseResource {
         self.check_network()
     }
 
-    pub(crate) fn password_name(&self) -> Result<Option<PasswordName>, String> {
+    pub(crate) fn password_name(&self) -> Result<Option<SecretName>, String> {
         let Some(password) = self.password.as_deref() else {
             return Ok(None);
         };
 
-        let name = PasswordName::from_reference(password).ok_or_else(|| {
+        let name = SecretName::from_reference(password).ok_or_else(|| {
             "password must name a secret kept by the core, such as secret://orders-db; \
-             store it with password.set"
+             store it with secret.put"
                 .to_owned()
         })?;
 

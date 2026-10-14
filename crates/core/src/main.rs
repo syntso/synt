@@ -10,12 +10,11 @@ use synt_actions::{ActionError, Registry};
 use synt_core::{
     AlwaysGrants, Broker, Core, CoreCaller, CoreScreen, Databases, EventFeed, Files, GrantList,
     GrantRevoke, IdleWatch, JournalPage, JournalVerify, KeyGenerate, KeyImport, KeyList, KeyRemove,
-    Kube, LocalSessionOpen, LoginCommand, PasswordList, PasswordRemove, PasswordSet, Passwords,
-    Ping, ProjectClose, ProjectList, ProjectOpen, Projects, ResourceGet, ResourceList, ResourcePut,
-    ResourceRemove, Runbooks, SecretList, SecretPut, SecretRemove, Secrets, Server, SessionAttach,
-    SessionBlocks, SessionClose, SessionIntegration, SessionList, SessionResize, SshConnections,
-    SshExec, SshKeys, SshSessionOpen, SshWarm, Storage, Terminals, TunnelClose, TunnelList,
-    TunnelOpen, VERSION,
+    Kube, LocalSessionOpen, LoginCommand, Ping, ProjectClose, ProjectList, ProjectOpen, Projects,
+    ResourceGet, ResourceList, ResourcePut, ResourceRemove, Runbooks, SecretList, SecretPut,
+    SecretRemove, Secrets, Server, SessionAttach, SessionBlocks, SessionClose, SessionIntegration,
+    SessionList, SessionResize, SshConnections, SshExec, SshKeys, SshSessionOpen, SshWarm, Storage,
+    Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Journal, JournalWriter};
@@ -71,7 +70,6 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let state = storage.state()?;
     let keys = SshKeys::new(storage.vault(), state.clone());
     let secrets = Secrets::new(storage.vault(), state.clone());
-    let passwords = Passwords::new(storage.vault(), state.clone());
     let projects = Projects::start(state.clone())?;
     let always = AlwaysGrants::load(state, storage.grant_seal()?)?;
 
@@ -88,7 +86,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     register_records(&mut registry, &journal, &projects, &always)?;
     register_keys(&mut registry, &keys, &pool)?;
     register_secrets(&mut registry, &secrets)?;
-    register_databases(&mut registry, &pool, &projects, &passwords)?;
+    Databases::new(pool.clone(), projects.clone(), secrets.clone()).register(&mut registry)?;
     runbooks.register(&mut registry)?;
 
     let syncer = syncer(&storage, &projects, &journal)?;
@@ -204,19 +202,6 @@ fn register_secrets(registry: &mut Registry, secrets: &Secrets) -> Result<(), Ac
     registry.register(SecretPut::new(secrets.clone()))?;
     registry.register(SecretList::new(secrets.clone()))?;
     registry.register(SecretRemove::new(secrets.clone()))
-}
-
-fn register_databases(
-    registry: &mut Registry,
-    pool: &Pool,
-    projects: &Projects,
-    passwords: &Passwords,
-) -> Result<(), ActionError> {
-    registry.register(PasswordSet::new(passwords.clone()))?;
-    registry.register(PasswordList::new(passwords.clone()))?;
-    registry.register(PasswordRemove::new(passwords.clone()))?;
-
-    Databases::new(pool.clone(), projects.clone(), passwords.clone()).register(registry)
 }
 
 fn syncer(
