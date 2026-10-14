@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use super::conflicts::is_conflicted;
-use super::{Recorded, Settled};
+use super::{Outcome, Recorded, Settled};
 use crate::SyncError;
 use crate::clock::unix_millis;
 use crate::document::{DocumentPath, Draft, ProjectFiles, Revision};
@@ -71,19 +71,9 @@ impl Replica {
         let mut settled = Settled::default();
 
         for stored in self.history.documents(&self.project)? {
-            let graph = self.history.graph(&self.project, &stored.document)?;
-
-            let Some((target, merged)) = self.target(&graph)? else {
-                continue;
-            };
-            settled.merged += usize::from(merged);
-
-            if stored.on_disk.as_ref() == Some(&target.id) {
-                continue;
-            }
-
-            if self.apply(&stored, &graph, &target)? {
-                settled.applied.push(applied(&target));
+            match self.settle_document(&stored) {
+                Ok(outcome) => settled.add(outcome),
+                Err(error) => settled.problems.push(format!("{}: {error}", stored.path)),
             }
         }
 
@@ -184,6 +174,22 @@ impl Replica {
         Ok(true)
     }
 
+    fn settle_document(&self, stored: &StoredDocument) -> Result<Outcome, SyncError> {
+        let graph = self.history.graph(&self.project, &stored.document)?;
+
+        let Some((target, merged)) = self.target(&graph)? else {
+            return Ok(Outcome::default());
+        };
+
+        let applied =
+            stored.on_disk.as_ref() != Some(&target.id) && self.apply(stored, &graph, &target)?;
+
+        Ok(Outcome {
+            merged,
+            applied: applied.then(|| applied_change(&target)),
+        })
+    }
+
     fn target(&self, graph: &DocumentGraph) -> Result<Option<(Revision, bool)>, SyncError> {
         let heads = graph.heads();
 
@@ -275,7 +281,7 @@ impl Replica {
     }
 }
 
-fn applied(revision: &Revision) -> Applied {
+fn applied_change(revision: &Revision) -> Applied {
     Applied {
         path: revision.path.get().to_owned(),
         revision: revision.id.clone(),

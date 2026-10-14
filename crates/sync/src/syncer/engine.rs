@@ -5,15 +5,15 @@ use serde_json::json;
 use synt_journal::{ActionId, Actor, Details, EventKind, JournalWriter, NewEvent};
 use synt_platform::Vault;
 
-use super::{OpenFolder, ProjectFolders};
+use super::{OpenFolder, ProjectFolders, Round};
 use crate::SyncError;
 use crate::clock::unix_millis;
-use crate::document::{DocumentPath, ProjectFiles, Revision};
+use crate::document::{DocumentPath, ProjectFiles};
 use crate::history::{History, SyncedProject};
 use crate::id::{MemberId, ProjectId, RevisionId};
 use crate::membership::{Membership, Standing};
 use crate::merge::DocumentMerger;
-use crate::provider::{Place, SealedRevision};
+use crate::provider::Place;
 use crate::replica::{Replica, conflicts};
 use crate::report::{
     Access, Applied, Disabled, MembershipChange, RevisionInfo, RoundReport, SyncStatus,
@@ -225,93 +225,15 @@ impl Engine {
         };
         let replica = self.replica(&folder, &keyring, &membership)?;
 
-        let recorded = replica.record_edits()?;
-        report.recorded = recorded.edits;
-        report.problems = recorded.problems;
+        let round = Round {
+            history: &self.history,
+            synced,
+            provider: membership.provider().as_ref(),
+            keyring: &keyring,
+            replica: &replica,
+        };
 
-        self.pull(synced, &membership, &keyring, &replica, report)?;
-
-        let settled = replica.settle()?;
-        report.applied = settled.applied;
-        report.merged = settled.merged;
-
-        report.pushed = self.push(&synced.project, &membership, &keyring)?;
-
-        Ok(())
-    }
-
-    fn pull(
-        &self,
-        synced: &SyncedProject,
-        membership: &Membership,
-        keyring: &Keyring,
-        replica: &Replica,
-        report: &mut RoundReport,
-    ) -> Result<(), SyncError> {
-        let project = &synced.project;
-        let (fresh, cursor) = membership.provider().pull(project, &synced.cursor)?;
-        let held = self.history.held(project)?;
-
-        for sealed in held.into_iter().chain(fresh) {
-            self.receive(project, keyring, replica, &sealed, report)?;
-        }
-
-        self.history.set_cursor(project, &cursor)
-    }
-
-    fn receive(
-        &self,
-        project: &ProjectId,
-        keyring: &Keyring,
-        replica: &Replica,
-        sealed: &SealedRevision,
-        report: &mut RoundReport,
-    ) -> Result<(), SyncError> {
-        if self.history.contains(project, &sealed.revision)? {
-            return self.history.release(project, &sealed.revision);
-        }
-
-        if !keyring.holds(sealed.generation) {
-            report.held += 1;
-            return self.history.hold(project, sealed);
-        }
-
-        self.history.release(project, &sealed.revision)?;
-
-        match Revision::open(project, keyring, sealed) {
-            Ok(revision) => report.pulled += usize::from(replica.accept(&revision)?),
-            Err(error) => {
-                report.refused += 1;
-                report
-                    .problems
-                    .push(format!("revision {}: {error}", sealed.revision));
-            }
-        }
-
-        Ok(())
-    }
-
-    fn push(
-        &self,
-        project: &ProjectId,
-        membership: &Membership,
-        keyring: &Keyring,
-    ) -> Result<usize, SyncError> {
-        let unpushed = self.history.unpushed(project)?;
-        if unpushed.is_empty() {
-            return Ok(0);
-        }
-
-        let sealed = unpushed
-            .iter()
-            .map(|revision| revision.seal(project, keyring))
-            .collect::<Result<Vec<_>, _>>()?;
-        membership.provider().push(project, &sealed)?;
-
-        let pushed: Vec<RevisionId> = unpushed.into_iter().map(|revision| revision.id).collect();
-        self.history.mark_pushed(project, &pushed)?;
-
-        Ok(pushed.len())
+        round.run(report)
     }
 
     fn status_of(&self, synced: &SyncedProject) -> Result<SyncStatus, SyncError> {
