@@ -8,6 +8,7 @@ use kube::config::Kubeconfig;
 
 use super::ContextInfo;
 use crate::KubeError;
+use crate::error::first_line;
 
 const VARIABLE: &str = "KUBECONFIG";
 
@@ -71,12 +72,9 @@ impl KubeconfigSource {
     }
 
     pub(crate) fn broken(&self, reason: impl Display) -> KubeError {
-        let reason = reason.to_string();
-        let first_line = reason.lines().next().unwrap_or_default().trim_end();
-
         KubeError::Kubeconfig {
             place: self.to_string(),
-            reason: first_line.to_owned(),
+            reason: first_line(&reason),
         }
     }
 }
@@ -127,7 +125,10 @@ mod tests {
         let path = folder.path().join("config");
         fs::write(&path, BROKEN).expect("written");
 
-        let error = KubeconfigSource::File(path).load().expect_err("broken").to_string();
+        let error = KubeconfigSource::File(path)
+            .load()
+            .expect_err("broken")
+            .to_string();
 
         assert!(error.contains("line 6"), "{error}");
         assert!(!error.contains("SECRET-TOKEN-123"), "{error}");

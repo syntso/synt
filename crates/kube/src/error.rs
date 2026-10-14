@@ -63,6 +63,17 @@ impl From<io::Error> for KubeError {
     }
 }
 
+pub(crate) fn first_line(reason: &impl std::fmt::Display) -> String {
+    let reason = reason.to_string();
+
+    reason
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .trim_end()
+        .to_owned()
+}
+
 fn api_message(code: u16, reason: &str, message: &str) -> String {
     if reason.is_empty() {
         return format!("the cluster refused ({code}): {message}");

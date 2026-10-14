@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+use crate::error::first_line;
 use crate::{KubeError, ObjectRef};
 
 const LARGEST_COUNT: usize = 100;
@@ -14,10 +15,7 @@ pub struct Manifest {
 impl Manifest {
     pub fn parse(text: &str) -> Result<Self, KubeError> {
         let documents: Vec<Value> = serde_saphyr::from_multiple(text).map_err(|error| {
-            let reason = error.to_string();
-            let first_line = reason.lines().next().unwrap_or_default().trim_end().to_owned();
-
-            KubeError::invalid(format!("the manifest is not YAML: {first_line}"))
+            KubeError::invalid(format!("the manifest is not YAML: {}", first_line(&error)))
         })?;
 
         let mut objects = Vec::new();
@@ -179,7 +177,8 @@ metadata:
 
     #[test]
     fn a_yaml_error_does_not_quote_the_manifest() {
-        let text = "apiVersion: v1\nkind: Secret\nstringData:\n  password: hunter2\n  bad: [unclosed\n";
+        let text =
+            "apiVersion: v1\nkind: Secret\nstringData:\n  password: hunter2\n  bad: [unclosed\n";
 
         let error = Manifest::parse(text).expect_err("broken").to_string();
 
