@@ -7,7 +7,7 @@ use synt_ssh::{Pool, Shell, Target, TerminalSize};
 use super::AttachedSession;
 use super::checks::{connection, term, terminal_size};
 use super::revocation::close_when_revoked;
-use crate::builtin::ssh::{destination, failure, login_risk, reach_host, within_connect_limit};
+use crate::builtin::ssh::{failure, within_connect_limit};
 use crate::projects::Projects;
 use crate::terminal::{Console, ConsoleOutput, Origin, SessionId, Terminals};
 
@@ -45,9 +45,7 @@ impl SshSessionOpen {
     ) -> Result<(Console, ConsoleOutput), ActionError> {
         let lease = within_connect_limit(self.pool.acquire(target)).await?;
 
-        let (shell, output) = Shell::open(lease, term, size)
-            .await
-            .map_err(|error| failure(&error))?;
+        let (shell, output) = Shell::open(lease, term, size).await.map_err(failure)?;
 
         Ok((Console::Remote(shell), ConsoleOutput::Remote(output)))
     }
@@ -65,7 +63,7 @@ impl Action for SshSessionOpen {
     type Output = AttachedSession;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &SessionOpenParams) -> Risk {
-        login_risk(&self.projects, target, Self::RISK)
+        self.projects.login_risk(target, Self::RISK)
     }
 
     fn destination(
@@ -73,7 +71,7 @@ impl Action for SshSessionOpen {
         target: Option<&ResourceRef>,
         _params: &SessionOpenParams,
     ) -> Option<String> {
-        destination(&self.projects, target)
+        self.projects.host_destination(target)
     }
 
     async fn run(
@@ -86,7 +84,7 @@ impl Action for SshSessionOpen {
         let term = term(params.term.as_deref())?;
         let link = connection(context)?;
 
-        let target = reach_host(&self.projects, context).await?;
+        let target = self.projects.reach_host(context).await?;
         let risk = context.risk();
 
         let opened = self.shell(&target, term, size).await?;

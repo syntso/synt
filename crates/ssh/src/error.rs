@@ -101,6 +101,12 @@ impl From<io::Error> for SshError {
     }
 }
 
+impl From<russh::Error> for SshError {
+    fn from(error: russh::Error) -> Self {
+        Self::Channel(error.to_string())
+    }
+}
+
 fn remote_state(ended: bool) -> &'static str {
     if ended {
         return "it was stopped with a signal";

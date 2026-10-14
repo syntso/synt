@@ -1,7 +1,7 @@
+mod block;
 mod end_reason;
-mod session_block;
-mod session_ended;
+mod ended;
 
+pub use block::SessionBlock;
 pub use end_reason::EndReason;
-pub use session_block::SessionBlock;
-pub use session_ended::SessionEnded;
+pub use ended::SessionEnded;

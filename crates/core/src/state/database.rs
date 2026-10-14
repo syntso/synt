@@ -191,25 +191,25 @@ impl State {
 
 fn stored_grant(row: &Row<'_>) -> rusqlite::Result<StoredGrant> {
     Ok(StoredGrant {
-        id: unsigned(row.get(0)?),
-        actor: row.get(1)?,
-        action: row.get(2)?,
-        resource: row.get(3)?,
-        destination: row.get(4)?,
-        created_at: unsigned(row.get(5)?),
+        id: unsigned(row.get("id")?),
+        actor: row.get("actor")?,
+        action: row.get("action")?,
+        resource: row.get("resource")?,
+        destination: row.get("destination")?,
+        created_at: unsigned(row.get("created_at")?),
     })
 }
 
 fn stored_ssh_key(row: &Row<'_>) -> rusqlite::Result<KeyInfo> {
-    let name: String = row.get(0)?;
+    let name: String = row.get("name")?;
 
     Ok(KeyInfo {
         reference: KeyName::reference(&name),
         name,
-        kind: row.get(1)?,
-        public_key: row.get(2)?,
-        fingerprint: row.get(3)?,
-        created_at: unsigned(row.get(4)?),
+        kind: row.get("kind")?,
+        public_key: row.get("public_key")?,
+        fingerprint: row.get("fingerprint")?,
+        created_at: unsigned(row.get("created_at")?),
     })
 }
 

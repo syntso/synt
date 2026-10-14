@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use zeroize::Zeroizing;
 
-use super::place::KeyPlace;
-use super::vault::Vault;
+use super::KeyPlace;
+use super::Vault;
 use crate::files::{found, remove_if_present};
 use crate::{PlatformError, native};
 

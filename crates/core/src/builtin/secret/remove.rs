@@ -2,7 +2,7 @@ use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::secret_name_params::SecretNameParams;
+use super::name_params::SecretNameParams;
 use crate::builtin::blocking::blocking;
 use crate::secrets::{SecretInfo, Secrets};
 

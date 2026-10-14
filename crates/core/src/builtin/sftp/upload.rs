@@ -120,7 +120,7 @@ impl Action for SftpUpload {
         let mut upload = self.open(context, &params).await?;
 
         let sha256 = receive(&mut inbound, &mut upload, params.size).await?;
-        upload.finish().await.map_err(|error| failed(&error))?;
+        upload.finish().await.map_err(failed)?;
 
         Ok(Uploaded {
             path: params.path.into_string(),
@@ -155,7 +155,7 @@ async fn receive(
         }
 
         hasher.update(&data);
-        upload.write(&data).await.map_err(|error| failed(&error))?;
+        upload.write(&data).await.map_err(failed)?;
     }
 
     Ok(HEXLOWER.encode(&hasher.finalize()))

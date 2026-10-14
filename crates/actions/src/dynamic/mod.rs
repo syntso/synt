@@ -1,6 +1,6 @@
-mod dynamic;
-mod dynamic_action;
-mod dynamic_bound;
+mod action;
+mod bound;
+mod erased;
 
-pub(crate) use dynamic::Dynamic;
-pub use dynamic_action::DynamicAction;
+pub use action::DynamicAction;
+pub(crate) use erased::Dynamic;

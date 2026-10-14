@@ -13,6 +13,8 @@ use crate::reader::JournalReader;
 use crate::store::WriteDb;
 use crate::verify::{Damage, Verification, Walk};
 
+const SCRATCH_BYTES: usize = 512;
+
 pub struct Journal {
     id: JournalId,
     path: PathBuf,
@@ -52,7 +54,7 @@ impl Journal {
         }
 
         let device = keys.ensure_device_key()?;
-        let linker = Linker::derive(&device, id);
+        let linker = Linker::derive(&device, id)?;
         let anchors = Anchors::genesis(linker.genesis());
 
         let db = WriteDb::create(path, id)?;
@@ -67,7 +69,7 @@ impl Journal {
             clock,
             anchors,
             last_at: Timestamp::EPOCH,
-            scratch: Vec::with_capacity(512),
+            scratch: Vec::with_capacity(SCRATCH_BYTES),
             _lock: lock,
         })
     }
@@ -86,7 +88,7 @@ impl Journal {
         }
 
         let db = WriteDb::open(path, id)?;
-        let linker = Linker::derive(&keys.device_key()?, id);
+        let linker = Linker::derive(&keys.device_key()?, id)?;
         let tail = db.tail()?;
 
         let anchors = known_anchors(stored, tail.is_none(), &linker, id)?;
@@ -106,7 +108,7 @@ impl Journal {
             clock,
             anchors,
             last_at: tail.map_or(Timestamp::EPOCH, |(_, at)| at),
-            scratch: Vec::with_capacity(512),
+            scratch: Vec::with_capacity(SCRATCH_BYTES),
             _lock: lock,
         })
     }

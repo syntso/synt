@@ -166,7 +166,7 @@ impl Core {
             .recorder
             .open(request, Vec::new())
             .await
-            .map_err(|error| unavailable(&error))?;
+            .or_unavailable()?;
 
         let decision = self.broker.decide(access).await;
 
@@ -191,7 +191,7 @@ impl Core {
             .open(request, steps)
             .await
             .map(|request| (request, grant))
-            .map_err(|error| unavailable(&error))
+            .or_unavailable()
     }
 
     async fn admit_after_asking(
@@ -212,7 +212,7 @@ impl Core {
             .follow_up(request, steps)
             .await
             .map(|()| (request, grant))
-            .map_err(|error| unavailable(&error))
+            .or_unavailable()
     }
 
     async fn perform(
@@ -243,7 +243,7 @@ impl Core {
             self.recorder
                 .follow_up(request, vec![finished])
                 .await
-                .map_err(|error| unavailable(&error))?;
+                .or_unavailable()?;
         }
 
         Ok(ActionOutcome {
@@ -412,6 +412,16 @@ fn stopped(halt: Option<&CancellationToken>) -> &'static str {
 fn unavailable(error: &JournalError) -> RpcError {
     eprintln!("synt-core: journal: {error}");
     RpcError::new(ErrorCode::JOURNAL_UNAVAILABLE, "the journal is unavailable")
+}
+
+trait OrUnavailable<T> {
+    fn or_unavailable(self) -> Result<T, RpcError>;
+}
+
+impl<T> OrUnavailable<T> for Result<T, JournalError> {
+    fn or_unavailable(self) -> Result<T, RpcError> {
+        self.map_err(|error| unavailable(&error))
+    }
 }
 
 fn failure(error: &ActionError) -> RpcError {

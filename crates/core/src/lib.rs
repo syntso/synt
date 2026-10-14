@@ -13,7 +13,7 @@ mod idle;
 mod keys;
 mod link;
 mod locked;
-mod login;
+mod login_command;
 mod on_behalf;
 mod parsed_call;
 mod projects;
@@ -40,7 +40,7 @@ pub use error::CoreError;
 pub use extensions::{CoreCaller, CoreScreen, EventFeed, ExtensionMerger};
 pub use grants::{AlwaysGrants, GrantSeal};
 pub use idle::{Activity, IdleWatch};
-pub use login::LoginCommand;
+pub use login_command::LoginCommand;
 pub use projects::{
     ClusterResource, DatabaseResource, HostResource, ProjectChange, Projects, Resource,
     TunnelResource,

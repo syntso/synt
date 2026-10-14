@@ -7,7 +7,7 @@ use synt_ssh::{Destination, SshError, Tunnels};
 
 use super::TunnelInfo;
 use crate::builtin::hold::keep_hold_while_open;
-use crate::builtin::ssh::{check_reach, failure, login_risk, resolve_any};
+use crate::builtin::ssh::failure;
 use crate::projects::{Projects, Resolved};
 
 #[derive(Debug, Clone)]
@@ -53,7 +53,7 @@ impl Action for TunnelOpen {
     }
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &OpenParams) -> Risk {
-        login_risk(&self.projects, target, Self::RISK)
+        self.projects.login_risk(target, Self::RISK)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, params: &OpenParams) -> Option<String> {
@@ -71,9 +71,9 @@ impl Action for TunnelOpen {
     async fn run(&self, context: &Context, params: OpenParams) -> Result<TunnelInfo, ActionError> {
         let host = context.target().ok_or(ActionError::TargetRequired)?;
 
-        let resolved = resolve_any(&self.projects, host.as_str()).await?;
+        let resolved = self.projects.resolve_any(host.as_str()).await?;
         let planned = plan(resolved, &params)?;
-        check_reach(&self.projects, context, &planned)?;
+        self.projects.check_reach(context, &planned)?;
 
         let Resolved::Tunnel {
             host: target,
@@ -89,7 +89,7 @@ impl Action for TunnelOpen {
             .tunnels
             .open(&target, remote, local, stop.clone())
             .await
-            .map_err(|error| open_failure(&error))?;
+            .map_err(open_failure)?;
 
         keep_hold_while_open(context, stop);
 
@@ -196,13 +196,13 @@ fn local_port(requested: Option<u16>) -> Result<Option<u16>, ActionError> {
     Ok(requested)
 }
 
-fn open_failure(error: &SshError) -> ActionError {
+fn open_failure(error: SshError) -> ActionError {
     match error {
         SshError::Timeout(limit) => ActionError::Failed(format!(
             "could not connect within {} s, so no tunnel was opened",
             limit.as_secs()
         )),
-        SshError::Listen { .. } => ActionError::Failed(error.to_string()),
+        error @ SshError::Listen { .. } => ActionError::Failed(error.to_string()),
         other => failure(other),
     }
 }

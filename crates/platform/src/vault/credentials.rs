@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fmt::Display;
 use std::sync::Arc;
 
 use keyring_core::api::CredentialStoreApi;
@@ -7,8 +6,7 @@ use keyring_core::{Entry, Error};
 use windows_native_keyring_store::Store;
 use zeroize::Zeroizing;
 
-use super::place::KeyPlace;
-use super::vault::Vault;
+use super::{KeyPlace, Vault};
 use crate::PlatformError;
 
 const PERSISTENCE: &str = "persistence";
@@ -21,7 +19,7 @@ pub(crate) struct Credentials {
 
 impl Credentials {
     pub(crate) fn open(service: String) -> Result<Self, PlatformError> {
-        let store = Store::new().map_err(credentials)?;
+        let store = Store::new()?;
 
         Ok(Self { store, service })
     }
@@ -29,9 +27,9 @@ impl Credentials {
     fn entry(&self, name: &str) -> Result<Entry, PlatformError> {
         let modifiers = HashMap::from([(PERSISTENCE, THIS_MACHINE)]);
 
-        self.store
-            .build(&self.service, name, Some(&modifiers))
-            .map_err(credentials)
+        let entry = self.store.build(&self.service, name, Some(&modifiers))?;
+
+        Ok(entry)
     }
 }
 
@@ -44,22 +42,18 @@ impl Vault for Credentials {
         match self.entry(name)?.get_secret() {
             Ok(secret) => Ok(Some(Zeroizing::new(secret))),
             Err(Error::NoEntry) => Ok(None),
-            Err(error) => Err(credentials(error)),
+            Err(error) => Err(error.into()),
         }
     }
 
     fn write(&self, name: &str, bytes: &[u8]) -> Result<(), PlatformError> {
-        self.entry(name)?.set_secret(bytes).map_err(credentials)
+        Ok(self.entry(name)?.set_secret(bytes)?)
     }
 
     fn remove(&self, name: &str) -> Result<(), PlatformError> {
         match self.entry(name)?.delete_credential() {
             Ok(()) | Err(Error::NoEntry) => Ok(()),
-            Err(error) => Err(credentials(error)),
+            Err(error) => Err(error.into()),
         }
     }
-}
-
-fn credentials(error: impl Display) -> PlatformError {
-    PlatformError::Credentials(error.to_string())
 }

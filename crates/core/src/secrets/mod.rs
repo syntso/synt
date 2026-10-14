@@ -1,7 +1,7 @@
-mod secret_info;
-mod secret_name;
-mod secrets;
+mod info;
+mod name;
+mod store;
 
-pub use secret_info::SecretInfo;
-pub use secret_name::SecretName;
-pub use secrets::Secrets;
+pub use info::SecretInfo;
+pub use name::SecretName;
+pub use store::Secrets;

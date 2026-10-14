@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use super::{Pool, Slots};
 use crate::KeyVault;
+use crate::directory::SshDirectory;
 use crate::session::Connector;
-use crate::ssh_directory::SshDirectory;
 
 const GRACE: Duration = Duration::from_secs(30);
 

@@ -1,13 +1,13 @@
-mod approval_answer;
-mod approval_decision;
-mod approval_id;
-mod approval_request;
+mod answer;
+mod decision;
+mod id;
+mod request;
 mod requester;
 mod risk_level;
 
-pub use approval_answer::ApprovalAnswer;
-pub use approval_decision::ApprovalDecision;
-pub use approval_id::ApprovalId;
-pub use approval_request::ApprovalRequest;
+pub use answer::ApprovalAnswer;
+pub use decision::ApprovalDecision;
+pub use id::ApprovalId;
+pub use request::ApprovalRequest;
 pub use requester::Requester;
 pub use risk_level::RiskLevel;

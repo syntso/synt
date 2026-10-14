@@ -1,8 +1,8 @@
-mod key_summary;
-mod key_vault;
-mod stored_key;
+mod private_key;
+mod summary;
+mod vault;
 
-pub use key_summary::KeySummary;
-pub use key_vault::KeyVault;
-pub use stored_key::StoredKey;
-pub(crate) use stored_key::decode_private_key;
+pub use private_key::StoredKey;
+pub(crate) use private_key::decode_private_key;
+pub use summary::KeySummary;
+pub use vault::KeyVault;

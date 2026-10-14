@@ -1,5 +1,5 @@
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::Path;
 
 use tempfile::TempDir;
@@ -15,7 +15,8 @@ pub struct SshHome {
 
 impl SshHome {
     pub fn empty() -> Self {
-        let directory = tempfile::tempdir().expect("the system offers a temporary folder");
+        let directory = tempfile::tempdir()
+            .unwrap_or_else(|error| panic!("the system offers no temporary folder: {error}"));
 
         Self { directory }
     }
@@ -35,12 +36,16 @@ impl SshHome {
             .create(true)
             .append(true)
             .open(self.path().join(KNOWN_HOSTS))
-            .expect("the temporary folder is writable");
+            .unwrap_or_else(|error| unwritable(&error));
 
-        writeln!(file, "{}", key.known_hosts_line(host)).expect("the temporary folder is writable");
+        writeln!(file, "{}", key.known_hosts_line(host)).unwrap_or_else(|error| unwritable(&error));
     }
 
     pub fn forget_all(&self) {
-        fs::write(self.path().join(KNOWN_HOSTS), "").expect("the temporary folder is writable");
+        fs::write(self.path().join(KNOWN_HOSTS), "").unwrap_or_else(|error| unwritable(&error));
     }
+}
+
+fn unwritable(error: &io::Error) -> ! {
+    panic!("the temporary folder is not writable: {error}")
 }

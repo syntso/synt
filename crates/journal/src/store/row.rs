@@ -8,6 +8,16 @@ use crate::payload::Details;
 
 pub(super) const COLUMNS: &str = "seq, at, actor, kind, call, action, resource, details, link";
 
+const SEQ: usize = 0;
+const AT: usize = 1;
+const ACTOR: usize = 2;
+const KIND: usize = 3;
+const CALL: usize = 4;
+const ACTION: usize = 5;
+const RESOURCE: usize = 6;
+const DETAILS: usize = 7;
+const LINK: usize = 8;
+
 pub(crate) struct RowView<'a> {
     pub(crate) seq: Seq,
     pub(crate) link: Option<Link>,
@@ -23,15 +33,15 @@ pub(crate) struct RowView<'a> {
 impl<'a> RowView<'a> {
     pub(crate) fn read(row: &'a Row<'_>) -> Result<Self, JournalError> {
         Ok(Self {
-            seq: stored_seq(row.get(0)?)?,
-            at: row.get(1)?,
-            actor: blob(row, 2)?,
-            kind: row.get(3)?,
-            call: row.get(4)?,
-            action: text(row, 5)?,
-            resource: optional_text(row, 6)?,
-            details: blob(row, 7)?,
-            link: Link::from_slice(blob(row, 8)?),
+            seq: stored_seq(row.get(SEQ)?)?,
+            at: row.get(AT)?,
+            actor: blob(row, ACTOR)?,
+            kind: row.get(KIND)?,
+            call: row.get(CALL)?,
+            action: text(row, ACTION)?,
+            resource: optional_text(row, RESOURCE)?,
+            details: blob(row, DETAILS)?,
+            link: Link::from_slice(blob(row, LINK)?),
         })
     }
 

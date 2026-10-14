@@ -1,7 +1,7 @@
 mod open;
 mod place;
-mod vault;
-mod weak_vault;
+mod store;
+mod weak;
 
 #[cfg(target_os = "macos")]
 mod keychain;
@@ -14,5 +14,5 @@ mod credentials;
 
 pub use open::open_vault;
 pub use place::KeyPlace;
-pub use vault::Vault;
-pub use weak_vault::{WEAK_VAULT_FLAG, WeakVault};
+pub use store::Vault;
+pub use weak::{WEAK_VAULT_FLAG, WeakVault};

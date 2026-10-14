@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 pub struct HostKey {
     algorithm: String,
     blob: String,
+    bytes: Vec<u8>,
 }
 
 impl HostKey {
@@ -14,9 +15,13 @@ impl HostKey {
         let algorithm = words.next()?.to_owned();
         let blob = words.next()?.to_owned();
 
-        BASE64.decode(blob.as_bytes()).ok()?;
+        let bytes = BASE64.decode(blob.as_bytes()).ok()?;
 
-        Some(Self { algorithm, blob })
+        Some(Self {
+            algorithm,
+            blob,
+            bytes,
+        })
     }
 
     pub fn known_hosts_line(&self, host: &str) -> String {
@@ -24,10 +29,7 @@ impl HostKey {
     }
 
     pub fn fingerprint(&self) -> String {
-        let bytes = BASE64
-            .decode(self.blob.as_bytes())
-            .expect("the blob was checked when the key was parsed");
-        let digest = Sha256::digest(&bytes);
+        let digest = Sha256::digest(&self.bytes);
 
         format!("SHA256:{}", BASE64_NOPAD.encode(&digest))
     }

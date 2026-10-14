@@ -8,8 +8,8 @@ use tokio::net::TcpStream;
 use super::{Algorithms, ClientHandler, Connection, HandshakeError, client_config};
 use crate::auth::{Authenticator, Credentials, Logins};
 use crate::dial::{Addresses, race};
+use crate::directory::SshDirectory;
 use crate::known_hosts::KnownHosts;
-use crate::ssh_directory::SshDirectory;
 use crate::{KeyVault, SshError, Target};
 
 pub(crate) struct Connector {

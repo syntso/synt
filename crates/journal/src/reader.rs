@@ -33,7 +33,7 @@ impl JournalReader {
         }
 
         let db = ReadDb::open(path, id)?;
-        let linker = Linker::derive(&keys.device_key()?, id);
+        let linker = Linker::derive(&keys.device_key()?, id)?;
 
         Ok(Self {
             id,

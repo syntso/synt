@@ -5,9 +5,9 @@ use security_framework::passwords::{
 };
 use zeroize::Zeroizing;
 
-use super::place::KeyPlace;
-use super::vault::Vault;
-use super::weak_vault::{WEAK_VAULT_FLAG, WeakVault};
+use super::KeyPlace;
+use super::Vault;
+use super::{WEAK_VAULT_FLAG, WeakVault};
 use crate::PlatformError;
 
 const PROBE: &str = "probe";

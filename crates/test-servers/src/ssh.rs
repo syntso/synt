@@ -1,7 +1,6 @@
-use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
+use crate::run_folder::RunFolder;
 use crate::{HostKey, SshHome};
 
 const SWITCH: &str = "SYNT_SSH_TESTS";
@@ -11,7 +10,7 @@ const DEFAULT_PORT: u16 = 22;
 
 #[derive(Debug, Clone)]
 pub struct SshServers {
-    run: PathBuf,
+    run: RunFolder,
     bastion_port: u16,
     bastion_key: HostKey,
     target_key: HostKey,
@@ -25,20 +24,12 @@ impl SshServers {
     pub const ECHO_PORT: u16 = 7000;
 
     pub fn running() -> Option<Self> {
-        if env::var(SWITCH).as_deref() != Ok("1") {
-            eprintln!("skipped: set {SWITCH}=1 after {START} to run tests against ssh servers");
-            return None;
-        }
-
-        let run = Path::new(env!("CARGO_MANIFEST_DIR")).join(RUN_FOLDER);
+        let run = RunFolder::switched_on(SWITCH, START, RUN_FOLDER, "ssh servers")?;
 
         Some(Self {
-            bastion_port: read(&run, "bastion_port")
-                .trim()
-                .parse()
-                .unwrap_or_else(|_| panic!("{START} wrote a bastion port that is not a number")),
-            bastion_key: host_key(&run, "bastion"),
-            target_key: host_key(&run, "target"),
+            bastion_port: run.bastion_port(),
+            bastion_key: run.host_key("bastion"),
+            target_key: run.host_key("target"),
             run,
         })
     }
@@ -72,11 +63,11 @@ impl SshServers {
     }
 
     pub fn client_key(&self) -> PathBuf {
-        self.run.join("client_ed25519")
+        self.run.file("client_ed25519")
     }
 
     pub fn vault_key(&self) -> PathBuf {
-        self.run.join("vault_ed25519")
+        self.run.file("vault_ed25519")
     }
 
     pub fn trusting_home(&self) -> SshHome {
@@ -84,21 +75,4 @@ impl SshServers {
             .trusting(&self.bastion_pattern(), &self.bastion_key)
             .trusting(Self::TARGET_NAME, &self.target_key)
     }
-}
-
-fn host_key(run: &Path, host: &str) -> HostKey {
-    let line = read(run, &format!("{host}/host_ed25519_key.pub"));
-
-    HostKey::parse(&line).unwrap_or_else(|| panic!("the {host} host key from {START} is damaged"))
-}
-
-fn read(run: &Path, name: &str) -> String {
-    let path = run.join(name);
-
-    fs::read_to_string(&path).unwrap_or_else(|error| {
-        panic!(
-            "{SWITCH}=1 but {} cannot be read ({error}); run {START} first",
-            path.display()
-        )
-    })
 }

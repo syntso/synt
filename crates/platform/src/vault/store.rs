@@ -1,6 +1,6 @@
 use zeroize::Zeroizing;
 
-use super::place::KeyPlace;
+use super::KeyPlace;
 use crate::PlatformError;
 
 pub trait Vault: Send + Sync {

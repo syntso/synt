@@ -1,9 +1,9 @@
 mod close;
+mod info;
 mod list;
 mod open;
-mod tunnel_info;
 
 pub use close::TunnelClose;
+pub(crate) use info::TunnelInfo;
 pub use list::TunnelList;
 pub use open::TunnelOpen;
-pub(crate) use tunnel_info::TunnelInfo;

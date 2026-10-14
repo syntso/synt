@@ -4,7 +4,7 @@ use russh_sftp::client::RawSftpSession;
 use russh_sftp::client::error::Error;
 use tokio::runtime::Handle;
 
-pub(super) struct RemoteFile {
+pub(crate) struct RemoteFile {
     session: Arc<RawSftpSession>,
     handle: String,
     path: String,
@@ -12,7 +12,7 @@ pub(super) struct RemoteFile {
 }
 
 impl RemoteFile {
-    pub(super) fn new(session: Arc<RawSftpSession>, handle: String, path: &str) -> Self {
+    pub(crate) fn new(session: Arc<RawSftpSession>, handle: String, path: &str) -> Self {
         Self {
             session,
             handle,
@@ -21,19 +21,19 @@ impl RemoteFile {
         }
     }
 
-    pub(super) fn session(&self) -> &Arc<RawSftpSession> {
+    pub(crate) fn session(&self) -> &Arc<RawSftpSession> {
         &self.session
     }
 
-    pub(super) fn handle(&self) -> &str {
+    pub(crate) fn handle(&self) -> &str {
         &self.handle
     }
 
-    pub(super) fn path(&self) -> &str {
+    pub(crate) fn path(&self) -> &str {
         &self.path
     }
 
-    pub(super) async fn sync_and_close(mut self, sync: bool) -> Result<(), Error> {
+    pub(crate) async fn sync_and_close(mut self, sync: bool) -> Result<(), Error> {
         self.open = false;
 
         if !sync {

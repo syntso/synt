@@ -1,7 +1,7 @@
-mod integration;
-mod integration_shell;
-mod shell_snippet;
+mod shell;
+mod show;
+mod snippet;
 
-pub use integration::SessionIntegration;
-pub(crate) use integration_shell::IntegrationShell;
-pub(crate) use shell_snippet::ShellSnippet;
+pub(crate) use shell::IntegrationShell;
+pub use show::SessionIntegration;
+pub(crate) use snippet::ShellSnippet;
