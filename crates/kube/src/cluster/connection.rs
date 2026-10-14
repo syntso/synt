@@ -6,8 +6,8 @@ use kube::{Client, Config};
 use tokio::sync::OnceCell;
 use tokio::task;
 
-use super::client_through::client_through;
-use crate::{ClusterPlace, ClusterSpec, Dialer, Kind, Kinds, KubeError};
+use crate::transport::DialedConnector;
+use crate::{ClusterPlace, ClusterSpec, Dialer, Kind, Kinds, KubeError, Namespaces};
 
 pub struct Cluster {
     client: Client,
@@ -20,13 +20,11 @@ impl Cluster {
         spec: &ClusterSpec,
         dialer: Option<Arc<dyn Dialer>>,
     ) -> Result<Self, KubeError> {
-        let (config, place) = load(spec.clone()).await?;
+        let (config, place) = Self::configure(spec.clone()).await?;
 
         let client = match dialer {
-            Some(dialer) => client_through(&config, dialer)?,
-            None => {
-                Client::try_from(config).map_err(|error| KubeError::Connect(error.to_string()))?
-            }
+            Some(dialer) => DialedConnector::new(dialer).client(&config)?,
+            None => Client::try_from(config)?,
         };
 
         Ok(Self {
@@ -63,6 +61,55 @@ impl Cluster {
     pub(crate) fn client(&self) -> &Client {
         &self.client
     }
+
+    pub(crate) fn namespace_for(&self, kind: &Kind, namespace: Option<&str>) -> Option<String> {
+        if !kind.is_namespaced() {
+            return None;
+        }
+
+        Some(namespace.unwrap_or(self.namespace()).to_owned())
+    }
+
+    pub(crate) fn namespace_among(&self, kind: &Kind, namespaces: &Namespaces) -> Option<String> {
+        if !kind.is_namespaced() {
+            return None;
+        }
+
+        self.namespace_named(namespaces)
+    }
+
+    pub(crate) fn namespace_named(&self, namespaces: &Namespaces) -> Option<String> {
+        match namespaces {
+            Namespaces::Default => Some(self.namespace().to_owned()),
+            Namespaces::Only(namespace) => Some(namespace.clone()),
+            Namespaces::All => None,
+        }
+    }
+
+    async fn configure(spec: ClusterSpec) -> Result<(Config, ClusterPlace), KubeError> {
+        let source = spec.kubeconfig.clone();
+        let read = task::spawn_blocking(move || {
+            let kubeconfig = spec.kubeconfig.load()?;
+            let place = spec.place_in(&kubeconfig)?;
+
+            Ok::<_, KubeError>((kubeconfig, place))
+        });
+        let (kubeconfig, place) = read.await.map_err(|_| {
+            KubeError::Connect("reading the kubeconfig stopped unexpectedly".to_owned())
+        })??;
+
+        let options = KubeConfigOptions {
+            context: Some(place.context.clone()),
+            ..KubeConfigOptions::default()
+        };
+        let mut config = Config::from_custom_kubeconfig(kubeconfig, &options)
+            .await
+            .map_err(|error| source.broken(error))?;
+
+        config.default_namespace.clone_from(&place.namespace);
+
+        Ok((config, place))
+    }
 }
 
 impl Debug for Cluster {
@@ -72,28 +119,4 @@ impl Debug for Cluster {
             .field("place", &self.place)
             .finish_non_exhaustive()
     }
-}
-
-async fn load(spec: ClusterSpec) -> Result<(Config, ClusterPlace), KubeError> {
-    let read = task::spawn_blocking(move || {
-        let kubeconfig = spec.kubeconfig.load()?;
-        let place = spec.place_in(&kubeconfig)?;
-
-        Ok::<_, KubeError>((kubeconfig, place, spec))
-    });
-    let (kubeconfig, place, spec) = read.await.map_err(|_| {
-        KubeError::Connect("reading the kubeconfig stopped unexpectedly".to_owned())
-    })??;
-
-    let options = KubeConfigOptions {
-        context: Some(place.context.clone()),
-        ..KubeConfigOptions::default()
-    };
-    let mut config = Config::from_custom_kubeconfig(kubeconfig, &options)
-        .await
-        .map_err(|error| spec.kubeconfig.broken(error))?;
-
-    config.default_namespace.clone_from(&place.namespace);
-
-    Ok((config, place))
 }

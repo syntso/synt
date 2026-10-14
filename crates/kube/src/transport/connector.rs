@@ -5,9 +5,13 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use http::Uri;
-use tower::Service;
+use hyper_util::rt::TokioExecutor;
+use kube::client::ConfigExt;
+use kube::{Client, Config};
+use tower::{BoxError, Service, ServiceBuilder};
 
 use super::{DialedStream, Dialer};
+use crate::KubeError;
 
 const HTTPS_PORT: u16 = 443;
 const HTTP_PORT: u16 = 80;
@@ -22,6 +26,21 @@ pub(crate) struct DialedConnector {
 impl DialedConnector {
     pub(crate) fn new(dialer: Arc<dyn Dialer>) -> Self {
         Self { dialer }
+    }
+
+    pub(crate) fn client(self, config: &Config) -> Result<Client, KubeError> {
+        let connector = config.rustls_https_connector_with_connector(self)?;
+        let http =
+            hyper_util::client::legacy::Client::builder(TokioExecutor::new()).build(connector);
+
+        let service = ServiceBuilder::new()
+            .layer(config.base_uri_layer())
+            .option_layer(config.auth_layer()?)
+            .layer(config.extra_headers_layer()?)
+            .map_err(BoxError::from)
+            .service(http);
+
+        Ok(Client::new(service, config.default_namespace.clone()))
     }
 }
 
