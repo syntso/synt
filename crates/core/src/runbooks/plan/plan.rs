@@ -192,7 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn the_shown_plan_lists_steps_without_the_runner_settings() {
+    fn the_shown_plan_lists_steps_with_their_destinations_without_the_runner_settings() {
         let shown = plan(&runbook(DEPLOY), &json!({ "tag": "v7" }))
             .unwrap()
             .shown(true);
@@ -208,6 +208,7 @@ mod tests {
                 "target": "api-1",
                 "params": { "command": "sudo ln -sfn v7 current" },
                 "risk": "privileged",
+                "destination": "api-1",
             })
         );
     }
