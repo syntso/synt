@@ -32,7 +32,7 @@ impl Shelf {
                 "SELECT revision FROM extension_revisions WHERE project = ?1 AND path = ?2 \
                  ORDER BY seq DESC LIMIT 1",
                 [project, path],
-                |row| row.get(0),
+                |row| row.get("revision"),
             )
             .optional()?;
 
@@ -86,16 +86,16 @@ impl Shelf {
 }
 
 fn stored(row: &Row<'_>) -> rusqlite::Result<StoredRevision> {
-    let parents: String = row.get(1)?;
+    let parents: String = row.get("parents")?;
 
     Ok(StoredRevision {
-        revision: row.get(0)?,
+        revision: row.get("revision")?,
         parents: parents
             .split(',')
             .filter(|parent| !parent.is_empty())
             .map(str::to_owned)
             .collect(),
-        body: row.get(2)?,
+        body: row.get("body")?,
     })
 }
 

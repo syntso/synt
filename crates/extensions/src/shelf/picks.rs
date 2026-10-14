@@ -1,10 +1,11 @@
 use rusqlite::{OptionalExtension, Row};
 
 use super::Shelf;
-use super::shelf::{now, signed_number};
+use super::database::signed_number;
 use crate::ExtensionError;
-use crate::files::Picked;
+use crate::clock::now;
 use crate::manifest::FileAccess;
+use crate::picked::Picked;
 
 const MOST_PICKS: i64 = 256;
 
@@ -87,13 +88,12 @@ impl Shelf {
 }
 
 fn picked(row: &Row<'_>) -> rusqlite::Result<Picked> {
-    let path: String = row.get(1)?;
-    let access: String = row.get(2)?;
+    let path: String = row.get("path")?;
+    let access: String = row.get("access")?;
 
-    Ok(Picked {
-        handle: row.get(0)?,
-        name: Picked::name_of(&path),
-        access: FileAccess::parse(&access).unwrap_or(FileAccess::Read),
+    Ok(Picked::stored(
+        row.get("handle")?,
         path,
-    })
+        FileAccess::parse(&access).unwrap_or(FileAccess::Read),
+    ))
 }

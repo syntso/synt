@@ -48,3 +48,6 @@ CREATE TABLE IF NOT EXISTS extension_revisions (
 
 pub(super) const MANIFEST_COLUMN: &str =
     "ALTER TABLE extensions ADD COLUMN manifest_sha256 TEXT NOT NULL DEFAULT ''";
+
+pub(super) const HAS_MANIFEST_COLUMN: &str =
+    "SELECT 1 FROM pragma_table_info('extensions') WHERE name = 'manifest_sha256'";
