@@ -1,4 +1,4 @@
-use synt_kube::{KubeError, ListQuery, Namespaces};
+use synt_kube::{EventQuery, KindName, KubeError, ListQuery, Namespace, NamespaceScope};
 
 use crate::Lab;
 
@@ -9,17 +9,12 @@ async fn objects_are_listed_and_read_by_kind_name() {
         return;
     };
 
-    let namespaces = lab.cluster.kind("ns").await.unwrap();
-    let all = lab
-        .cluster
-        .list(&namespaces, &ListQuery::default())
+    let namespaces = lab.kind("ns").await;
+    let all = ListQuery::default()
+        .run(&lab.cluster, &namespaces)
         .await
         .unwrap();
-    let ours = lab
-        .cluster
-        .get(&namespaces, &lab.namespace, None)
-        .await
-        .unwrap();
+    let ours = lab.object(&namespaces, &lab.namespace).get().await.unwrap();
 
     assert_eq!(all.kind, "Namespace");
     assert!(
@@ -49,26 +44,27 @@ async fn a_selector_and_a_page_size_narrow_a_list() {
         ))
         .await;
     }
-    let maps = lab.cluster.kind("configmaps").await.unwrap();
+    let maps = lab.kind("configmaps").await;
+    let ours = || NamespaceScope::Only(Namespace::try_from(lab.namespace.as_str()).unwrap());
 
     let front = ListQuery {
-        namespaces: Namespaces::Only(lab.namespace.clone()),
+        scope: ours(),
         selector: Some("tier=front".to_owned()),
         ..ListQuery::default()
     };
     let one_page = ListQuery {
-        namespaces: Namespaces::Only(lab.namespace.clone()),
+        scope: ours(),
         selector: Some("tier".to_owned()),
         limit: Some(2),
         ..ListQuery::default()
     };
-    let selected = lab.cluster.list(&maps, &front).await.unwrap();
-    let first_page = lab.cluster.list(&maps, &one_page).await.unwrap();
+    let selected = front.run(&lab.cluster, &maps).await.unwrap();
+    let first_page = one_page.run(&lab.cluster, &maps).await.unwrap();
     let next = ListQuery {
         continue_token: first_page.continue_token.clone(),
         ..one_page
     };
-    let second_page = lab.cluster.list(&maps, &next).await.unwrap();
+    let second_page = next.run(&lab.cluster, &maps).await.unwrap();
 
     assert_eq!(selected.items.len(), 2);
     assert_eq!(first_page.items.len(), 2);
@@ -86,9 +82,13 @@ async fn a_missing_object_is_not_found() {
         return;
     };
 
-    let pods = lab.cluster.kind("pods").await.unwrap();
-    let missing = lab.cluster.get(&pods, "nobody", None).await.unwrap_err();
-    let unknown = lab.cluster.kind("gadgets").await.unwrap_err();
+    let pods = lab.kind("pods").await;
+    let missing = lab.object(&pods, "nobody").get().await.unwrap_err();
+    let unknown = lab
+        .cluster
+        .kind(&KindName::try_from("gadgets").unwrap())
+        .await
+        .unwrap_err();
 
     assert!(matches!(missing, KubeError::NotFound(_)), "{missing}");
     assert!(matches!(unknown, KubeError::UnknownKind(_)), "{unknown}");
@@ -106,18 +106,18 @@ async fn events_tell_what_happened_to_an_object() {
     lab.apply(&crate::lab::ticker("eventful")).await;
     let pod = lab.running_pod("app=eventful").await;
 
-    let events = lab
-        .cluster
-        .events(&Namespaces::Default, Some(&pod))
-        .await
-        .unwrap();
+    let query = EventQuery {
+        name: Some(pod.clone()),
+        ..EventQuery::default()
+    };
+    let events = query.run(&lab.cluster).await.unwrap();
 
     assert!(
         events
             .iter()
             .any(|event| event.reason.as_deref() == Some("Started"))
     );
-    assert!(events.iter().all(|event| event.object.name == pod));
+    assert!(events.iter().all(|event| event.object.name == pod.as_str()));
 
     lab.finish().await;
 }

@@ -1,7 +1,10 @@
 use std::process;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use synt_kube::{Cluster, ClusterSpec, KubeconfigSource, ListQuery, Manifest};
+use synt_kube::{
+    Cluster, ClusterObject, ClusterSpec, Kind, KindName, KubeconfigSource, ListQuery, Manifest,
+    ObjectName,
+};
 use synt_test_servers::KubeServers;
 use tokio::time;
 
@@ -33,11 +36,23 @@ impl Lab {
     pub async fn apply(&self, yaml: &str) {
         let manifest = Manifest::parse(yaml).unwrap();
 
-        self.cluster.apply(&manifest, false).await.unwrap();
+        manifest.apply(&self.cluster, false).await.unwrap();
     }
 
-    pub async fn running_pod(&self, selector: &str) -> String {
-        let pods = self.cluster.kind("pods").await.unwrap();
+    pub async fn kind(&self, name: &str) -> Kind {
+        let name = KindName::try_from(name).unwrap();
+
+        self.cluster.kind(&name).await.unwrap()
+    }
+
+    pub fn object(&self, kind: &Kind, name: &str) -> ClusterObject {
+        let name = ObjectName::try_from(name).unwrap();
+
+        self.cluster.object(kind, &name, None)
+    }
+
+    pub async fn running_pod(&self, selector: &str) -> ObjectName {
+        let pods = self.kind("pods").await;
         let query = ListQuery {
             selector: Some(selector.to_owned()),
             ..ListQuery::default()
@@ -45,14 +60,15 @@ impl Lab {
 
         time::timeout(PATIENCE, async {
             loop {
-                let listing = self.cluster.list(&pods, &query).await.unwrap();
+                let listing = query.run(&self.cluster, &pods).await.unwrap();
                 let running = listing.items.iter().find(|pod| {
                     pod["status"]["phase"] == "Running"
                         && pod["metadata"]["deletionTimestamp"].is_null()
                 });
 
                 if let Some(pod) = running {
-                    return pod["metadata"]["name"].as_str().unwrap().to_owned();
+                    return ObjectName::try_from(pod["metadata"]["name"].as_str().unwrap())
+                        .unwrap();
                 }
 
                 time::sleep(Duration::from_millis(500)).await;
@@ -63,10 +79,10 @@ impl Lab {
     }
 
     pub async fn finish(self) {
-        let namespaces = self.cluster.kind("namespaces").await.unwrap();
+        let namespaces = self.kind("namespaces").await;
 
-        self.cluster
-            .delete(&namespaces, &self.namespace, None)
+        self.object(&namespaces, &self.namespace)
+            .delete()
             .await
             .unwrap();
     }

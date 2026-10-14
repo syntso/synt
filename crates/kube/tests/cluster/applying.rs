@@ -18,9 +18,9 @@ async fn a_dry_run_shows_the_change_before_it_is_applied() {
     };
 
     let first = settings(&lab.namespace, "slow");
-    let planned = lab.cluster.plan(&first, false).await.unwrap();
-    let maps = lab.cluster.kind("cm").await.unwrap();
-    let still_missing = lab.cluster.get(&maps, "settings", None).await;
+    let planned = first.plan(&lab.cluster, false).await.unwrap();
+    let maps = lab.kind("cm").await;
+    let still_missing = lab.object(&maps, "settings").get().await;
 
     assert_eq!(planned.objects[0].change, Change::Create);
     assert!(
@@ -30,11 +30,10 @@ async fn a_dry_run_shows_the_change_before_it_is_applied() {
     );
     assert!(still_missing.is_err(), "a dry run changes nothing");
 
-    let applied = lab.cluster.apply(&first, false).await.unwrap();
-    let again = lab.cluster.plan(&first, false).await.unwrap();
-    let changed = lab
-        .cluster
-        .plan(&settings(&lab.namespace, "fast"), false)
+    let applied = first.apply(&lab.cluster, false).await.unwrap();
+    let again = first.plan(&lab.cluster, false).await.unwrap();
+    let changed = settings(&lab.namespace, "fast")
+        .plan(&lab.cluster, false)
         .await
         .unwrap();
 
@@ -70,14 +69,13 @@ async fn a_secret_diff_never_shows_its_values() {
         ))
         .unwrap()
     };
-    lab.cluster
-        .apply(&secret("first-password"), false)
+    secret("first-password")
+        .apply(&lab.cluster, false)
         .await
         .unwrap();
 
-    let planned = lab
-        .cluster
-        .plan(&secret("second-password"), false)
+    let planned = secret("second-password")
+        .plan(&lab.cluster, false)
         .await
         .unwrap();
     let diff = planned.diff();
@@ -101,26 +99,15 @@ async fn a_deployment_scales_restarts_and_goes_away() {
     };
 
     lab.apply(&ticker("scaled")).await;
-    let deployments = lab.cluster.kind("deploy").await.unwrap();
+    let deployments = lab.kind("deploy").await;
+    let deployment = || lab.object(&deployments, "scaled");
 
-    let scaled = lab
-        .cluster
-        .scale(&deployments, "scaled", None, 3)
-        .await
-        .unwrap();
-    let restarted = lab
-        .cluster
-        .restart(&deployments, "scaled", None)
-        .await
-        .unwrap();
-    let live = lab.cluster.get(&deployments, "scaled", None).await.unwrap();
-    let pods = lab.cluster.kind("pods").await.unwrap();
-    let not_restartable = lab.cluster.restart(&pods, "anything", None).await;
-    let deleted = lab
-        .cluster
-        .delete(&deployments, "scaled", None)
-        .await
-        .unwrap();
+    let scaled = deployment().scale(3).await.unwrap();
+    let restarted = deployment().restart().await.unwrap();
+    let live = deployment().get().await.unwrap();
+    let pods = lab.kind("pods").await;
+    let not_restartable = lab.object(&pods, "anything").restart().await;
+    let deleted = deployment().delete().await.unwrap();
 
     assert_eq!((scaled.from, scaled.to), (Some(1), 3));
     assert_eq!(live["spec"]["replicas"], 3);
@@ -152,9 +139,9 @@ async fn objects_in_a_namespace_the_manifest_creates_are_planned_from_the_manife
     ))
     .unwrap();
 
-    let first = lab.cluster.plan(&manifest, false).await.unwrap();
-    lab.cluster.apply(&manifest, false).await.unwrap();
-    let second = lab.cluster.plan(&manifest, false).await.unwrap();
+    let first = manifest.plan(&lab.cluster, false).await.unwrap();
+    manifest.apply(&lab.cluster, false).await.unwrap();
+    let second = manifest.plan(&lab.cluster, false).await.unwrap();
 
     let checked: Vec<(Change, bool)> = first
         .objects
@@ -166,7 +153,7 @@ async fn objects_in_a_namespace_the_manifest_creates_are_planned_from_the_manife
     assert!(second.objects.iter().all(|planned| planned.server_checked));
     assert_eq!(second.count(Change::Unchanged), 2);
 
-    let namespaces = lab.cluster.kind("namespaces").await.unwrap();
-    lab.cluster.delete(&namespaces, &fresh, None).await.unwrap();
+    let namespaces = lab.kind("namespaces").await;
+    lab.object(&namespaces, &fresh).delete().await.unwrap();
     lab.finish().await;
 }
