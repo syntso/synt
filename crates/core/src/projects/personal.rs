@@ -28,7 +28,8 @@ impl Personal {
     }
 
     pub(crate) fn info(&self) -> Result<ProjectInfo, CoreError> {
-        let listing = self.listing()?;
+        let aliases = aliases()?;
+        let (clusters, problems) = self.clusters(&aliases);
 
         Ok(ProjectInfo {
             id: PERSONAL.to_owned(),
@@ -36,8 +37,8 @@ impl Personal {
             slug: PERSONAL.to_owned(),
             path: config_path(),
             read_only: true,
-            resources: listing.resources.len(),
-            problems: listing.problems,
+            resources: aliases.len() + clusters.len(),
+            problems,
         })
     }
 
