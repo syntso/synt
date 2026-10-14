@@ -1,8 +1,8 @@
 use kube::config::Kubeconfig;
 
-use super::servers::Servers;
-use super::{ClusterPlace, KubeconfigSource};
-use crate::KubeError;
+use super::ClusterPlace;
+use crate::kubeconfig::servers::Servers;
+use crate::{KubeError, KubeconfigSource};
 
 const DEFAULT_NAMESPACE: &str = "default";
 

@@ -1,10 +1,8 @@
-mod cluster_place;
-mod cluster_spec;
+mod cluster;
 mod context_info;
 mod servers;
 mod source;
 
-pub use cluster_place::ClusterPlace;
-pub use cluster_spec::ClusterSpec;
+pub use cluster::{ClusterPlace, ClusterSpec};
 pub use context_info::ContextInfo;
 pub use source::KubeconfigSource;
