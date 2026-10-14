@@ -4,9 +4,9 @@ use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_ssh::{Destination, SshError, Tunnels};
-use tokio_util::sync::CancellationToken;
 
 use super::TunnelInfo;
+use crate::builtin::hold::keep_hold_while_open;
 use crate::builtin::ssh::{check_reach, failure, login_risk, resolve_any};
 use crate::projects::{Projects, Resolved};
 
@@ -129,6 +129,9 @@ fn plan(resolved: Resolved, params: &OpenParams) -> Result<Resolved, ActionError
                 local: local.or(local_port),
             })
         }
+        Resolved::Cluster { .. } => Err(ActionError::InvalidParams(
+            "the target is a cluster; forward a port of it with k8s.port_forward".to_owned(),
+        )),
     }
 }
 
@@ -153,17 +156,6 @@ fn check_matches_resource(
     }
 
     Ok(())
-}
-
-fn keep_hold_while_open(context: &Context, stop: CancellationToken) {
-    let Some(hold) = context.hold() else {
-        return;
-    };
-
-    tokio::spawn(async move {
-        stop.cancelled().await;
-        drop(hold);
-    });
 }
 
 fn destination(params: &OpenParams) -> Result<Option<Destination>, ActionError> {
