@@ -4,8 +4,7 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::EnableParams;
-use super::failure::failure;
+use super::params::EnableParams;
 use crate::Syncer;
 use crate::provider::Place;
 use crate::report::SyncStatus;
@@ -59,9 +58,6 @@ impl Action for SyncEnable {
     ) -> Result<SyncStatus, ActionError> {
         let place = Place::Folder(PathBuf::from(params.folder));
 
-        self.syncer
-            .enable(&params.project, place)
-            .await
-            .map_err(failure)
+        Ok(self.syncer.enable(&params.project, place).await?)
     }
 }

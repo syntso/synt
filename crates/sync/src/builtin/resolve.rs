@@ -1,8 +1,7 @@
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::ResolveParams;
-use super::failure::{failure, invalid};
+use super::params::ResolveParams;
 use crate::Syncer;
 use crate::document::DocumentPath;
 use crate::id::RevisionId;
@@ -36,12 +35,9 @@ impl Action for DocumentResolve {
         _context: &Context,
         params: ResolveParams,
     ) -> Result<RevisionInfo, ActionError> {
-        let path = DocumentPath::parse(&params.path).map_err(invalid)?;
-        let revision = RevisionId::parse(&params.revision).map_err(invalid)?;
+        let path = DocumentPath::parse(&params.path)?;
+        let revision = RevisionId::parse(&params.revision)?;
 
-        self.syncer
-            .resolve(&params.project, path, revision)
-            .await
-            .map_err(failure)
+        Ok(self.syncer.resolve(&params.project, path, revision).await?)
     }
 }
