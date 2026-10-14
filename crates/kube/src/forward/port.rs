@@ -2,18 +2,13 @@ use std::fmt::{self, Debug, Formatter};
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 
-use k8s_openapi::api::core::v1::Pod;
-use kube::api::Api;
-use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Semaphore;
-use tokio::task::{JoinHandle, JoinSet};
+use tokio::net::TcpListener;
+use tokio::task::JoinHandle;
 
-use super::{ForwardStatus, ForwardTraffic};
+use super::{ForwardStatus, ForwardTraffic, Relay};
 use crate::KubeError;
 
-const CONCURRENT_CONNECTIONS: usize = 64;
-const BUFFER_BYTES: usize = 32 * 1024;
+const ANY_PORT: u16 = 0;
 
 pub struct PortForward {
     target: String,
@@ -27,30 +22,18 @@ pub struct PortForward {
 
 impl PortForward {
     pub(crate) async fn start(
-        pods: Api<Pod>,
         target: String,
-        (namespace, pod): (String, String),
-        remote_port: u16,
+        namespace: String,
+        relay: Relay,
         local_port: Option<u16>,
     ) -> Result<Self, KubeError> {
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, local_port.unwrap_or(0)))
-            .await
-            .map_err(|error| {
-                KubeError::Io(format!(
-                    "cannot listen on 127.0.0.1:{}: {error}",
-                    local_port.unwrap_or(0)
-                ))
-            })?;
+        let listener = Self::listen(local_port.unwrap_or(ANY_PORT)).await?;
         let local_port = listener.local_addr()?.port();
-        let traffic = Arc::new(ForwardTraffic::default());
 
-        let serving = tokio::spawn(serve(
-            listener,
-            pods,
-            pod.clone(),
-            remote_port,
-            Arc::clone(&traffic),
-        ));
+        let pod = relay.pod().to_owned();
+        let remote_port = relay.port();
+        let traffic = relay.traffic();
+        let serving = tokio::spawn(relay.serve(listener));
 
         Ok(Self {
             target,
@@ -88,6 +71,12 @@ impl PortForward {
 
         self.status()
     }
+
+    async fn listen(port: u16) -> Result<TcpListener, KubeError> {
+        TcpListener::bind((Ipv4Addr::LOCALHOST, port))
+            .await
+            .map_err(|error| KubeError::Io(format!("cannot listen on 127.0.0.1:{port}: {error}")))
+    }
 }
 
 impl Drop for PortForward {
@@ -104,99 +93,4 @@ impl Debug for PortForward {
             .field("local_port", &self.local_port)
             .finish_non_exhaustive()
     }
-}
-
-async fn serve(
-    listener: TcpListener,
-    pods: Api<Pod>,
-    pod: String,
-    port: u16,
-    traffic: Arc<ForwardTraffic>,
-) {
-    let slots = Arc::new(Semaphore::new(CONCURRENT_CONNECTIONS));
-    let mut connections = JoinSet::new();
-
-    loop {
-        tokio::select! {
-            accepted = listener.accept() => {
-                let Ok((socket, _)) = accepted else {
-                    continue;
-                };
-                let Ok(slot) = Arc::clone(&slots).try_acquire_owned() else {
-                    traffic.note(format!("more than {CONCURRENT_CONNECTIONS} connections at once"));
-                    continue;
-                };
-
-                let (pods, pod, traffic) = (pods.clone(), pod.clone(), Arc::clone(&traffic));
-                connections.spawn(async move {
-                    traffic.begin();
-                    traffic.end(carry(socket, &pods, &pod, port, &traffic).await);
-                    drop(slot);
-                });
-            }
-            Some(_) = connections.join_next() => {}
-        }
-    }
-}
-
-async fn carry(
-    socket: TcpStream,
-    pods: &Api<Pod>,
-    pod: &str,
-    port: u16,
-    traffic: &ForwardTraffic,
-) -> Result<(), String> {
-    socket
-        .set_nodelay(true)
-        .map_err(|error| error.to_string())?;
-
-    let mut forwarder = pods
-        .portforward(pod, &[port])
-        .await
-        .map_err(|error| KubeError::from(error).to_string())?;
-    let stream = forwarder
-        .take_stream(port)
-        .ok_or_else(|| format!("the cluster opened no stream for port {port}"))?;
-
-    let (remote_read, remote_write) = io::split(stream);
-    let (local_read, local_write) = socket.into_split();
-
-    let outgoing = pump(local_read, remote_write, traffic, ForwardTraffic::add_sent);
-    let incoming = pump(
-        remote_read,
-        local_write,
-        traffic,
-        ForwardTraffic::add_received,
-    );
-    let carried = tokio::try_join!(outgoing, incoming).map_err(|error| error.to_string());
-
-    forwarder.abort();
-
-    carried.map(|_| ())
-}
-
-async fn pump<R, W>(
-    mut from: R,
-    mut to: W,
-    traffic: &ForwardTraffic,
-    count: fn(&ForwardTraffic, usize),
-) -> io::Result<()>
-where
-    R: AsyncRead + Unpin,
-    W: AsyncWrite + Unpin,
-{
-    let mut buffer = vec![0; BUFFER_BYTES];
-
-    loop {
-        let read = from.read(&mut buffer).await?;
-
-        if read == 0 {
-            break;
-        }
-
-        to.write_all(&buffer[..read]).await?;
-        count(traffic, read);
-    }
-
-    to.shutdown().await
 }

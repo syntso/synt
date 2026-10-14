@@ -3,6 +3,7 @@ use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
 use kube::api::{Api, ListParams};
 
 use super::Cluster;
+use crate::forward::Relay;
 use crate::{ForwardTarget, KubeError, PortForward};
 
 const RUNNING: &str = "Running";
@@ -23,14 +24,9 @@ impl Cluster {
             ForwardTarget::Service(name) => self.service_backend(&namespace, name, port).await?,
         };
 
-        PortForward::start(
-            pods,
-            target.to_string(),
-            (namespace, pod),
-            remote_port,
-            local_port,
-        )
-        .await
+        let relay = Relay::new(pods, pod, remote_port);
+
+        PortForward::start(target.to_string(), namespace, relay, local_port).await
     }
 
     async fn service_backend(

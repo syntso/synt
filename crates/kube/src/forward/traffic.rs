@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
@@ -11,12 +12,12 @@ pub(crate) struct ForwardTraffic {
 }
 
 impl ForwardTraffic {
-    pub(crate) fn begin(&self) {
+    pub(crate) async fn track(&self, connection: impl Future<Output = Result<(), String>>) {
         self.connections.fetch_add(1, Ordering::Relaxed);
         self.active.fetch_add(1, Ordering::Relaxed);
-    }
 
-    pub(crate) fn end(&self, outcome: Result<(), String>) {
+        let outcome = connection.await;
+
         self.active.fetch_sub(1, Ordering::Relaxed);
 
         if let Err(error) = outcome {
