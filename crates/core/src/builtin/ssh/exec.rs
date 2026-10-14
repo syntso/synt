@@ -106,7 +106,7 @@ impl Action for SshExec {
         let stop = context.stop().cancelled();
         let output = synt_ssh::exec(&self.pool, &target, &params.command, limits, stop)
             .await
-            .map_err(|error| failure(&error))?;
+            .map_err(failure)?;
 
         Ok(ExecResult::from(output))
     }

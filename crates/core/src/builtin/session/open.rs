@@ -47,7 +47,7 @@ impl SshSessionOpen {
 
         let (shell, output) = Shell::open(lease, term, size)
             .await
-            .map_err(|error| failure(&error))?;
+            .map_err(failure)?;
 
         Ok((Console::Remote(shell), ConsoleOutput::Remote(output)))
     }

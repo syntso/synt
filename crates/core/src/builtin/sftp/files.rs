@@ -70,7 +70,7 @@ impl Files {
         self.sessions
             .with(&target, operation)
             .await
-            .map_err(|error| failed(&error))
+            .map_err(failed)
     }
 
     pub(super) fn per_call_risk(&self, target: Option<&ResourceRef>, declared: Risk) -> Risk {
@@ -89,9 +89,9 @@ impl Files {
     }
 }
 
-pub(super) fn failed(error: &SshError) -> ActionError {
+pub(super) fn failed(error: SshError) -> ActionError {
     match error {
-        SshError::Sftp { .. } | SshError::SftpLost { .. } | SshError::SftpClosed => {
+        error @ (SshError::Sftp { .. } | SshError::SftpLost { .. } | SshError::SftpClosed) => {
             ActionError::Failed(error.to_string())
         }
         SshError::Timeout(limit) => ActionError::Failed(format!(

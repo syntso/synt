@@ -21,5 +21,5 @@ pub(crate) async fn within_connect_limit<T>(
             ))
         })?;
 
-    connected.map_err(|error| failure(&error))
+    connected.map_err(failure)
 }

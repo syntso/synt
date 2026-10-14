@@ -1,6 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 
+use hmac::digest::Key;
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use synt_platform::Vault;
@@ -46,8 +47,7 @@ impl GrantSeal {
     }
 
     fn mac(&self, grants: &[StoredGrant]) -> Hmac<Sha256> {
-        let mut mac =
-            Hmac::<Sha256>::new_from_slice(&self.key).expect("HMAC accepts keys of any length");
+        let mut mac = self.keyed();
 
         let mut sorted: Vec<&StoredGrant> = grants.iter().collect();
         sorted.sort_by_key(|grant| grant.id);
@@ -57,6 +57,13 @@ impl GrantSeal {
         }
 
         mac
+    }
+
+    fn keyed(&self) -> Hmac<Sha256> {
+        let mut block = Key::<Hmac<Sha256>>::default();
+        block[..self.key.len()].copy_from_slice(&self.key);
+
+        Hmac::new(&block)
     }
 }
 

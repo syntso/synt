@@ -73,7 +73,7 @@ impl SftpDownload {
         let mut hasher = Sha256::new();
         let mut bytes = 0;
 
-        while let Some(data) = download.next().await.map_err(|error| failed(&error))? {
+        while let Some(data) = download.next().await.map_err(failed)? {
             hasher.update(&data);
             bytes += u64::try_from(data.len()).unwrap_or(u64::MAX);
 

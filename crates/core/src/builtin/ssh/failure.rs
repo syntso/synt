@@ -1,7 +1,11 @@
+use std::borrow::Borrow;
+
 use synt_actions::ActionError;
 use synt_ssh::SshError;
 
-pub(crate) fn failure(error: &SshError) -> ActionError {
+pub(crate) fn failure(error: impl Borrow<SshError>) -> ActionError {
+    let error = error.borrow();
+
     let reason = match error {
         SshError::HostKeyUnknown { host, fingerprint } => format!(
             "the host key of {host} is not in known_hosts (fingerprint {fingerprint}); \

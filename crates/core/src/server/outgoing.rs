@@ -55,13 +55,11 @@ fn encode(message: &Message, limit: usize) -> Option<Bytes> {
         }
     };
 
-    reply_to.map(|id| refusal(id, problem))
+    reply_to.and_then(|id| refusal(id, problem))
 }
 
-fn refusal(id: Option<RequestId>, reason: &str) -> Bytes {
+fn refusal(id: Option<RequestId>, reason: &str) -> Option<Bytes> {
     let response = Response::new(id, Err(RpcError::internal(reason)));
 
-    Message::from(response)
-        .encode()
-        .expect("a response holding only an id and a message always encodes")
+    Message::from(response).encode().ok()
 }

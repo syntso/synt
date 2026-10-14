@@ -89,7 +89,7 @@ impl Action for TunnelOpen {
             .tunnels
             .open(&target, remote, local, stop.clone())
             .await
-            .map_err(|error| open_failure(&error))?;
+            .map_err(open_failure)?;
 
         keep_hold_while_open(context, stop);
 
@@ -196,13 +196,13 @@ fn local_port(requested: Option<u16>) -> Result<Option<u16>, ActionError> {
     Ok(requested)
 }
 
-fn open_failure(error: &SshError) -> ActionError {
+fn open_failure(error: SshError) -> ActionError {
     match error {
         SshError::Timeout(limit) => ActionError::Failed(format!(
             "could not connect within {} s, so no tunnel was opened",
             limit.as_secs()
         )),
-        SshError::Listen { .. } => ActionError::Failed(error.to_string()),
+        error @ SshError::Listen { .. } => ActionError::Failed(error.to_string()),
         other => failure(other),
     }
 }
