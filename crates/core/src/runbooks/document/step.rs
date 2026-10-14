@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use synt_journal::ActionId;
 
-use super::{Expect, OnFailure, Retry, is_default};
-use crate::runbooks::template::params_in;
+use super::{Expect, OnFailure, Retry};
+use crate::runbooks::template::JsonTemplate;
 
 const LONGEST_TITLE: usize = 200;
 const RUNBOOK_ACTIONS: &str = "runbook.";
@@ -67,14 +67,22 @@ impl Step {
         let mut used: Vec<String> = texts
             .into_iter()
             .flatten()
-            .flat_map(|text| params_in(&Value::from(text)))
+            .flat_map(|text| Value::from(text).placeholders())
             .collect();
 
-        used.extend(params_in(&Value::Object(self.params.clone())));
+        used.extend(self.params.placeholders());
         used
     }
 
     pub(crate) fn retry(&self) -> Retry {
         self.retry.unwrap_or(Retry::ONCE)
     }
+
+    pub(crate) fn exit_wanted(&self) -> i64 {
+        self.expect.as_ref().map_or(0, Expect::exit_wanted)
+    }
+}
+
+fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    *value == T::default()
 }

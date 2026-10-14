@@ -8,11 +8,11 @@ const CLOSE: char = '}';
 const SHELL_VARIABLE: char = '$';
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Template {
+pub(crate) struct TextTemplate {
     pieces: Vec<Piece>,
 }
 
-impl Template {
+impl TextTemplate {
     pub(crate) fn parse(text: &str) -> Self {
         let mut pieces = Vec::new();
         let mut literal = String::new();
@@ -101,7 +101,7 @@ fn flush(literal: &mut String, pieces: &mut Vec<Piece>) {
 mod tests {
     use serde_json::json;
 
-    use super::{Piece, Template};
+    use super::{Piece, TextTemplate};
     use crate::runbooks::param::Values;
 
     fn values() -> Values {
@@ -114,7 +114,7 @@ mod tests {
     }
 
     fn render(text: &str) -> serde_json::Value {
-        Template::parse(text).render(&values()).unwrap()
+        TextTemplate::parse(text).render(&values()).unwrap()
     }
 
     #[test]
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn the_names_a_template_uses_are_listed_in_order() {
-        let template = Template::parse("{host}:{port} ${HOME} {{host}} {host}");
+        let template = TextTemplate::parse("{host}:{port} ${HOME} {{host}} {host}");
 
         assert_eq!(
             template.params().collect::<Vec<_>>(),
@@ -171,7 +171,7 @@ mod tests {
 
     #[test]
     fn a_missing_value_is_an_error() {
-        let error = Template::parse("restart {unit}")
+        let error = TextTemplate::parse("restart {unit}")
             .render(&values())
             .unwrap_err();
 
@@ -181,18 +181,18 @@ mod tests {
     #[test]
     fn escaped_text_renders_back_to_itself() {
         let text = "awk '{print $1}' ${HOME} {{ }}";
-        let escaped = Template::escape(text);
+        let escaped = TextTemplate::escape(text);
 
         assert_eq!(
-            Template::parse(&escaped).render(&values()).unwrap(),
+            TextTemplate::parse(&escaped).render(&values()).unwrap(),
             json!(text)
         );
-        assert_eq!(Template::parse(&escaped).params().count(), 0);
+        assert_eq!(TextTemplate::parse(&escaped).params().count(), 0);
     }
 
     #[test]
     fn text_and_placeholders_alternate_as_pieces() {
-        let template = Template::parse("a{host}b");
+        let template = TextTemplate::parse("a{host}b");
 
         assert_eq!(
             template.pieces(),

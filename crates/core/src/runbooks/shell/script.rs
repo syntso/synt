@@ -2,11 +2,15 @@ use std::fmt::Write;
 
 use serde_json::Value;
 
-use super::shell_word::{comment, double_quoted, quoted, shell_word};
+use super::quote::double_quoted;
+use super::step::ShellStep;
+use super::text::ShellText;
 use crate::runbooks::document::{OnFailure, Runbook, Step};
 
-const SHELL_ACTION: &str = "ssh.exec";
-const COMMAND: &str = "command";
+const INDENT: &str = "  ";
+const EXIT_ON_FAILURE: &str = "|| exit 1";
+const GO_ON_AFTER_FAILURE: &str = "|| true";
+const ROLL_BACK_ON_FAILURE: &str = "|| { rollback; exit 1; }";
 
 const RETRY: &str = "retry() {
   attempts=$1; pause=$2; shift 2; attempt=1
@@ -49,7 +53,7 @@ impl<'a> ShellScript<'a> {
 
         for (index, step) in self.runbook.steps.iter().enumerate() {
             self.blank();
-            self.step(index + 1, step, &tail(step.on_failure));
+            self.step(index + 1, step, Self::tail(step.on_failure));
         }
 
         self.text
@@ -57,10 +61,16 @@ impl<'a> ShellScript<'a> {
 
     fn header(&mut self) {
         self.line("#!/bin/sh");
-        self.line(&format!("# {}", comment(&self.runbook.name)));
+        self.line(&format!(
+            "# {}",
+            ShellText::new(&self.runbook.name).comment()
+        ));
 
         if !self.runbook.description.is_empty() {
-            self.line(&format!("# {}", comment(&self.runbook.description)));
+            self.line(&format!(
+                "# {}",
+                ShellText::new(&self.runbook.description).comment()
+            ));
         }
 
         self.line("#");
@@ -83,7 +93,7 @@ impl<'a> ShellScript<'a> {
         for spec in &self.runbook.params {
             let name = &spec.name;
             let line = match &spec.default {
-                Some(default) => format!(": \"${{{name}:={}}}\"", double_quoted(&text(default))),
+                Some(default) => format!(": \"${{{name}:={}}}\"", double_quoted(&plain(default))),
                 None => format!(": \"${{{name}:?set {name} before running this script}}\""),
             };
 
@@ -99,7 +109,7 @@ impl<'a> ShellScript<'a> {
             self.text.push_str(RETRY);
         }
 
-        if steps().any(|step| exit_wanted(step) != 0) {
+        if steps().any(|step| step.exit_wanted() != 0) {
             self.blank();
             self.text.push_str(EXPECT_EXIT);
         }
@@ -114,14 +124,14 @@ impl<'a> ShellScript<'a> {
 
         self.blank();
         self.line("rollback() {");
-        self.indent = "  ";
+        self.indent = INDENT;
 
         for (position, (index, step)) in runbook.rollback.iter().enumerate().rev().enumerate() {
             if position > 0 {
                 self.blank();
             }
 
-            self.step(index + 1, step, "|| true");
+            self.step(index + 1, step, GO_ON_AFTER_FAILURE);
         }
 
         self.indent = "";
@@ -129,42 +139,8 @@ impl<'a> ShellScript<'a> {
     }
 
     fn step(&mut self, number: usize, step: &Step, tail: &str) {
-        self.line(&format!("# {number}. {}", comment(&step.title)));
-        self.unchecked(step);
-
-        let Some(command) = shell_command(step) else {
-            self.line(&format!(
-                "echo {} >&2",
-                quoted(&format!(
-                    "step {number} ({}) is not a shell command; run it in Synt",
-                    step.action
-                ))
-            ));
-            return;
-        };
-
-        let command = wrapped(step, command);
-        self.line(&format!("{command} {tail}"));
-    }
-
-    fn unchecked(&mut self, step: &Step) {
-        let Some(expect) = &step.expect else {
-            return;
-        };
-
-        if let Some(contains) = &expect.contains {
-            self.line(&format!(
-                "# not checked here: the output should contain {}",
-                comment(contains)
-            ));
-        }
-
-        for (pointer, wanted) in &expect.fields {
-            self.line(&format!(
-                "# not checked here: {} should be {}",
-                comment(pointer),
-                comment(&wanted.to_string())
-            ));
+        for line in ShellStep::new(number, step).lines(tail) {
+            self.line(&line);
         }
     }
 
@@ -175,55 +151,17 @@ impl<'a> ShellScript<'a> {
     fn blank(&mut self) {
         self.text.push('\n');
     }
-}
 
-fn shell_command(step: &Step) -> Option<String> {
-    if step.action != SHELL_ACTION {
-        return None;
-    }
-
-    let target = step.target.as_deref()?;
-    let command = step.params.get(COMMAND)?.as_str()?;
-
-    Some(format!(
-        "ssh -- {} {}",
-        shell_word(target),
-        shell_word(command)
-    ))
-}
-
-fn wrapped(step: &Step, command: String) -> String {
-    let exit = exit_wanted(step);
-    let checked = match exit {
-        0 => command,
-        wanted => format!("expect_exit {wanted} {command}"),
-    };
-
-    let retry = step.retry();
-
-    if retry.attempts <= 1 {
-        return checked;
-    }
-
-    format!("retry {} {} {checked}", retry.attempts, retry.every_seconds)
-}
-
-fn exit_wanted(step: &Step) -> i64 {
-    step.expect
-        .as_ref()
-        .and_then(|expect| expect.exit)
-        .unwrap_or(0)
-}
-
-fn tail(on_failure: OnFailure) -> String {
-    match on_failure {
-        OnFailure::Stop => "|| exit 1".to_owned(),
-        OnFailure::Continue => "|| true".to_owned(),
-        OnFailure::Rollback => "|| { rollback; exit 1; }".to_owned(),
+    fn tail(on_failure: OnFailure) -> &'static str {
+        match on_failure {
+            OnFailure::Stop => EXIT_ON_FAILURE,
+            OnFailure::Continue => GO_ON_AFTER_FAILURE,
+            OnFailure::Rollback => ROLL_BACK_ON_FAILURE,
+        }
     }
 }
 
-fn text(value: &Value) -> String {
+fn plain(value: &Value) -> String {
     match value {
         Value::String(text) => text.clone(),
         other => other.to_string(),

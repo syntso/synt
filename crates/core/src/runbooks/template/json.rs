@@ -1,51 +1,67 @@
 use serde_json::{Map, Value};
 
-use super::Template;
+use super::TextTemplate;
 use crate::runbooks::param::Values;
 
-pub(crate) fn render_json(value: &Value, values: &Values) -> Result<Value, String> {
-    match value {
-        Value::String(text) => Template::parse(text).render(values),
-        Value::Array(items) => items
-            .iter()
-            .map(|item| render_json(item, values))
-            .collect::<Result<Vec<_>, _>>()
-            .map(Value::Array),
-        Value::Object(fields) => render_fields(fields, values).map(Value::Object),
-        Value::Null | Value::Bool(_) | Value::Number(_) => Ok(value.clone()),
-    }
+pub(crate) trait JsonTemplate: Sized {
+    fn render(&self, values: &Values) -> Result<Self, String>;
+
+    fn placeholders(&self) -> Vec<String>;
+
+    fn escaped(&self) -> Self;
 }
 
-pub(crate) fn render_fields(
-    fields: &Map<String, Value>,
-    values: &Values,
-) -> Result<Map<String, Value>, String> {
-    fields
-        .iter()
-        .map(|(key, value)| Ok((key.clone(), render_json(value, values)?)))
-        .collect()
-}
-
-pub(crate) fn params_in(value: &Value) -> Vec<String> {
-    match value {
-        Value::String(text) => Template::parse(text).params().map(str::to_owned).collect(),
-        Value::Array(items) => items.iter().flat_map(params_in).collect(),
-        Value::Object(fields) => fields.values().flat_map(params_in).collect(),
-        Value::Null | Value::Bool(_) | Value::Number(_) => Vec::new(),
-    }
-}
-
-pub(crate) fn escape_json(value: &Value) -> Value {
-    match value {
-        Value::String(text) => Value::String(Template::escape(text)),
-        Value::Array(items) => Value::Array(items.iter().map(escape_json).collect()),
-        Value::Object(fields) => Value::Object(
-            fields
+impl JsonTemplate for Value {
+    fn render(&self, values: &Values) -> Result<Self, String> {
+        match self {
+            Value::String(text) => TextTemplate::parse(text).render(values),
+            Value::Array(items) => items
                 .iter()
-                .map(|(key, value)| (key.clone(), escape_json(value)))
+                .map(|item| item.render(values))
+                .collect::<Result<_, _>>()
+                .map(Value::Array),
+            Value::Object(fields) => fields.render(values).map(Value::Object),
+            Value::Null | Value::Bool(_) | Value::Number(_) => Ok(self.clone()),
+        }
+    }
+
+    fn placeholders(&self) -> Vec<String> {
+        match self {
+            Value::String(text) => TextTemplate::parse(text)
+                .params()
+                .map(str::to_owned)
                 .collect(),
-        ),
-        Value::Null | Value::Bool(_) | Value::Number(_) => value.clone(),
+            Value::Array(items) => items.iter().flat_map(Self::placeholders).collect(),
+            Value::Object(fields) => fields.placeholders(),
+            Value::Null | Value::Bool(_) | Value::Number(_) => Vec::new(),
+        }
+    }
+
+    fn escaped(&self) -> Self {
+        match self {
+            Value::String(text) => Value::String(TextTemplate::escape(text)),
+            Value::Array(items) => Value::Array(items.iter().map(Self::escaped).collect()),
+            Value::Object(fields) => Value::Object(fields.escaped()),
+            Value::Null | Value::Bool(_) | Value::Number(_) => self.clone(),
+        }
+    }
+}
+
+impl JsonTemplate for Map<String, Value> {
+    fn render(&self, values: &Values) -> Result<Self, String> {
+        self.iter()
+            .map(|(key, value)| Ok((key.clone(), value.render(values)?)))
+            .collect()
+    }
+
+    fn placeholders(&self) -> Vec<String> {
+        self.values().flat_map(Value::placeholders).collect()
+    }
+
+    fn escaped(&self) -> Self {
+        self.iter()
+            .map(|(key, value)| (key.clone(), value.escaped()))
+            .collect()
     }
 }
 
@@ -53,7 +69,7 @@ pub(crate) fn escape_json(value: &Value) -> Value {
 mod tests {
     use serde_json::json;
 
-    use super::{escape_json, params_in, render_json};
+    use super::JsonTemplate;
     use crate::runbooks::param::Values;
 
     #[test]
@@ -66,7 +82,7 @@ mod tests {
             "nested": { "create": true },
         });
 
-        let rendered = render_json(&params, &values).unwrap();
+        let rendered = params.render(&values).unwrap();
 
         assert_eq!(
             rendered,
@@ -83,7 +99,7 @@ mod tests {
     fn the_params_used_anywhere_are_found() {
         let params = json!({ "a": "{x}", "b": ["{y} {x}"], "c": { "d": "{z}" }, "e": 1 });
 
-        let mut names = params_in(&params);
+        let mut names = params.placeholders();
         names.sort();
 
         assert_eq!(names, ["x", "x", "y", "z"]);
@@ -93,7 +109,7 @@ mod tests {
     fn escaped_params_render_to_the_original() {
         let params = json!({ "command": "awk '{print}'", "list": ["{a}"] });
 
-        let rendered = render_json(&escape_json(&params), &Values::default()).unwrap();
+        let rendered = params.escaped().render(&Values::default()).unwrap();
 
         assert_eq!(rendered, params);
     }
