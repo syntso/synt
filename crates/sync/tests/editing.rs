@@ -279,3 +279,35 @@ async fn files_that_are_not_documents_stay_local() {
     assert_eq!(team.bob.read("resources/readme.txt"), None);
     assert_eq!(team.alice.status().await.access, Access::Member);
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_document_that_cannot_be_read_does_not_hold_up_the_others() {
+    let team = Team::new().await;
+    team.alice.write("resources/api-1.toml", API);
+    team.settle().await;
+
+    let linked = team.bob.project().join("resources/api-1.toml");
+    std::fs::remove_file(&linked).unwrap();
+    std::os::unix::fs::symlink("/etc/hosts", &linked).unwrap();
+
+    team.alice
+        .write("resources/api-1.toml", &API.replace("deploy", "ops"));
+    team.alice.write(
+        "resources/db.toml",
+        "kind = \"host\"\naddress = \"10.0.2.2\"\n",
+    );
+    team.alice.sync().await;
+    let report = team.bob.sync().await;
+
+    assert!(
+        report
+            .problems
+            .iter()
+            .any(|problem| problem.contains("api-1")),
+        "{:?}",
+        report.problems
+    );
+    assert!(team.bob.read("resources/db.toml").is_some());
+    assert!(linked.symlink_metadata().unwrap().file_type().is_symlink());
+}
