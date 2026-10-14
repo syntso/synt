@@ -1,16 +1,20 @@
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
-use tokio::sync::oneshot;
+use tokio::sync::{broadcast, oneshot};
 
 use super::request::Request;
 use crate::error::JournalError;
 use crate::journal::Journal;
-use crate::model::{NewEvent, Seq};
+use crate::model::{Appended, NewEvent, Seq};
 
 const MAX_BATCH: usize = 256;
 
-pub(super) fn serve(mut journal: Journal, incoming: &Receiver<Request>) {
+pub(super) fn serve(
+    mut journal: Journal,
+    incoming: &Receiver<Request>,
+    watchers: &broadcast::Sender<Appended>,
+) {
     while let Ok(first) = incoming.recv() {
         let batch: Vec<Request> = std::iter::once(first)
             .chain(incoming.try_iter().take(MAX_BATCH - 1))
@@ -19,7 +23,21 @@ pub(super) fn serve(mut journal: Journal, incoming: &Receiver<Request>) {
         let (events, waiting) = assign(journal.anchors().head.seq, batch);
         let committed = journal.append_all(&events);
 
+        if let Ok(seqs) = &committed {
+            announce(watchers, seqs, &events);
+        }
+
         answer(waiting, committed);
+    }
+}
+
+fn announce(watchers: &broadcast::Sender<Appended>, seqs: &[Seq], events: &[NewEvent]) {
+    if watchers.receiver_count() == 0 {
+        return;
+    }
+
+    for (seq, event) in seqs.iter().zip(events) {
+        let _ = watchers.send(Appended::new(*seq, event));
     }
 }
 
