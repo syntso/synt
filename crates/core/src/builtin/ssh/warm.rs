@@ -4,7 +4,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_ssh::Pool;
 
-use super::{destination, login_risk, reach_host, within_connect_limit};
+use super::within_connect_limit;
 use crate::projects::Projects;
 
 #[derive(Debug, Clone)]
@@ -35,11 +35,11 @@ impl Action for SshWarm {
     type Output = Warmed;
 
     fn risk(&self, target: Option<&ResourceRef>, (): &()) -> Risk {
-        login_risk(&self.projects, target, Self::RISK)
+        self.projects.login_risk(target, Self::RISK)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, (): &()) -> Option<String> {
-        destination(&self.projects, target)
+        self.projects.host_destination(target)
     }
 
     fn summary(&self, output: &Warmed) -> Value {
@@ -47,7 +47,7 @@ impl Action for SshWarm {
     }
 
     async fn run(&self, context: &Context, (): ()) -> Result<Warmed, ActionError> {
-        let target = reach_host(&self.projects, context).await?;
+        let target = self.projects.reach_host(context).await?;
 
         let state = within_connect_limit(self.pool.warm(&target)).await?;
 

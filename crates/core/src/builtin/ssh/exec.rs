@@ -9,8 +9,8 @@ use synt_journal::ResourceRef;
 use synt_ssh::{ExecLimits, ExecOutput, Pool};
 use tokio::sync::Semaphore;
 
+use super::failure;
 use super::privilege::escalates;
-use super::{destination, failure, login_risk, reach_host};
 use crate::projects::Projects;
 
 const LONGEST_TIMEOUT: Duration = Duration::from_hours(24);
@@ -67,11 +67,11 @@ impl Action for SshExec {
             return Risk::Privileged;
         }
 
-        login_risk(&self.projects, target, Self::RISK)
+        self.projects.login_risk(target, Self::RISK)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, _params: &ExecParams) -> Option<String> {
-        destination(&self.projects, target)
+        self.projects.host_destination(target)
     }
 
     fn summary(&self, output: &ExecResult) -> Value {
@@ -95,7 +95,7 @@ impl Action for SshExec {
         }
 
         let limits = limits(params.timeout_seconds)?;
-        let target = reach_host(&self.projects, context).await?;
+        let target = self.projects.reach_host(context).await?;
 
         let _slot = self
             .runs

@@ -10,7 +10,7 @@ use super::{
     SftpDownload, SftpList, SftpMkdir, SftpRead, SftpRemove, SftpRename, SftpStat, SftpUpload,
     SftpWrite,
 };
-use crate::builtin::ssh::{destination, failure, login_risk, reach_host};
+use crate::builtin::ssh::failure;
 use crate::link::Link;
 use crate::projects::Projects;
 
@@ -59,7 +59,7 @@ impl Files {
         Operation: Fn(Arc<Sftp>) -> Running,
         Running: Future<Output = Result<T, SshError>>,
     {
-        let target = reach_host(&self.projects, context).await?;
+        let target = self.projects.reach_host(context).await?;
 
         let _permit = self
             .calls
@@ -67,18 +67,15 @@ impl Files {
             .await
             .map_err(|_| ActionError::failed("sftp is shutting down"))?;
 
-        self.sessions
-            .with(&target, operation)
-            .await
-            .map_err(failed)
+        self.sessions.with(&target, operation).await.map_err(failed)
     }
 
     pub(super) fn per_call_risk(&self, target: Option<&ResourceRef>, declared: Risk) -> Risk {
-        login_risk(&self.projects, target, declared)
+        self.projects.login_risk(target, declared)
     }
 
     pub(super) fn destination(&self, target: Option<&ResourceRef>) -> Option<String> {
-        destination(&self.projects, target)
+        self.projects.host_destination(target)
     }
 
     pub(super) async fn transfer_slot(&self) -> Result<OwnedSemaphorePermit, ActionError> {
