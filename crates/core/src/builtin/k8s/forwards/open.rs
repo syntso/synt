@@ -123,14 +123,8 @@ impl Action for K8sPortForward {
             .await
             .map_err(failed)?;
 
-        let stop = context.stop().clone();
-        let open = OpenForward {
-            forward,
-            cluster: context.destination().unwrap_or_default().to_owned(),
-            risk: context.risk(),
-            stop: stop.clone(),
-            _connection: cluster,
-        };
+        let open = OpenForward::new(forward, context, cluster);
+        let stop = open.stop().clone();
         let info = self.kube.forwards().add(open);
 
         keep_hold_while_open(context, stop);

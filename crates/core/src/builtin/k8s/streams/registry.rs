@@ -28,14 +28,14 @@ impl Streams {
         }
     }
 
-    pub(crate) fn start<Pump, Running>(
+    pub(crate) fn start<Work, Running>(
         &self,
         context: &Context,
         action: &'static str,
         about: Value,
-        pump: Pump,
+        work: Work,
     ) where
-        Pump: FnOnce(CancellationToken) -> Running + Send + 'static,
+        Work: FnOnce(CancellationToken) -> Running + Send + 'static,
         Running: Future<Output = StreamEnd> + Send + 'static,
     {
         let stop = context.stop().child_token();
@@ -47,7 +47,7 @@ impl Streams {
         let context = context.clone();
 
         tokio::spawn(async move {
-            let ended = pump(stop).await;
+            let ended = work(stop).await;
 
             streams.lock().remove(&request);
             streams.record(&context, action, about, &ended).await;

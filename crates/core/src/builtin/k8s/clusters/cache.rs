@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use synt_actions::ActionError;
 use synt_kube::{Cluster, Dialer};
-use synt_ssh::Pool;
+use synt_ssh::{Pool, Target};
 use tokio::time;
 
 use super::{CachedCluster, Reach, SshDialer};
@@ -41,15 +41,12 @@ impl Clusters {
             return Ok(cluster);
         }
 
-        let dialer = match &reach.via {
-            Some(via) => {
-                let lease = within_connect_limit(self.pool.acquire(via)).await?;
-                Some(Arc::new(SshDialer::new(lease)) as Arc<dyn Dialer>)
-            }
+        let dialer = match reach.via() {
+            Some(via) => Some(self.dialer_through(via).await?),
             None => None,
         };
 
-        let cluster = Cluster::connect(&reach.spec, dialer)
+        let cluster = Cluster::connect(reach.spec(), dialer)
             .await
             .map_err(failed)?;
         let cluster = Arc::new(cluster);
@@ -57,6 +54,12 @@ impl Clusters {
         self.keep(reach.key(), Arc::clone(&cluster));
 
         Ok(cluster)
+    }
+
+    async fn dialer_through(&self, via: &Target) -> Result<Arc<dyn Dialer>, ActionError> {
+        let lease = within_connect_limit(self.pool.acquire(via)).await?;
+
+        Ok(Arc::new(SshDialer::new(lease)))
     }
 
     fn keep(&self, key: String, cluster: Arc<Cluster>) {

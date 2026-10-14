@@ -5,8 +5,8 @@ use synt_kube::Cluster;
 use tokio::time::Instant;
 
 pub(crate) struct CachedCluster {
-    pub(crate) cluster: Arc<Cluster>,
-    pub(crate) used: Instant,
+    cluster: Arc<Cluster>,
+    used: Instant,
 }
 
 impl CachedCluster {

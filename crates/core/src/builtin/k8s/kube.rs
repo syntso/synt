@@ -78,7 +78,7 @@ impl Kube {
     }
 
     pub(super) fn destination(&self, target: Option<&ResourceRef>) -> Option<String> {
-        self.reach(target).ok().map(|reach| reach.destination)
+        self.reach(target).ok().map(Reach::into_destination)
     }
 
     pub(super) fn risk(&self, target: Option<&ResourceRef>, declared: Risk) -> Risk {
@@ -123,7 +123,7 @@ impl Kube {
         let projects = self.projects.clone();
 
         let reach = blocking(move || Reach::resolve(&projects, &target)).await?;
-        check_admitted(context, &reach)?;
+        reach.check_admitted(context)?;
 
         self.clusters.connect(&reach).await
     }
@@ -161,25 +161,4 @@ pub(super) fn wait_for<T>(future: impl Future<Output = T>) -> Result<T, ActionEr
         .map_err(|_| ActionError::failed("the cluster can only be reached from inside the core"))?;
 
     Ok(runtime.block_on(future))
-}
-
-fn check_admitted(context: &Context, reach: &Reach) -> Result<(), ActionError> {
-    let target = context.target().ok_or(ActionError::TargetRequired)?;
-
-    if reach.logs_in_as_root() && context.risk() != Risk::Privileged {
-        return Err(ActionError::Failed(format!(
-            "{target} is now reached through a root login, which the call was not admitted for; \
-             run it again so it is asked as privileged"
-        )));
-    }
-
-    if context.destination() != Some(reach.destination.as_str()) {
-        return Err(ActionError::Failed(format!(
-            "{target} now leads to {}, which is not what the call was admitted for; \
-             run it again so it is checked for the new place",
-            reach.destination
-        )));
-    }
-
-    Ok(())
 }

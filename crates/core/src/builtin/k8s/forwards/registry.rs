@@ -21,7 +21,7 @@ impl Forwards {
     pub(crate) fn add(&self, forward: OpenForward) -> ForwardInfo {
         let id = self.issued.fetch_add(1, Ordering::Relaxed) + 1;
         let info = forward.info(id);
-        let stop = forward.stop.clone();
+        let stop = forward.stop().clone();
 
         self.lock().insert(id, forward);
         self.close_when(id, stop);
@@ -37,21 +37,13 @@ impl Forwards {
     }
 
     pub(crate) fn risk(&self, id: u64) -> Option<Risk> {
-        self.lock().get(&id).map(|forward| forward.risk)
+        self.lock().get(&id).map(OpenForward::risk)
     }
 
     pub(crate) async fn close(&self, id: u64) -> Option<ForwardInfo> {
         let open = self.lock().remove(&id)?;
-        open.stop.cancel();
 
-        let cluster = open.cluster;
-        let status = open.forward.close().await;
-
-        Some(ForwardInfo {
-            id,
-            cluster,
-            status,
-        })
+        Some(open.close(id).await)
     }
 
     pub(crate) fn is_empty(&self) -> bool {
