@@ -1,19 +1,12 @@
 mod budget;
-mod compiled;
-mod guest_call;
-mod imports;
-mod instance;
+mod engine;
+mod guest;
+mod host;
 mod quota;
 mod quota_spent;
-mod runtime;
-mod sandbox;
 mod ticker;
-mod wasi;
 
-pub(crate) use compiled::Compiled;
-pub(crate) use guest_call::GuestCall;
-pub(crate) use imports::Imports;
-pub(crate) use instance::Instance;
+pub use engine::Runtime;
+pub(crate) use guest::{Compiled, Exports, GuestCall};
+pub(crate) use host::{Imports, Sandbox};
 pub(crate) use quota_spent::QuotaSpent;
-pub use runtime::Runtime;
-pub(crate) use sandbox::Sandbox;

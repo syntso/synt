@@ -1,7 +1,7 @@
 use crate::documents::{Document, DocumentInfo, Written};
-use crate::files::Picked;
 use crate::http::{HttpRequest, HttpResponse};
 use crate::interface::{GuestError, Level};
+use crate::picked::Picked;
 
 pub(crate) trait Imports: Send {
     fn call(

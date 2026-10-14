@@ -14,7 +14,7 @@ impl HasData for Streams {
     type Data<'a> = &'a mut ResourceTable;
 }
 
-pub(super) fn add_to_linker(linker: &mut Linker<Sandbox>) -> wasmtime::Result<()> {
+pub(in crate::runtime) fn add_to_linker(linker: &mut Linker<Sandbox>) -> wasmtime::Result<()> {
     add_io(linker)?;
     add_cli(linker)?;
     add_clock_and_random(linker)

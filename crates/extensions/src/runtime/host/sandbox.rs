@@ -2,7 +2,7 @@ use wasmtime::component::ResourceTable;
 use wasmtime::{StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
-use crate::runtime::Imports;
+use super::Imports;
 use crate::runtime::budget::Budget;
 use crate::runtime::quota::Quota;
 
