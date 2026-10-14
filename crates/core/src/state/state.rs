@@ -184,7 +184,7 @@ impl State {
         })
     }
 
-    fn lock(&self) -> MutexGuard<'_, Connection> {
+    pub(super) fn lock(&self) -> MutexGuard<'_, Connection> {
         locked(&self.connection)
     }
 }

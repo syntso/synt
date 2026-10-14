@@ -15,6 +15,12 @@ CREATE TABLE IF NOT EXISTS grants (
     created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS secrets (
+    name TEXT PRIMARY KEY,
+    bytes INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS ssh_keys (
     name TEXT PRIMARY KEY,
     kind TEXT NOT NULL,
