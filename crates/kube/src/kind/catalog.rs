@@ -1,18 +1,16 @@
 use kube::Client;
 use kube::discovery::{ApiGroup, Discovery};
 
-use super::Kind;
-use super::short_names::plural_of;
-use crate::KubeError;
+use crate::{Kind, KindName, KubeError};
 
 const FIRST_GROUPS: [&str; 4] = ["", "apps", "batch", "networking.k8s.io"];
 
 #[derive(Debug, Clone, Default)]
-pub struct Kinds {
+pub struct KindCatalog {
     kinds: Vec<Kind>,
 }
 
-impl Kinds {
+impl KindCatalog {
     pub(crate) async fn discover(client: &Client) -> Result<Self, KubeError> {
         let discovery = match Discovery::new(client.clone()).run_aggregated().await {
             Ok(discovery) => discovery,
@@ -34,20 +32,13 @@ impl Kinds {
         Self { kinds }
     }
 
-    pub fn find(&self, text: &str) -> Result<Kind, KubeError> {
-        let wanted = text.trim().to_lowercase();
-        let (name, group) = match wanted.split_once('.') {
-            Some((name, group)) => (name, Some(group)),
-            None => (wanted.as_str(), None),
-        };
-        let plural = plural_of(name).unwrap_or(name);
-
+    pub fn find(&self, wanted: &KindName) -> Result<Kind, KubeError> {
         self.kinds
             .iter()
-            .filter(|kind| group.is_none_or(|group| kind.group() == group))
-            .find(|kind| kind.is_named(name, plural))
+            .filter(|kind| wanted.group().is_none_or(|group| kind.group() == group))
+            .find(|kind| kind.is_named(wanted))
             .cloned()
-            .ok_or_else(|| KubeError::UnknownKind(text.to_owned()))
+            .ok_or_else(|| KubeError::UnknownKind(wanted.to_string()))
     }
 
     pub fn by_api_version(&self, api_version: &str, kind_name: &str) -> Result<Kind, KubeError> {
@@ -75,8 +66,8 @@ fn group_rank(group: &str) -> usize {
 mod tests {
     use kube::discovery::ApiResource;
 
-    use super::Kinds;
-    use crate::Kind;
+    use super::KindCatalog;
+    use crate::{Kind, KindName};
 
     fn resource(group: &str, kind: &str, plural: &str) -> ApiResource {
         let api_version = if group.is_empty() {
@@ -94,8 +85,12 @@ mod tests {
         }
     }
 
-    fn kinds() -> Kinds {
-        Kinds::from_kinds([
+    fn name(text: &str) -> KindName {
+        KindName::try_from(text).expect("a kind name")
+    }
+
+    fn kinds() -> KindCatalog {
+        KindCatalog::from_kinds([
             Kind::new(resource("example.com", "Event", "events"), true),
             Kind::new(resource("events.k8s.io", "Event", "events"), true),
             Kind::new(resource("", "Event", "events"), true),
@@ -116,27 +111,30 @@ mod tests {
             "deploy",
             "DEPLOY",
         ] {
-            assert_eq!(kinds.find(text).expect(text).to_string(), "Deployment.apps");
+            assert_eq!(
+                kinds.find(&name(text)).expect(text).to_string(),
+                "Deployment.apps"
+            );
         }
     }
 
     #[test]
     fn the_core_group_wins_when_several_groups_share_a_name() {
-        let found = kinds().find("events").expect("events");
+        let found = kinds().find(&name("events")).expect("events");
 
         assert_eq!(found.group(), "");
     }
 
     #[test]
     fn a_group_after_the_dot_picks_that_group() {
-        let found = kinds().find("events.events.k8s.io").expect("events");
+        let found = kinds().find(&name("events.events.k8s.io")).expect("events");
 
         assert_eq!(found.group(), "events.k8s.io");
     }
 
     #[test]
     fn an_unknown_kind_is_an_error_that_names_it() {
-        let error = kinds().find("gadgets").expect_err("no gadgets");
+        let error = kinds().find(&name("gadgets")).expect_err("no gadgets");
 
         assert!(error.to_string().contains("gadgets"));
     }
@@ -153,6 +151,11 @@ mod tests {
 
     #[test]
     fn cluster_scoped_kinds_say_so() {
-        assert!(!kinds().find("ns").expect("namespaces").is_namespaced());
+        assert!(
+            !kinds()
+                .find(&name("ns"))
+                .expect("namespaces")
+                .is_namespaced()
+        );
     }
 }

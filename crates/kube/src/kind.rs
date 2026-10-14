@@ -1,3 +1,9 @@
+mod catalog;
+mod name;
+
+pub use catalog::KindCatalog;
+pub use name::KindName;
+
 use std::fmt::{self, Display, Formatter};
 
 use kube::Client;
@@ -63,10 +69,12 @@ impl Kind {
         self.group() == APPS_GROUP && RESTARTABLE.contains(&self.name())
     }
 
-    pub(crate) fn is_named(&self, name: &str, plural: &str) -> bool {
+    pub(crate) fn is_named(&self, wanted: &KindName) -> bool {
         let lowered = self.name().to_lowercase();
 
-        lowered == name || self.plural() == name || self.plural() == plural
+        lowered == wanted.name()
+            || self.plural() == wanted.name()
+            || self.plural() == wanted.plural()
     }
 
     #[must_use]
