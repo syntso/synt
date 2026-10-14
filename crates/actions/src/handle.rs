@@ -4,10 +4,11 @@ use serde_json::Value;
 use synt_journal::{ActionId, ResourceRef};
 
 use crate::bound::Bound;
-use crate::{Action, ActionError, Description, Prepared, Risk, params};
+use crate::dynamic::Dynamic;
+use crate::{Action, ActionError, Description, DynamicAction, Prepared, Risk, params};
 
-trait Erased: Send + Sync {
-    fn title(&self) -> &'static str;
+pub(crate) trait Erased: Send + Sync {
+    fn title(&self) -> &str;
 
     fn declared_risk(&self) -> Risk;
 
@@ -27,7 +28,7 @@ trait Erased: Send + Sync {
 }
 
 impl<A: Action> Erased for A {
-    fn title(&self) -> &'static str {
+    fn title(&self) -> &str {
         A::TITLE
     }
 
@@ -57,20 +58,16 @@ impl<A: Action> Erased for A {
         params: Value,
     ) -> Result<Prepared, ActionError> {
         let params = params::normalized::<A::Params>(params);
-        let params: A::Params = serde_json::from_value(params)
+        let mut params: A::Params = serde_json::from_value(params)
             .map_err(|error| ActionError::InvalidParams(error.to_string()))?;
         Action::check(self.as_ref(), target, &params)?;
+        let shown = Action::inspect(self.as_ref(), target, &mut params)?;
 
         let risk = Action::risk(self.as_ref(), target, &params);
         let destination = Action::destination(self.as_ref(), target, &params);
         let bound = Bound::new(self, params);
 
-        Ok(Prepared::new(
-            risk,
-            destination,
-            A::FINISHES_LATER,
-            Box::new(bound),
-        ))
+        Ok(Prepared::new(risk, destination, A::FINISHES_LATER, Box::new(bound)).with_shown(shown))
     }
 }
 
@@ -85,6 +82,13 @@ impl Handle {
         Self {
             id,
             action: Arc::new(action),
+        }
+    }
+
+    pub fn dynamic<D: DynamicAction>(id: ActionId, action: D) -> Self {
+        Self {
+            id,
+            action: Arc::new(Dynamic::new(action)),
         }
     }
 
@@ -111,7 +115,7 @@ impl Handle {
     pub fn describe(&self) -> Description {
         Description {
             id: self.id.clone(),
-            title: self.action.title(),
+            title: self.action.title().to_owned(),
             risk: self.action.declared_risk(),
             person_only: self.action.person_only(),
             takes_target: self.action.takes_target(),

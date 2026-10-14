@@ -53,7 +53,11 @@ impl Storage {
     }
 
     pub fn state(&self) -> Result<State, CoreError> {
-        State::open(&self.state.join(STATE_FILE))
+        State::open(&self.state_path())
+    }
+
+    pub fn state_path(&self) -> PathBuf {
+        self.state.join(STATE_FILE)
     }
 
     pub fn grant_seal(&self) -> Result<GrantSeal, CoreError> {

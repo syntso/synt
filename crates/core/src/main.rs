@@ -3,6 +3,7 @@ use std::error::Error;
 use std::ffi::{OsStr, OsString};
 use std::path::{self, Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 use std::time::Duration;
 
 use synt_actions::Registry;
@@ -12,7 +13,7 @@ use synt_core::{
     Broker, Core, JournalPage, JournalVerify, Ping, Server, SshConnections, SshExec, SshWarm,
     Storage, VERSION,
 };
-use synt_core::{IdleWatch, LoginCommand};
+use synt_core::{CoreCaller, IdleWatch, LoginCommand};
 use synt_core::{
     ProjectClose, ProjectList, ProjectOpen, ResourceGet, ResourceList, ResourcePut, ResourceRemove,
 };
@@ -20,6 +21,7 @@ use synt_core::{
     SessionAttach, SessionClose, SessionList, SessionResize, SshSessionOpen, Terminals,
 };
 use synt_core::{TunnelClose, TunnelList, TunnelOpen};
+use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Journal, JournalWriter};
 use synt_platform::{
     AppCheck, Endpoint, WEAK_VAULT_FLAG, WeakVault, data_directory, open_vault, shutdown_signal,
@@ -69,7 +71,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         None => data_directory()?,
     };
 
-    let (journal, state, seal) = journal(&data, arguments.weak_vault)?;
+    let (journal, state, seal, state_path) = journal(&data, arguments.weak_vault)?;
     let journal = JournalWriter::spawn(journal)?;
 
     let projects = Projects::start(state.clone())?;
@@ -114,7 +116,12 @@ async fn run() -> Result<(), Box<dyn Error>> {
     registry.register(GrantList::new(always.clone()))?;
     registry.register(GrantRevoke::new(always.clone(), journal.clone()))?;
 
-    let core = Core::new(registry, journal, Broker::with_always(always));
+    let extensions = Extensions::open(&data, &state_path, Runtime::new()?, Remote::official()?)?;
+    extensions.register(&mut registry)?;
+    load_extensions(&extensions).await?;
+
+    let core = Arc::new(Core::new(registry, journal, Broker::with_always(always)));
+    extensions.connect(Arc::new(CoreCaller::new(&core)));
     let server = Server::bind(&endpoint, core, apps()?)?;
 
     eprintln!(
@@ -139,10 +146,21 @@ async fn run() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+async fn load_extensions(extensions: &Extensions) -> Result<(), Box<dyn Error>> {
+    let extensions = extensions.clone();
+    let loaded = task::spawn_blocking(move || extensions.load_enabled()).await??;
+
+    if loaded > 0 {
+        eprintln!("loaded {loaded} extension(s)");
+    }
+
+    Ok(())
+}
+
 fn journal(
     data: &Path,
     weak_vault: WeakVault,
-) -> Result<(Journal, State, GrantSeal), Box<dyn Error>> {
+) -> Result<(Journal, State, GrantSeal, PathBuf), Box<dyn Error>> {
     let vault = open_vault(data, weak_vault)?;
     let place = vault.place();
     eprintln!("journal keys are kept in {place}");
@@ -155,6 +173,7 @@ fn journal(
     let storage = Storage::prepare(data, vault)?;
     let journal = storage.journal()?;
     let state = storage.state()?;
+    let state_path = storage.state_path();
     let seal = storage.grant_seal()?;
 
     eprintln!(
@@ -164,7 +183,7 @@ fn journal(
         journal.anchors().head.seq
     );
 
-    Ok((journal, state, seal))
+    Ok((journal, state, seal, state_path))
 }
 
 fn apps() -> Result<AppCheck, Box<dyn Error>> {

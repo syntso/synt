@@ -1,8 +1,10 @@
 mod action;
 mod bound;
+mod catalog;
 mod completed;
 mod context;
 mod description;
+mod dynamic;
 mod error;
 mod handle;
 mod params;
@@ -11,9 +13,11 @@ mod registry;
 mod risk;
 
 pub use action::Action;
+pub use catalog::Catalog;
 pub use completed::Completed;
 pub use context::Context;
 pub use description::Description;
+pub use dynamic::DynamicAction;
 pub use error::ActionError;
 pub use handle::Handle;
 pub use prepared::Prepared;

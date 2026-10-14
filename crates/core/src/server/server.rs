@@ -27,12 +27,16 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn bind(endpoint: &Endpoint, core: Core, apps: AppCheck) -> io::Result<Self> {
+    pub fn bind(
+        endpoint: &Endpoint,
+        core: impl Into<Arc<Core>>,
+        apps: AppCheck,
+    ) -> io::Result<Self> {
         let listener = LocalListener::bind(endpoint)?;
 
         Ok(Self {
             listener,
-            core: Arc::new(core),
+            core: core.into(),
             sessions: TaskTracker::new(),
             stop: CancellationToken::new(),
             connections: Arc::new(Semaphore::new(CONNECTION_LIMIT)),

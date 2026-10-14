@@ -27,6 +27,14 @@ pub trait Action: Send + Sync + 'static {
         Ok(())
     }
 
+    fn inspect(
+        &self,
+        _target: Option<&ResourceRef>,
+        _params: &mut Self::Params,
+    ) -> Result<Option<Value>, ActionError> {
+        Ok(None)
+    }
+
     fn risk(&self, _target: Option<&ResourceRef>, _params: &Self::Params) -> Risk {
         Self::RISK
     }

@@ -11,6 +11,9 @@ pub struct ApprovalRequest {
     pub action: String,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_behalf_of: Option<Requester>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]

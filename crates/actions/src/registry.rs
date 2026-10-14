@@ -1,12 +1,14 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use synt_journal::ActionId;
 
-use crate::{Action, ActionError, Description, Handle};
+use crate::{Action, ActionError, Catalog, Description, Handle};
 
 #[derive(Clone, Default)]
 pub struct Registry {
     actions: HashMap<ActionId, Handle>,
+    catalogs: Vec<Arc<dyn Catalog>>,
 }
 
 impl Registry {
@@ -26,8 +28,16 @@ impl Registry {
         Ok(())
     }
 
-    pub fn get(&self, id: &ActionId) -> Option<&Handle> {
-        self.actions.get(id)
+    pub fn attach(&mut self, catalog: Arc<dyn Catalog>) {
+        self.catalogs.push(catalog);
+    }
+
+    pub fn get(&self, id: &ActionId) -> Option<Handle> {
+        if let Some(handle) = self.actions.get(id) {
+            return Some(handle.clone());
+        }
+
+        self.catalogs.iter().find_map(|catalog| catalog.get(id))
     }
 
     pub fn ids(&self) -> impl Iterator<Item = &ActionId> {
@@ -35,8 +45,13 @@ impl Registry {
     }
 
     pub fn describe(&self) -> Vec<Description> {
-        let mut descriptions: Vec<Description> =
-            self.actions.values().map(Handle::describe).collect();
+        let attached = self.catalogs.iter().flat_map(|catalog| catalog.describe());
+        let mut descriptions: Vec<Description> = self
+            .actions
+            .values()
+            .map(Handle::describe)
+            .chain(attached)
+            .collect();
 
         descriptions.sort_by(|left, right| left.id.as_str().cmp(right.id.as_str()));
         descriptions
@@ -45,13 +60,15 @@ impl Registry {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
-    use serde_json::json;
-    use synt_journal::{ActionId, Actor, Seq};
+    use serde_json::{Value, json};
+    use synt_journal::{ActionId, Actor, ResourceRef, Seq};
 
     use super::Registry;
-    use crate::{Action, ActionError, Context, Risk};
+    use crate::{Action, ActionError, Catalog, Context, Description, DynamicAction, Handle, Risk};
 
     struct Echo;
 
@@ -92,6 +109,49 @@ mod tests {
 
         async fn run(&self, _context: &Context, (): ()) -> Result<(), ActionError> {
             Ok(())
+        }
+    }
+
+    struct Holler;
+
+    impl DynamicAction for Holler {
+        fn title(&self) -> &'static str {
+            "Shout from a catalog"
+        }
+
+        fn risk(&self) -> Risk {
+            Risk::Read
+        }
+
+        fn takes_target(&self) -> bool {
+            false
+        }
+
+        fn params_schema(&self) -> Value {
+            json!({ "type": "object" })
+        }
+
+        async fn run(
+            &self,
+            _context: &Context,
+            _target: Option<ResourceRef>,
+            _params: Value,
+        ) -> Result<Value, ActionError> {
+            Ok(json!("HEY"))
+        }
+    }
+
+    struct Extra {
+        handle: Handle,
+    }
+
+    impl Catalog for Extra {
+        fn get(&self, id: &ActionId) -> Option<Handle> {
+            (self.handle.id() == id).then(|| self.handle.clone())
+        }
+
+        fn describe(&self) -> Vec<Description> {
+            vec![self.handle.describe()]
         }
     }
 
@@ -146,6 +206,30 @@ mod tests {
             registry.register(Broken),
             Err(ActionError::InvalidId { .. })
         ));
+    }
+
+    #[tokio::test]
+    async fn attached_catalogs_add_their_actions() {
+        let mut registry = registry();
+        let id = ActionId::new("extra.shout").unwrap();
+        let handle = Handle::dynamic(id.clone(), Holler);
+        registry.attach(Arc::new(Extra { handle }));
+
+        let shout = registry.get(&id).unwrap();
+        let output = shout
+            .prepare(None, json!({}))
+            .unwrap()
+            .run(&context())
+            .await;
+
+        assert_eq!(output.map(|completed| completed.value), Ok(json!("HEY")));
+
+        let ids: Vec<String> = registry
+            .describe()
+            .into_iter()
+            .map(|description| description.id.as_str().to_owned())
+            .collect();
+        assert_eq!(ids, ["extra.shout", "test.echo"]);
     }
 
     #[test]
