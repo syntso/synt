@@ -16,6 +16,7 @@ mod raw_connection;
 mod running_server;
 mod secret;
 mod switch;
+mod syncing_core;
 mod touch;
 mod waiting;
 
@@ -35,5 +36,6 @@ pub use raw_connection::RawConnection;
 pub use running_server::RunningServer;
 pub use secret::Secret;
 pub use switch::Switch;
+pub use syncing_core::{PROJECT_ID, SyncingCore};
 pub use touch::Touch;
 pub use waiting::Waiting;
