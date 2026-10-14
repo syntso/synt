@@ -1,9 +1,10 @@
 use std::fmt::{self, Display, Formatter};
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sqlparser::dialect::{Dialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Engine {
     Postgres,

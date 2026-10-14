@@ -3896,6 +3896,7 @@ dependencies = [
  "rusqlite",
  "rustls",
  "rustls-native-certs",
+ "schemars",
  "serde",
  "serde_json",
  "sqlparser",
