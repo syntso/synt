@@ -1,15 +1,22 @@
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
-use synt_journal::ResourceRef;
 use zeroize::Zeroizing;
 
-use super::put_params::PutParams;
 use crate::blocking::blocking;
 use crate::secrets::{SecretInfo, SecretName, Secrets};
 
 #[derive(Clone)]
 pub struct SecretPut {
     secrets: Secrets,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PutParams {
+    pub name: SecretName,
+    pub value: String,
 }
 
 impl SecretPut {
@@ -28,12 +35,6 @@ impl Action for SecretPut {
     type Params = PutParams;
     type Output = SecretInfo;
 
-    fn check(&self, _target: Option<&ResourceRef>, params: &PutParams) -> Result<(), ActionError> {
-        SecretName::parse(&params.name)
-            .map(drop)
-            .map_err(ActionError::InvalidParams)
-    }
-
     fn recorded_params(&self, params: &Value) -> Value {
         let value_bytes = params.get("value").and_then(Value::as_str).map(str::len);
 
@@ -45,10 +46,9 @@ impl Action for SecretPut {
     }
 
     async fn run(&self, _context: &Context, params: PutParams) -> Result<SecretInfo, ActionError> {
-        let name = SecretName::parse(&params.name).map_err(ActionError::InvalidParams)?;
         let value = Zeroizing::new(params.value);
         let secrets = self.secrets.clone();
 
-        blocking(move || secrets.put(&name, value.as_bytes())).await
+        blocking(move || secrets.put(&params.name, value.as_bytes())).await
     }
 }

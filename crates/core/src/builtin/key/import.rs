@@ -18,7 +18,7 @@ pub struct KeyImport {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ImportParams {
-    pub name: String,
+    pub name: KeyName,
     pub private_key_path: PathBuf,
 }
 
@@ -42,8 +42,6 @@ impl Action for KeyImport {
         _target: Option<&ResourceRef>,
         params: &ImportParams,
     ) -> Result<(), ActionError> {
-        KeyName::parse(&params.name).map_err(ActionError::InvalidParams)?;
-
         if !params.private_key_path.is_absolute() {
             return Err(ActionError::InvalidParams(
                 "private_key_path must be an absolute path".to_owned(),
@@ -58,14 +56,12 @@ impl Action for KeyImport {
     }
 
     async fn run(&self, _context: &Context, params: ImportParams) -> Result<KeyInfo, ActionError> {
-        let name = KeyName::parse(&params.name).map_err(ActionError::InvalidParams)?;
-
         let key = StoredKey::import(&params.private_key_path)
             .await
             .map_err(|error| ActionError::Failed(error.to_string()))?;
 
         let keys = self.keys.clone();
 
-        blocking(move || keys.store(&name, &key)).await
+        blocking(move || keys.store(&params.name, &key)).await
     }
 }
