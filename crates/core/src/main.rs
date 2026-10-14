@@ -11,9 +11,9 @@ use synt_core::{
     AlwaysGrants, Broker, Core, CoreCaller, Files, GrantList, GrantRevoke, IdleWatch, JournalPage,
     JournalVerify, KeyGenerate, KeyImport, KeyList, KeyRemove, LocalSessionOpen, LoginCommand,
     Ping, ProjectClose, ProjectList, ProjectOpen, Projects, ResourceGet, ResourceList, ResourcePut,
-    ResourceRemove, Server, SessionAttach, SessionBlocks, SessionClose, SessionIntegration,
-    SessionList, SessionResize, SshConnections, SshExec, SshKeys, SshSessionOpen, SshWarm, Storage,
-    Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
+    ResourceRemove, Runbooks, Runs, Server, SessionAttach, SessionBlocks, SessionClose,
+    SessionIntegration, SessionList, SessionResize, SshConnections, SshExec, SshKeys,
+    SshSessionOpen, SshWarm, Storage, Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Journal, JournalWriter};
@@ -72,12 +72,14 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let pool = Pool::builder().key_vault(Arc::new(keys.clone())).build();
     let tunnels = Tunnels::new(pool.clone());
     let terminals = Terminals::new(journal.clone());
+    let runbooks = Runbooks::new(projects.clone(), journal.clone(), terminals.clone());
 
     let mut registry = Registry::new();
     register_hosts(&mut registry, &pool, &projects, &tunnels)?;
     register_sessions(&mut registry, &pool, &projects, &terminals)?;
     register_records(&mut registry, &journal, &projects, &always)?;
     register_keys(&mut registry, &keys, &pool)?;
+    runbooks.register(&mut registry)?;
 
     let extensions = Extensions::open(
         &data,
@@ -90,6 +92,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
 
     let core = Arc::new(Core::new(registry, journal, Broker::with_always(always)));
     extensions.connect(Arc::new(CoreCaller::new(&core)));
+    runbooks.connect(&core);
     let server = Server::bind(&endpoint, core, apps()?)?;
 
     eprintln!(
@@ -97,7 +100,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
         endpoint.address().to_string_lossy()
     );
 
-    serve(server, arguments.idle, terminals, tunnels).await;
+    let runs = runbooks.runs();
+    serve(server, arguments.idle, terminals, tunnels, runs).await;
 
     Ok(())
 }
@@ -168,11 +172,18 @@ fn register_keys(registry: &mut Registry, keys: &SshKeys, pool: &Pool) -> Result
     registry.register(KeyRemove::new(keys.clone(), pool.clone()))
 }
 
-async fn serve(server: Server, idle: Option<Duration>, terminals: Terminals, tunnels: Tunnels) {
+async fn serve(
+    server: Server,
+    idle: Option<Duration>,
+    terminals: Terminals,
+    tunnels: Tunnels,
+    runs: Runs,
+) {
     let idle = IdleWatch::new(idle)
         .watch(server.activity())
         .watch(terminals.clone())
-        .watch(tunnels);
+        .watch(tunnels)
+        .watch(runs);
 
     let stopping = async {
         tokio::select! {
