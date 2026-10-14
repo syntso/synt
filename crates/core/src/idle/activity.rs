@@ -1,6 +1,7 @@
 use synt_ssh::Tunnels;
 use tokio_util::task::TaskTracker;
 
+use crate::runbooks::Runs;
 use crate::terminal::Terminals;
 
 pub trait Activity: Send + Sync {
@@ -22,5 +23,11 @@ impl Activity for Terminals {
 impl Activity for Tunnels {
     fn is_active(&self) -> bool {
         !self.list().is_empty()
+    }
+}
+
+impl Activity for Runs {
+    fn is_active(&self) -> bool {
+        !self.is_empty()
     }
 }
