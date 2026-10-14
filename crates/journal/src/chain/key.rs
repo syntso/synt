@@ -2,8 +2,9 @@ use hkdf::Hkdf;
 use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use super::{DeviceKey, JournalId};
-use crate::JournalError;
+use super::DeviceKey;
+use crate::error::JournalError;
+use crate::journal::JournalId;
 
 const INFO: &[u8] = b"synt-journal/v1";
 
@@ -28,7 +29,8 @@ impl JournalKey {
 #[cfg(test)]
 mod tests {
     use super::JournalKey;
-    use crate::chain::{DeviceKey, JournalId};
+    use crate::chain::DeviceKey;
+    use crate::journal::JournalId;
 
     #[test]
     fn each_journal_gets_its_own_key() {

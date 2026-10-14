@@ -1,10 +1,15 @@
-use rusqlite::Row;
-use rusqlite::types::{FromSqlError, Type};
+mod cells;
 
+use rusqlite::Row;
+use synt_proto::{ActionId, ResourceRef};
+
+use self::cells::Cells;
 use crate::chain::{Fields, Link};
+use crate::codec::Decoder;
 use crate::error::JournalError;
-use crate::model::{ActionId, Actor, Event, EventKind, ResourceRef, Seq, Timestamp};
-use crate::payload::Details;
+use crate::event::{Details, Event, EventKind};
+use crate::seq::Seq;
+use crate::timestamp::Timestamp;
 
 pub(super) const COLUMNS: &str = "seq, at, actor, kind, call, action, resource, details, link";
 
@@ -32,16 +37,32 @@ pub(crate) struct RowView<'a> {
 
 impl<'a> RowView<'a> {
     pub(crate) fn read(row: &'a Row<'_>) -> Result<Self, JournalError> {
+        let cells = Cells::new(row);
+
         Ok(Self {
-            seq: stored_seq(row.get(SEQ)?)?,
+            seq: Self::seq(row.get(SEQ)?)?,
             at: row.get(AT)?,
-            actor: blob(row, ACTOR)?,
+            actor: cells.blob(ACTOR)?,
             kind: row.get(KIND)?,
             call: row.get(CALL)?,
-            action: text(row, ACTION)?,
-            resource: optional_text(row, RESOURCE)?,
-            details: blob(row, DETAILS)?,
-            link: Link::from_slice(blob(row, LINK)?),
+            action: cells.text(ACTION)?,
+            resource: cells.optional_text(RESOURCE)?,
+            details: cells.blob(DETAILS)?,
+            link: Link::from_slice(cells.blob(LINK)?),
+        })
+    }
+
+    pub(crate) fn seq(value: i64) -> Result<Seq, JournalError> {
+        Seq::from_sql(value).ok_or(JournalError::Corrupt {
+            seq: Seq::ORIGIN,
+            reason: "negative sequence number",
+        })
+    }
+
+    pub(crate) fn link(seq: Seq, bytes: &[u8]) -> Result<Link, JournalError> {
+        Link::from_slice(bytes).ok_or(JournalError::Corrupt {
+            seq,
+            reason: "link has the wrong length",
         })
     }
 
@@ -71,14 +92,16 @@ impl<'a> RowView<'a> {
 
         let fields = self.fields().ok_or(corrupt("field out of range"))?;
         let kind = EventKind::from_code(fields.kind).ok_or(corrupt("unknown event kind"))?;
-        let actor = Actor::decode(self.actor).map_err(|error| corrupt(error.0))?;
+        let actor = Decoder::new(self.actor)
+            .actor()
+            .map_err(|error| error.at(self.seq))?;
         let action = ActionId::new(self.action).map_err(|_| corrupt("invalid action id"))?;
         let resource = self
             .resource
             .map(ResourceRef::new)
             .transpose()
             .map_err(|_| corrupt("invalid resource reference"))?;
-        let details = Details::decode(self.details.to_vec()).map_err(|error| corrupt(error.0))?;
+        let details = Details::decode(self.details.to_vec()).map_err(|error| error.at(self.seq))?;
         let link = self.link.ok_or(corrupt("link has the wrong length"))?;
 
         Ok(Event {
@@ -93,43 +116,4 @@ impl<'a> RowView<'a> {
             link,
         })
     }
-}
-
-pub(super) fn stored_seq(value: i64) -> Result<Seq, JournalError> {
-    Seq::from_sql(value).ok_or(JournalError::Corrupt {
-        seq: Seq::ORIGIN,
-        reason: "negative sequence number",
-    })
-}
-
-pub(super) fn stored_link(seq: Seq, bytes: &[u8]) -> Result<Link, JournalError> {
-    Link::from_slice(bytes).ok_or(JournalError::Corrupt {
-        seq,
-        reason: "link has the wrong length",
-    })
-}
-
-fn blob<'a>(row: &'a Row<'_>, index: usize) -> rusqlite::Result<&'a [u8]> {
-    let value = row.get_ref(index)?;
-    value
-        .as_blob()
-        .map_err(|error| conversion(index, Type::Blob, error))
-}
-
-fn text<'a>(row: &'a Row<'_>, index: usize) -> rusqlite::Result<&'a str> {
-    let value = row.get_ref(index)?;
-    value
-        .as_str()
-        .map_err(|error| conversion(index, Type::Text, error))
-}
-
-fn optional_text<'a>(row: &'a Row<'_>, index: usize) -> rusqlite::Result<Option<&'a str>> {
-    let value = row.get_ref(index)?;
-    value
-        .as_str_or_null()
-        .map_err(|error| conversion(index, Type::Text, error))
-}
-
-fn conversion(index: usize, expected: Type, error: FromSqlError) -> rusqlite::Error {
-    rusqlite::Error::FromSqlConversionFailure(index, expected, Box::new(error))
 }

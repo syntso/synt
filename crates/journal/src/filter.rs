@@ -1,4 +1,8 @@
-use crate::model::{ActionId, Actor, EventKind, ResourceRef, Seq, Timestamp};
+use synt_proto::{ActionId, Actor, ResourceRef};
+
+use crate::event::EventKind;
+use crate::seq::Seq;
+use crate::timestamp::Timestamp;
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Filter {

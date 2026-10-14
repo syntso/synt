@@ -2,7 +2,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use synt_journal::{Anchors, DeviceKey, JournalId, KeyStore, KeyStoreError, Link, Mark, Seq};
+use synt_journal::{Anchors, DeviceKey, JournalId, KeyStore, KeyStoreError};
 
 pub struct FileKeyStore {
     dir: PathBuf,
@@ -57,27 +57,13 @@ impl KeyStore for FileKeyStore {
             return Ok(None);
         };
 
-        let mark = |offset: usize| -> Option<Mark> {
-            let seq = u64::from_be_bytes(bytes.get(offset..offset + 8)?.try_into().ok()?);
-            let link: [u8; 32] = bytes.get(offset + 8..offset + 40)?.try_into().ok()?;
-
-            Some(Mark::new(Seq::new(seq), Link::from_bytes(link)))
-        };
-
-        let floor = mark(0).ok_or_else(|| KeyStoreError::new("bad anchors file"))?;
-        let head = mark(40).ok_or_else(|| KeyStoreError::new("bad anchors file"))?;
-
-        Ok(Some(Anchors { floor, head }))
+        Anchors::from_bytes(&bytes)
+            .map(Some)
+            .ok_or_else(|| KeyStoreError::new("bad anchors file"))
     }
 
     fn save_anchors(&self, journal: JournalId, anchors: &Anchors) -> Result<(), KeyStoreError> {
-        let mut bytes = Vec::with_capacity(80);
-
-        for mark in [anchors.floor, anchors.head] {
-            bytes.extend_from_slice(&mark.seq.get().to_be_bytes());
-            bytes.extend_from_slice(mark.link.as_bytes());
-        }
-
-        Self::write_atomically(&self.anchors_path(journal), &bytes).map_err(KeyStoreError::new)
+        Self::write_atomically(&self.anchors_path(journal), &anchors.to_bytes())
+            .map_err(KeyStoreError::new)
     }
 }
