@@ -103,6 +103,7 @@ impl Core {
             risk: prepared.risk(),
             target: call.target,
             destination: prepared.destination(),
+            grantable: prepared.grantable(),
             params: prepared.shown().unwrap_or(&shown_params),
             run_approved: origin.is_some_and(|origin| origin.approved),
             departed,

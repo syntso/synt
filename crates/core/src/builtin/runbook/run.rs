@@ -72,6 +72,10 @@ impl Action for RunbookRun {
         params.plan.as_ref().map(|plan| plan.runbook.clone())
     }
 
+    fn grantable(&self, _target: Option<&ResourceRef>, params: &RunbookRunParams) -> bool {
+        !params.approve_steps
+    }
+
     fn summary(&self, output: &RunReport) -> Value {
         output.summary()
     }

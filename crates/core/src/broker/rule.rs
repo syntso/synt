@@ -23,6 +23,7 @@ impl Rule {
 
         match rule {
             Self::Ask { .. } if covered => Self::ApprovedWithRun,
+            Self::Ask { .. } if !request.grantable => Self::Ask { grantable: false },
             rule => rule,
         }
     }
@@ -69,6 +70,16 @@ mod tests {
     }
 
     fn judged(actor: &Actor, origin: Option<&Actor>, risk: Risk, run_approved: bool) -> Rule {
+        judged_as(actor, origin, risk, run_approved, true)
+    }
+
+    fn judged_as(
+        actor: &Actor,
+        origin: Option<&Actor>,
+        risk: Risk,
+        run_approved: bool,
+        grantable: bool,
+    ) -> Rule {
         let action = ActionId::new("ssh.exec").unwrap();
         let departed = CancellationToken::new();
 
@@ -79,6 +90,7 @@ mod tests {
             risk,
             target: None,
             destination: None,
+            grantable,
             params: &Value::Null,
             run_approved,
             departed: &departed,
@@ -110,6 +122,24 @@ mod tests {
 
         assert_eq!(rule(None, Risk::Write), Rule::Ask { grantable: true });
         assert_eq!(rule(Some(&agent), Risk::Read), Rule::Allow);
+    }
+
+    #[test]
+    fn a_call_its_action_calls_ungrantable_is_asked_every_time() {
+        let agent = Actor::Agent(Name::new("cursor").unwrap());
+
+        assert_eq!(
+            judged_as(&agent, None, Risk::Write, false, false),
+            Rule::Ask { grantable: false }
+        );
+        assert_eq!(
+            judged_as(&agent, None, Risk::Read, false, false),
+            Rule::Allow
+        );
+        assert_eq!(
+            judged_as(&Actor::Person, None, Risk::Write, false, false),
+            Rule::Allow
+        );
     }
 
     #[test]

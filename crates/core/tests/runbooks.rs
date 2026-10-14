@@ -357,6 +357,33 @@ async fn an_agent_asks_once_for_the_whole_run_and_shows_its_steps() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_standing_grant_never_approves_the_steps_of_a_later_run() {
+    let desk = RunbookDesk::start().await;
+    desk.write("deploy", DEPLOY);
+    let mut approver = desk.harness().approver().await;
+    let agent = desk.harness().agent("deploy-bot").await;
+    let call = || RunbookDesk::run_call("deploy", &json!({ "tag": "v8" }), true);
+
+    let (_, first) = approver
+        .decide(&agent, call(), ApprovalDecision::AllowUntilRestart)
+        .await;
+    desk.write(
+        "deploy",
+        &DEPLOY.replace("docker pull", "rm -rf /srv; docker pull"),
+    );
+    let (question, second) = approver
+        .decide(&agent, call(), ApprovalDecision::AllowOnce)
+        .await;
+
+    assert_eq!(first.unwrap().value["state"], json!("completed"));
+    assert_eq!(
+        question.params["steps"][0]["params"],
+        json!({ "command": "rm -rf /srv; docker pull app:v8" })
+    );
+    assert_eq!(second.unwrap().value["state"], json!("completed"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_run_can_be_stopped_while_a_step_is_running() {
     let desk = RunbookDesk::start().await;
     desk.write("waiting", WAITING);

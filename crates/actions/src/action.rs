@@ -43,6 +43,10 @@ pub trait Action: Send + Sync + 'static {
         None
     }
 
+    fn grantable(&self, _target: Option<&ResourceRef>, _params: &Self::Params) -> bool {
+        true
+    }
+
     fn finishes_later(&self, _params: &Self::Params) -> bool {
         Self::FINISHES_LATER
     }
