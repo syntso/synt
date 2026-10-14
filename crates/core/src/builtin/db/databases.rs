@@ -46,6 +46,15 @@ impl Databases {
         registry.register(DbPing::new(self.clone()))
     }
 
+    pub(super) fn check_target(&self, target: Option<&ResourceRef>) -> Result<Engine, ActionError> {
+        let target = target.ok_or(ActionError::TargetRequired)?;
+
+        self.projects
+            .database(target.as_str())
+            .map(|resolved| resolved.resource.engine)
+            .map_err(|error| ActionError::InvalidParams(error.to_string()))
+    }
+
     pub(super) fn engine(&self, target: Option<&ResourceRef>) -> Option<Engine> {
         self.resolve(target)
             .map(|resolved| resolved.resource.engine)

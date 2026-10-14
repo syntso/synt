@@ -55,9 +55,7 @@ impl Action for DbExplain {
         target: Option<&ResourceRef>,
         params: &ExplainParams,
     ) -> Result<(), ActionError> {
-        let Some(engine) = self.databases.engine(target) else {
-            return Ok(());
-        };
+        let engine = self.databases.check_target(target)?;
 
         one_statement(engine, &params.sql).map(|_| ())
     }

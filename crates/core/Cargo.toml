@@ -39,6 +39,7 @@ zeroize.workspace = true
 [dev-dependencies]
 synt-client.workspace = true
 synt-test-servers.workspace = true
+rusqlite.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 wat.workspace = true

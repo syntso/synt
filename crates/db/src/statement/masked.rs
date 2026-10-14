@@ -171,7 +171,7 @@ impl Scanner<'_> {
 
     fn after_word(&self) -> bool {
         self.previous
-            .is_some_and(|previous| previous.is_alphanumeric() || "_$".contains(previous))
+            .is_some_and(|previous| previous.is_alphanumeric() || "_$?".contains(previous))
     }
 }
 
@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn names_with_digits_and_placeholders_stay() {
-        let text = "SELECT col1, t2.x FROM table3 t2 WHERE id = $1 AND v = ?";
+        let text = "SELECT col1, t2.x FROM table3 t2 WHERE id = $1 AND v = ? AND w = ?2";
 
         assert_eq!(masked(text), text);
     }

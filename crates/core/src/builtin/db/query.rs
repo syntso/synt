@@ -74,8 +74,10 @@ impl Action for DbQuery {
     type Output = QueryResult;
 
     fn check(&self, target: Option<&ResourceRef>, params: &QueryParams) -> Result<(), ActionError> {
+        let engine = self.databases.check_target(target)?;
+
         params.check_limits()?;
-        params.check_statement(self.databases.engine(target))
+        params.check_statement(engine)
     }
 
     fn inspect(
@@ -183,17 +185,17 @@ impl QueryParams {
         }
     }
 
-    fn check_statement(&self, engine: Option<Engine>) -> Result<(), ActionError> {
+    fn check_statement(&self, engine: Engine) -> Result<(), ActionError> {
         match (&self.sql, &self.command) {
             (Some(sql), None) if sql.trim().is_empty() => invalid("sql is empty"),
             (None, Some(words)) if words.is_empty() => invalid("command is empty"),
             (None, Some(_)) if !self.params.is_empty() => {
                 invalid("a redis command carries its values in the command itself, not in params")
             }
-            (Some(_), None) if engine == Some(Engine::Redis) => {
+            (Some(_), None) if engine == Engine::Redis => {
                 invalid("redis takes a command, such as [\"GET\", \"user:1\"], not sql")
             }
-            (None, Some(_)) if engine.is_some_and(Engine::speaks_sql) => {
+            (None, Some(_)) if engine.speaks_sql() => {
                 invalid("this database takes sql, not a command")
             }
             (Some(_), None) | (None, Some(_)) => Ok(()),
