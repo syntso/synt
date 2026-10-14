@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use synt_platform::{read_plain_file, replace_file};
 
 use super::DocumentPath;
-use super::document_path::{EXTENSIONS, MOST_EXTENSION_PARTS, PROJECT_FILE, RESOURCES, RUNBOOKS};
-use super::revision::LARGEST_BODY;
+use super::kind::{EXTENSIONS, MOST_EXTENSION_PARTS, PROJECT_FILE, RESOURCES, RUNBOOKS};
+use super::payload::LARGEST_BODY;
 use crate::SyncError;
 use crate::id::ProjectId;
 
@@ -67,9 +67,8 @@ impl ProjectFiles {
         let limit = u64::try_from(LARGEST_BODY).unwrap_or(u64::MAX);
 
         match read_plain_file(&path.in_folder(&self.root), limit) {
-            Ok(bytes) => Ok(Some(bytes)),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(SyncError::Io(error)),
+            read => Ok(Some(read?)),
         }
     }
 
@@ -87,8 +86,8 @@ impl ProjectFiles {
         self.check_folders(path)?;
 
         match fs::remove_file(path.in_folder(&self.root)) {
-            Err(error) if error.kind() != io::ErrorKind::NotFound => Err(SyncError::Io(error)),
-            _ => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            removed => Ok(removed?),
         }
     }
 
@@ -180,10 +179,8 @@ impl ProjectFiles {
         let path = self.root.join(folder);
 
         match fs::create_dir(&path) {
-            Err(error) if error.kind() != io::ErrorKind::AlreadyExists => {
-                return Err(SyncError::Io(error));
-            }
-            _ => {}
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+            created => created?,
         }
 
         if is_folder(&path)? {
@@ -195,18 +192,17 @@ impl ProjectFiles {
 }
 
 fn is_folder(path: &Path) -> Result<bool, SyncError> {
-    kind(path, fs::FileType::is_dir)
+    has_type(path, fs::FileType::is_dir)
 }
 
 fn is_file(path: &Path) -> Result<bool, SyncError> {
-    kind(path, fs::FileType::is_file)
+    has_type(path, fs::FileType::is_file)
 }
 
-fn kind(path: &Path, wanted: fn(&fs::FileType) -> bool) -> Result<bool, SyncError> {
+fn has_type(path: &Path, wanted: fn(&fs::FileType) -> bool) -> Result<bool, SyncError> {
     match path.symlink_metadata() {
-        Ok(metadata) => Ok(wanted(&metadata.file_type())),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(SyncError::Io(error)),
+        metadata => Ok(wanted(&metadata?.file_type())),
     }
 }
 

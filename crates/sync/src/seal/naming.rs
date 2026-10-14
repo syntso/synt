@@ -1,10 +1,8 @@
-use hkdf::Hkdf;
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
-use zeroize::Zeroizing;
 
 use super::SecretKey;
-use super::secret_key::SECRET_KEY_BYTES;
+use crate::SyncError;
 use crate::canonical::Canonical;
 use crate::document::DocumentPath;
 use crate::id::{DocumentId, ProjectId, RevisionId};
@@ -13,18 +11,16 @@ const SALT: &[u8] = b"synt.sync.naming.v1";
 
 #[derive(Clone)]
 pub(crate) struct Naming {
-    key: Zeroizing<[u8; SECRET_KEY_BYTES]>,
+    mac: Hmac<Sha256>,
 }
 
 impl Naming {
-    pub(crate) fn derive(first: &SecretKey, project: &ProjectId) -> Self {
-        let mut key = Zeroizing::new([0_u8; SECRET_KEY_BYTES]);
+    pub(crate) fn derive(first: &SecretKey, project: &ProjectId) -> Result<Self, SyncError> {
+        let key = SecretKey::derive(SALT, first.get(), project.get().as_bytes())?;
+        let mac = Hmac::<Sha256>::new_from_slice(key.get())
+            .map_err(|_| SyncError::Crypto("cannot key the naming"))?;
 
-        Hkdf::<Sha256>::new(Some(SALT), first.get())
-            .expand(project.get().as_bytes(), key.as_mut())
-            .expect("32 bytes is a valid HKDF-SHA256 output length");
-
-        Self { key }
+        Ok(Self { mac })
     }
 
     pub(crate) fn document_id(&self, path: &DocumentPath) -> DocumentId {
@@ -40,8 +36,7 @@ impl Naming {
     }
 
     fn digest(&self, input: &[u8]) -> Vec<u8> {
-        let mut mac = Hmac::<Sha256>::new_from_slice(self.key.as_ref())
-            .expect("HMAC accepts keys of any length");
+        let mut mac = self.mac.clone();
 
         mac.update(input);
         mac.finalize().into_bytes().to_vec()
@@ -50,9 +45,13 @@ impl Naming {
 
 #[cfg(test)]
 mod tests {
-    use super::Naming;
+    use hmac::{Hmac, KeyInit, Mac};
+    use sha2::Sha256;
+
+    use super::{Naming, SALT};
+    use crate::canonical::Canonical;
     use crate::document::DocumentPath;
-    use crate::id::ProjectId;
+    use crate::id::{DocumentId, ProjectId};
     use crate::seal::SecretKey;
 
     fn project() -> ProjectId {
@@ -67,8 +66,12 @@ mod tests {
     fn the_same_path_gets_the_same_id_on_every_device() {
         let key = SecretKey::generate().unwrap();
 
-        let one = Naming::derive(&key, &project()).document_id(&path("resources/api-1.toml"));
-        let other = Naming::derive(&key, &project()).document_id(&path("resources/api-1.toml"));
+        let one = Naming::derive(&key, &project())
+            .unwrap()
+            .document_id(&path("resources/api-1.toml"));
+        let other = Naming::derive(&key, &project())
+            .unwrap()
+            .document_id(&path("resources/api-1.toml"));
 
         assert_eq!(one, other);
     }
@@ -76,15 +79,33 @@ mod tests {
     #[test]
     fn ids_do_not_show_the_path_and_depend_on_the_key() {
         let key = SecretKey::generate().unwrap();
-        let naming = Naming::derive(&key, &project());
+        let naming = Naming::derive(&key, &project()).unwrap();
 
         let api = naming.document_id(&path("resources/api-1.toml"));
         let db = naming.document_id(&path("resources/db.toml"));
         let elsewhere = Naming::derive(&SecretKey::generate().unwrap(), &project())
+            .unwrap()
             .document_id(&path("resources/api-1.toml"));
 
         assert_ne!(api, db);
         assert_ne!(api, elsewhere);
         assert!(!api.get().contains("api"));
+    }
+
+    #[test]
+    fn a_document_id_is_the_hmac_of_the_path_under_the_derived_key() {
+        let first = SecretKey::generate().unwrap();
+        let naming = Naming::derive(&first, &project()).unwrap();
+
+        let key = SecretKey::derive(SALT, first.get(), project().get().as_bytes()).unwrap();
+        let mut mac = Hmac::<Sha256>::new_from_slice(key.get()).unwrap();
+        mac.update(
+            &Canonical::new("synt.sync.document")
+                .text("synt.toml")
+                .finish(),
+        );
+        let expected = DocumentId::from_digest(&mac.finalize().into_bytes());
+
+        assert_eq!(naming.document_id(&path("synt.toml")), expected);
     }
 }

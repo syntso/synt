@@ -2,13 +2,13 @@ use std::collections::BTreeMap;
 
 use zeroize::Zeroizing;
 
-use super::secret_key::SECRET_KEY_BYTES;
 use super::{Naming, SecretKey};
 use crate::SyncError;
 use crate::id::{Generation, ProjectId};
 
 const FORMAT: u8 = 1;
-const ENTRY_BYTES: usize = 4 + SECRET_KEY_BYTES;
+const GENERATION_BYTES: usize = 4;
+const ENTRY_BYTES: usize = GENERATION_BYTES + SecretKey::BYTES;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Keyring {
@@ -33,7 +33,7 @@ impl Keyring {
         let mut keys = BTreeMap::new();
 
         for entry in entries.as_chunks::<ENTRY_BYTES>().0 {
-            let (generation, key) = entry.split_at(4);
+            let (generation, key) = entry.split_at(GENERATION_BYTES);
             let generation = u32::from_be_bytes(generation.try_into().map_err(|_| damaged())?);
             let key = SecretKey::from_slice(key).ok_or_else(damaged)?;
 
@@ -99,7 +99,7 @@ impl Keyring {
             .next()
             .ok_or(SyncError::Crypto("the keyring is empty"))?;
 
-        Ok(Naming::derive(first, project))
+        Naming::derive(first, project)
     }
 
     pub(crate) fn keeps(&self, older: &Self) -> bool {

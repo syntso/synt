@@ -1,5 +1,5 @@
-mod membership;
+mod project;
 mod standing;
 
-pub(crate) use membership::Membership;
+pub(crate) use project::Membership;
 pub(crate) use standing::Standing;

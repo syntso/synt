@@ -4,7 +4,7 @@ use synt_platform::Vault;
 use x25519_dalek::{PublicKey as X25519Public, StaticSecret};
 use zeroize::Zeroizing;
 
-use super::secret_key::SECRET_KEY_BYTES;
+use super::SecretKey;
 use crate::SyncError;
 use crate::encoding::PublicKey;
 use crate::id::MemberId;
@@ -19,7 +19,7 @@ pub(crate) struct DeviceKey {
 
 impl DeviceKey {
     pub(crate) fn generate() -> Result<Self, SyncError> {
-        let bytes = Zeroizing::new(random_bytes::<SECRET_KEY_BYTES>()?);
+        let bytes = Zeroizing::new(random_bytes::<{ SecretKey::BYTES }>()?);
 
         Ok(Self {
             secret: StaticSecret::from(*bytes),
@@ -52,7 +52,7 @@ impl DeviceKey {
     pub(crate) fn agree(
         &self,
         public_key: &PublicKey,
-    ) -> Result<Zeroizing<[u8; SECRET_KEY_BYTES]>, SyncError> {
+    ) -> Result<Zeroizing<[u8; SecretKey::BYTES]>, SyncError> {
         let shared = self
             .secret
             .diffie_hellman(&X25519Public::from(*public_key.get()));
@@ -65,7 +65,7 @@ impl DeviceKey {
     }
 
     fn from_slice(bytes: &[u8]) -> Result<Self, SyncError> {
-        let bytes: [u8; SECRET_KEY_BYTES] = bytes
+        let bytes: [u8; SecretKey::BYTES] = bytes
             .try_into()
             .map_err(|_| SyncError::Crypto("the device key in the vault is damaged"))?;
         let bytes = Zeroizing::new(bytes);

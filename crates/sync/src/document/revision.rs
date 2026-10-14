@@ -1,13 +1,10 @@
 use super::{DocumentPath, Draft, Payload};
 use crate::SyncError;
-use crate::canonical::Canonical;
 use crate::encoding::Base64;
 use crate::id::{DocumentId, Generation, MemberId, ProjectId, RevisionId};
 use crate::provider::SealedRevision;
-use crate::seal::{Keyring, Naming, cipher};
-
-pub(crate) const LARGEST_BODY: usize = 1024 * 1024;
-const LONGEST_CONFLICT_LIST: usize = 256;
+use crate::report::{Applied, RevisionInfo};
+use crate::seal::{Keyring, Naming};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Revision {
@@ -27,7 +24,7 @@ impl Revision {
         draft.parents.dedup();
 
         let document = naming.document_id(&draft.path);
-        let id = naming.revision_id(&content(&document, &draft));
+        let id = naming.revision_id(&draft.content(&document));
 
         Self {
             document,
@@ -51,11 +48,11 @@ impl Revision {
         }
 
         let key = keyring.key(sealed.generation)?;
-        let plain = cipher::open(key, &aad(sealed), sealed.sealed.get())?;
+        let plain = key.open(&sealed.associated_data(), sealed.sealed.get())?;
         let payload: Payload = serde_json::from_slice(&plain)
             .map_err(|error| SyncError::refused(format!("its payload is malformed: {error}")))?;
 
-        let revision = Self::new(&keyring.naming(project)?, draft(sealed, payload)?);
+        let revision = Self::new(&keyring.naming(project)?, payload.into_draft(sealed)?);
 
         if revision.document != sealed.document || revision.id != sealed.revision {
             return Err(SyncError::refused(format!(
@@ -77,13 +74,37 @@ impl Revision {
 
         let payload = serde_json::to_vec(&self.payload())
             .map_err(|error| SyncError::invalid(format!("cannot encode a revision: {error}")))?;
-        sealed.sealed = Base64::new(cipher::seal(key, &aad(&sealed), &payload)?);
+        sealed.sealed = Base64::new(key.seal(&sealed.associated_data(), &payload)?);
 
         Ok(sealed)
     }
 
     pub(crate) fn is_removal(&self) -> bool {
         self.body.is_none()
+    }
+
+    pub(crate) fn applied(&self) -> Applied {
+        Applied {
+            path: self.path.get().to_owned(),
+            revision: self.id.clone(),
+            author: self.author.clone(),
+            removed: self.is_removal(),
+            conflicts: self.conflicts.len(),
+        }
+    }
+
+    pub(crate) fn info(&self, head: bool, on_disk: bool) -> RevisionInfo {
+        RevisionInfo {
+            revision: self.id.clone(),
+            parents: self.parents.clone(),
+            at: self.at,
+            author: self.author.clone(),
+            removed: self.is_removal(),
+            bytes: self.body.as_ref().map_or(0, Vec::len),
+            conflicts: self.conflicts.clone(),
+            head,
+            on_disk,
+        }
     }
 
     fn unsealed(&self, project: &ProjectId, generation: Generation) -> SealedRevision {
@@ -107,63 +128,6 @@ impl Revision {
             author: self.author.clone(),
         }
     }
-}
-
-fn draft(sealed: &SealedRevision, payload: Payload) -> Result<Draft, SyncError> {
-    let path = DocumentPath::parse(&payload.path)?;
-
-    if path.kind().to_string() != payload.kind {
-        return Err(SyncError::refused(format!(
-            "{path} is not a document of kind {}",
-            payload.kind
-        )));
-    }
-
-    let body = payload.body.map(Base64::into_bytes);
-    if body.as_ref().is_some_and(|body| body.len() > LARGEST_BODY) {
-        return Err(SyncError::refused(format!(
-            "{path} is larger than {LARGEST_BODY} bytes"
-        )));
-    }
-
-    if payload.conflicts.len() > LONGEST_CONFLICT_LIST {
-        return Err(SyncError::refused(format!(
-            "{path} lists too many conflicts"
-        )));
-    }
-
-    Ok(Draft {
-        path,
-        parents: sealed.parents.clone(),
-        at: sealed.at,
-        body,
-        conflicts: payload.conflicts,
-        author: payload.author,
-    })
-}
-
-fn content(document: &DocumentId, draft: &Draft) -> Vec<u8> {
-    Canonical::new("synt.sync.revision")
-        .text(document.get())
-        .texts(draft.parents.iter().map(RevisionId::get))
-        .number(draft.at)
-        .text(draft.path.get())
-        .text(&draft.path.kind().to_string())
-        .optional(draft.body.as_deref())
-        .texts(draft.conflicts.iter().map(String::as_str))
-        .optional(draft.author.as_ref().map(|author| author.get().as_bytes()))
-        .finish()
-}
-
-fn aad(sealed: &SealedRevision) -> Vec<u8> {
-    Canonical::new("synt.sync.sealed")
-        .text(sealed.project.get())
-        .text(sealed.document.get())
-        .text(sealed.revision.get())
-        .texts(sealed.parents.iter().map(RevisionId::get))
-        .number(u64::from(sealed.generation.get()))
-        .number(sealed.at)
-        .finish()
 }
 
 #[cfg(test)]

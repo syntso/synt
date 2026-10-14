@@ -2,17 +2,8 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use super::DocumentKind;
+use super::kind::{EXTENSIONS, PROJECT_FILE, RESOURCES, RUNBOOKS};
 use crate::SyncError;
-
-pub(crate) const PROJECT_FILE: &str = "synt.toml";
-pub(crate) const RESOURCES: &str = "resources";
-pub(crate) const RUNBOOKS: &str = "runbooks";
-pub(crate) const EXTENSIONS: &str = "extensions";
-pub(crate) const MOST_EXTENSION_PARTS: usize = 8;
-
-const TOML_SUFFIX: &str = ".toml";
-const LONGEST_NAME: usize = 64;
-const LONGEST_EXTENSION_PATH: usize = 200;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DocumentPath {
@@ -22,7 +13,7 @@ pub struct DocumentPath {
 
 impl DocumentPath {
     pub fn parse(text: &str) -> Result<Self, SyncError> {
-        let kind = kind_of(text).ok_or_else(|| {
+        let kind = DocumentKind::of(text).ok_or_else(|| {
             SyncError::invalid(format!(
                 "{text:?} is not a document path: use {PROJECT_FILE}, \
                  {RESOURCES}/<name>.toml, {RUNBOOKS}/<name>.toml or \
@@ -61,72 +52,6 @@ impl fmt::Display for DocumentPath {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.text)
     }
-}
-
-fn kind_of(text: &str) -> Option<DocumentKind> {
-    let parts: Vec<&str> = text.split('/').collect();
-
-    match parts.as_slice() {
-        [PROJECT_FILE] => Some(DocumentKind::Project),
-        [RESOURCES, file] => toml_name(file).then_some(DocumentKind::Resource),
-        [RUNBOOKS, file] => toml_name(file).then_some(DocumentKind::Runbook),
-        [EXTENSIONS, extension, inside @ ..] => extension_kind(extension, inside),
-        _ => None,
-    }
-}
-
-fn toml_name(file: &str) -> bool {
-    file.strip_suffix(TOML_SUFFIX).is_some_and(is_name)
-}
-
-fn extension_kind(extension: &str, inside: &[&str]) -> Option<DocumentKind> {
-    let (file, folders) = inside.split_last()?;
-    let (name, suffix) = file.rsplit_once('.')?;
-
-    if !is_extension_id(extension)
-        || !fits_extension_folder(inside)
-        || !folders.iter().all(|folder| is_name(folder))
-        || !is_name(name)
-        || !is_suffix(suffix)
-    {
-        return None;
-    }
-
-    Some(DocumentKind::Extension {
-        extension: extension.to_owned(),
-        suffix: suffix.to_owned(),
-    })
-}
-
-fn fits_extension_folder(inside: &[&str]) -> bool {
-    let length = inside.iter().map(|part| part.len() + 1).sum::<usize>();
-
-    inside.len() <= MOST_EXTENSION_PARTS && length <= LONGEST_EXTENSION_PATH + 1
-}
-
-fn is_name(name: &str) -> bool {
-    let allowed = |character: char| character.is_ascii_alphanumeric() || "-_.".contains(character);
-
-    !name.is_empty()
-        && name.len() <= LONGEST_NAME
-        && !name.starts_with('.')
-        && name.chars().all(allowed)
-}
-
-fn is_extension_id(id: &str) -> bool {
-    id.starts_with(|first: char| first.is_ascii_lowercase())
-        && id.len() <= LONGEST_NAME
-        && id.chars().all(|character| {
-            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
-        })
-}
-
-fn is_suffix(suffix: &str) -> bool {
-    !suffix.is_empty()
-        && suffix.len() <= LONGEST_NAME
-        && suffix
-            .chars()
-            .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
 }
 
 #[cfg(test)]

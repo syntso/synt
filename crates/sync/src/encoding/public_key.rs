@@ -5,17 +5,17 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::Base64;
 
-pub(crate) const PUBLIC_KEY_BYTES: usize = 32;
-
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PublicKey([u8; PUBLIC_KEY_BYTES]);
+pub struct PublicKey([u8; PublicKey::BYTES]);
 
 impl PublicKey {
-    pub fn new(bytes: [u8; PUBLIC_KEY_BYTES]) -> Self {
+    pub(crate) const BYTES: usize = 32;
+
+    pub fn new(bytes: [u8; Self::BYTES]) -> Self {
         Self(bytes)
     }
 
-    pub fn get(&self) -> &[u8; PUBLIC_KEY_BYTES] {
+    pub fn get(&self) -> &[u8; Self::BYTES] {
         &self.0
     }
 }
@@ -38,9 +38,9 @@ impl<'de> Deserialize<'de> for PublicKey {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let bytes = Base64::deserialize(deserializer)?.into_bytes();
 
-        let bytes: [u8; PUBLIC_KEY_BYTES] = bytes
+        let bytes: [u8; Self::BYTES] = bytes
             .try_into()
-            .map_err(|_| D::Error::custom("a public key has 32 bytes"))?;
+            .map_err(|_| D::Error::custom(format!("a public key has {} bytes", Self::BYTES)))?;
 
         Ok(Self(bytes))
     }
