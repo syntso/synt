@@ -95,6 +95,38 @@ async fn a_write_the_classifier_takes_for_a_read_is_refused_by_the_server() {
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
+async fn a_read_carries_one_statement_even_when_the_server_lexes_backslashes_plainly() {
+    let Some(servers) = DbServers::running() else {
+        return;
+    };
+
+    for (name, server) in both(&servers) {
+        let mut database = connect(&server).await;
+        write(&mut database, "DROP TABLE IF EXISTS smuggled").await;
+        write(&mut database, "CREATE TABLE smuggled (id int)").await;
+        write(&mut database, "INSERT INTO smuggled VALUES (1)").await;
+        write(
+            &mut database,
+            "SET SESSION sql_mode = CONCAT(@@sql_mode, ',NO_BACKSLASH_ESCAPES')",
+        )
+        .await;
+        let text =
+            r"SELECT 'a\'; COMMIT; SET SESSION TRANSACTION READ WRITE; DELETE FROM smuggled; -- '";
+
+        let classified = Classification::of_sql(Engine::Mysql, text);
+        let error = refused(&mut database, text).await;
+        let explained = database.explain(text, &[]).await;
+        let left = read(&mut database, "SELECT count(*) FROM smuggled").await;
+
+        assert_eq!(classified.effect, Effect::Read, "{name}");
+        assert!(matches!(error, DbError::Server { .. }), "{name}: {error:?}");
+        assert!(explained.is_err(), "{name}: {explained:?}");
+        assert_eq!(left.rows[0], vec![json!(1)], "{name}");
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
 async fn schema_changes_cannot_slip_out_of_a_read_by_committing_it() {
     let Some(servers) = DbServers::running() else {
         return;

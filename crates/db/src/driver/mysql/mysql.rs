@@ -172,7 +172,7 @@ fn ssl_options(tls: TlsMode, host: &str, tunneled: bool) -> Option<SslOpts> {
 }
 
 async fn run(connection: &mut Conn, query: &Query<'_>) -> Result<Rows, DbError> {
-    if query.params.is_empty() {
+    if query.params.is_empty() && !query.access.is_read_only() {
         let result = connection
             .query_iter(query.text)
             .await
