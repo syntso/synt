@@ -108,6 +108,18 @@ impl Projects {
         Ok(infos)
     }
 
+    pub(crate) fn location(&self, project: &str) -> Result<(String, PathBuf), CoreError> {
+        if is_personal(project) {
+            return Err(CoreError::Project(
+                "the Personal project is built from ~/.ssh/config and does not sync".to_owned(),
+            ));
+        }
+
+        self.with_project(project, |project| {
+            Ok((project.id().to_owned(), project.path().to_owned()))
+        })
+    }
+
     pub(crate) fn listing(&self, project: &str) -> Result<ResourceListing, CoreError> {
         if is_personal(project) {
             return Personal::listing();

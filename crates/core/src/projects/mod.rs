@@ -6,6 +6,7 @@ mod project;
 mod projects;
 mod resolved;
 mod resource;
+mod sync_folders;
 mod target_ref;
 mod watch;
 

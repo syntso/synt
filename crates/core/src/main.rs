@@ -21,6 +21,7 @@ use synt_platform::{
     AppCheck, Endpoint, WEAK_VAULT_FLAG, WeakVault, data_directory, open_vault, shutdown_signal,
 };
 use synt_ssh::{Pool, Tunnels};
+use synt_sync::{SyncLoop, Syncer};
 use tokio::task;
 
 const ENDPOINT_FLAG: &str = "--endpoint";
@@ -28,6 +29,7 @@ const DATA_FLAG: &str = "--data";
 const STAY_FLAG: &str = "--stay";
 const IDLE_FLAG: &str = "--idle-minutes";
 const IDLE_LIMIT: Duration = Duration::from_mins(10);
+const SYNC_EVERY: Duration = Duration::from_secs(10);
 
 struct Arguments {
     endpoint: Option<Endpoint>,
@@ -79,6 +81,9 @@ async fn run() -> Result<(), Box<dyn Error>> {
     register_records(&mut registry, &journal, &projects, &always)?;
     register_keys(&mut registry, &keys, &pool)?;
 
+    let syncer = syncer(&storage, &projects, &journal)?;
+    syncer.register(&mut registry)?;
+
     let extensions = Extensions::open(
         &data,
         &storage.state_path(),
@@ -91,6 +96,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let core = Arc::new(Core::new(registry, journal, Broker::with_always(always)));
     extensions.connect(Arc::new(CoreCaller::new(&core)));
     let server = Server::bind(&endpoint, core, apps()?)?;
+    let _sync: SyncLoop = syncer.start(SYNC_EVERY);
 
     eprintln!(
         "synt-core {VERSION} listening on {}",
@@ -166,6 +172,22 @@ fn register_keys(registry: &mut Registry, keys: &SshKeys, pool: &Pool) -> Result
     registry.register(KeyGenerate::new(keys.clone()))?;
     registry.register(KeyList::new(keys.clone()))?;
     registry.register(KeyRemove::new(keys.clone(), pool.clone()))
+}
+
+fn syncer(
+    storage: &Storage,
+    projects: &Projects,
+    journal: &JournalWriter,
+) -> Result<Syncer, Box<dyn Error>> {
+    let syncer = Syncer::builder(
+        &storage.state_path(),
+        storage.vault(),
+        Arc::new(projects.clone()),
+    )
+    .journal(journal.clone())
+    .open()?;
+
+    Ok(syncer)
 }
 
 async fn serve(server: Server, idle: Option<Duration>, terminals: Terminals, tunnels: Tunnels) {

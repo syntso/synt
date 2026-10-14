@@ -3254,6 +3254,7 @@ dependencies = [
  "synt-platform",
  "synt-proto",
  "synt-ssh",
+ "synt-sync",
  "synt-test-servers",
  "tempfile",
  "thiserror 2.0.21",
