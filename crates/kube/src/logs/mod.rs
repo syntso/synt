@@ -1,7 +1,7 @@
-mod log_request;
-mod log_stream;
-mod log_text;
+mod request;
+mod stream;
+mod text;
 
-pub use log_request::LogRequest;
-pub use log_stream::LogStream;
-pub use log_text::LogText;
+pub use request::LogRequest;
+pub use stream::LogStream;
+pub use text::LogText;

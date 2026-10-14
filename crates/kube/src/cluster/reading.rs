@@ -3,14 +3,13 @@ use kube::api::{Api, ListParams};
 use serde_json::Value;
 
 use super::Cluster;
-use crate::objects::tidy;
 use crate::{EventLine, Kind, KubeError, ListQuery, Listing, Namespaces};
 
 const LARGEST_PAGE: u32 = 500;
 
 impl Cluster {
     pub async fn list(&self, kind: &Kind, query: &ListQuery) -> Result<Listing, KubeError> {
-        let namespace = self.namespace_of(kind, &query.namespaces);
+        let namespace = self.namespace_among(kind, &query.namespaces);
         let api = kind.api(self.client(), namespace.as_deref());
 
         let mut params =
@@ -30,7 +29,7 @@ impl Cluster {
             items: list
                 .items
                 .into_iter()
-                .map(|object| tidy(object, kind))
+                .map(|object| kind.tidy(object))
                 .collect(),
             continue_token,
         })
@@ -48,7 +47,7 @@ impl Cluster {
         );
         let object = api.get(name).await?;
 
-        Ok(tidy(object, kind))
+        Ok(kind.tidy(object))
     }
 
     pub async fn events(
@@ -76,29 +75,5 @@ impl Cluster {
         lines.sort_by(|first, second| first.last_seen.cmp(&second.last_seen));
 
         Ok(lines)
-    }
-
-    pub(crate) fn namespace_for(&self, kind: &Kind, namespace: Option<&str>) -> Option<String> {
-        if !kind.is_namespaced() {
-            return None;
-        }
-
-        Some(namespace.unwrap_or(self.namespace()).to_owned())
-    }
-
-    fn namespace_of(&self, kind: &Kind, namespaces: &Namespaces) -> Option<String> {
-        if !kind.is_namespaced() {
-            return None;
-        }
-
-        self.namespace_named(namespaces)
-    }
-
-    fn namespace_named(&self, namespaces: &Namespaces) -> Option<String> {
-        match namespaces {
-            Namespaces::Default => Some(self.namespace().to_owned()),
-            Namespaces::Only(namespace) => Some(namespace.clone()),
-            Namespaces::All => None,
-        }
     }
 }

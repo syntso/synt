@@ -1,8 +1,6 @@
 use std::future::Future;
 use std::time::Instant;
 
-use k8s_openapi::api::core::v1::Pod;
-use kube::api::{Api, AttachParams};
 use tokio::time;
 
 use super::Cluster;
@@ -31,19 +29,7 @@ impl Cluster {
             () = stop => return Err(KubeError::Stopped),
         };
 
-        let (exit, failure) = match exit {
-            ExitStatus::Exited(code) => (Some(code), None),
-            ExitStatus::Failed(reason) => (None, Some(reason)),
-        };
-
-        Ok(ExecOutput {
-            exit,
-            failure,
-            stdout: stdout.text(),
-            stderr: stderr.text(),
-            truncated: stdout.truncated || stderr.truncated,
-            duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-        })
+        Ok(ExecOutput::new(exit, &stdout, &stderr, started.elapsed()))
     }
 
     async fn run_command(
@@ -51,19 +37,9 @@ impl Cluster {
         request: &ExecRequest,
         limit: usize,
     ) -> Result<(ExitStatus, Collected, Collected), KubeError> {
-        let namespace = request.namespace.as_deref().unwrap_or(self.namespace());
-        let pods: Api<Pod> = Api::namespaced(self.client().clone(), namespace);
-
-        let mut params = AttachParams::default()
-            .stdin(false)
-            .stdout(true)
-            .stderr(true);
-        if let Some(container) = &request.container {
-            params = params.container(container);
-        }
-
+        let pods = self.pods(request.namespace.as_deref());
         let mut process = pods
-            .exec(&request.pod, request.command.clone(), &params)
+            .exec(&request.pod, request.command.clone(), &request.params())
             .await?;
         let status = process.take_status();
 
@@ -75,6 +51,7 @@ impl Cluster {
             Some(status) => status.await,
             None => None,
         };
+
         process
             .join()
             .await

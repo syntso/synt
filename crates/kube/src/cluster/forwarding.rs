@@ -3,6 +3,7 @@ use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
 use kube::api::{Api, ListParams};
 
 use super::Cluster;
+use crate::forward::Relay;
 use crate::{ForwardTarget, KubeError, PortForward};
 
 const RUNNING: &str = "Running";
@@ -16,21 +17,16 @@ impl Cluster {
         local_port: Option<u16>,
     ) -> Result<PortForward, KubeError> {
         let namespace = namespace.unwrap_or(self.namespace()).to_owned();
-        let pods: Api<Pod> = Api::namespaced(self.client().clone(), &namespace);
+        let pods = self.pods(Some(&namespace));
 
         let (pod, remote_port) = match target {
             ForwardTarget::Pod(name) => (name.clone(), port),
             ForwardTarget::Service(name) => self.service_backend(&namespace, name, port).await?,
         };
 
-        PortForward::start(
-            pods,
-            target.to_string(),
-            (namespace, pod),
-            remote_port,
-            local_port,
-        )
-        .await
+        let relay = Relay::new(pods, pod, remote_port);
+
+        PortForward::start(target.to_string(), namespace, relay, local_port).await
     }
 
     async fn service_backend(
@@ -72,8 +68,10 @@ impl Cluster {
         service: &str,
         selector: &str,
     ) -> Result<Pod, KubeError> {
-        let pods: Api<Pod> = Api::namespaced(self.client().clone(), namespace);
-        let listed = pods.list(&ListParams::default().labels(selector)).await?;
+        let listed = self
+            .pods(Some(namespace))
+            .list(&ListParams::default().labels(selector))
+            .await?;
 
         listed
             .items

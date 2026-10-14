@@ -1,6 +1,8 @@
 use kube::config::{Kubeconfig, NamedContext};
 use serde::Serialize;
 
+use super::servers::Servers;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ContextInfo {
     pub name: String,
@@ -21,7 +23,7 @@ impl ContextInfo {
         let cluster = context.map(|context| context.cluster.clone());
         let server = cluster
             .as_deref()
-            .and_then(|cluster| server_of(kubeconfig, cluster));
+            .and_then(|cluster| kubeconfig.server_of(cluster));
 
         Self {
             name: named.name.clone(),
@@ -32,13 +34,4 @@ impl ContextInfo {
             current: current == Some(named.name.as_str()),
         }
     }
-}
-
-pub(crate) fn server_of(kubeconfig: &Kubeconfig, cluster: &str) -> Option<String> {
-    kubeconfig
-        .clusters
-        .iter()
-        .find(|named| named.name == cluster)
-        .and_then(|named| named.cluster.as_ref())
-        .and_then(|cluster| cluster.server.clone())
 }

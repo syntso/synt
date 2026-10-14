@@ -1,6 +1,6 @@
 use kube::config::Kubeconfig;
 
-use super::context_info::server_of;
+use super::servers::Servers;
 use super::{ClusterPlace, KubeconfigSource};
 use crate::KubeError;
 
@@ -57,7 +57,7 @@ impl ClusterSpec {
                 .broken(format!("context {context} is empty"))
         })?;
 
-        let server = server_of(kubeconfig, &details.cluster).ok_or_else(|| {
+        let server = kubeconfig.server_of(&details.cluster).ok_or_else(|| {
             self.kubeconfig.broken(format!(
                 "context {context} uses cluster {}, which has no server",
                 details.cluster

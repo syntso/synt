@@ -9,7 +9,7 @@ use synt_kube::{ExecLimits, ExecOutput, ExecRequest};
 
 use super::Kube;
 use super::failure::failed;
-use super::object_names::{check_namespace, check_object_name};
+use super::names::{check_namespace, check_object_name};
 use crate::builtin::ssh::escalates;
 
 const LONGEST_TIMEOUT: Duration = Duration::from_hours(24);
@@ -33,6 +33,39 @@ pub(crate) struct ExecParams {
 
     #[serde(default)]
     pub timeout_seconds: Option<u64>,
+}
+
+impl ExecParams {
+    fn limits(&self) -> Result<ExecLimits, ActionError> {
+        let defaults = ExecLimits::default();
+
+        let Some(seconds) = self.timeout_seconds else {
+            return Ok(defaults);
+        };
+
+        let timeout = Duration::from_secs(seconds);
+
+        if timeout.is_zero() || timeout > LONGEST_TIMEOUT {
+            return Err(ActionError::InvalidParams(format!(
+                "timeout_seconds must be between 1 and {}, got {seconds}",
+                LONGEST_TIMEOUT.as_secs()
+            )));
+        }
+
+        Ok(ExecLimits {
+            timeout,
+            ..defaults
+        })
+    }
+
+    fn request(self) -> ExecRequest {
+        ExecRequest {
+            pod: self.pod,
+            namespace: self.namespace,
+            container: self.container,
+            command: self.command,
+        }
+    }
 }
 
 impl K8sExec {
@@ -70,7 +103,7 @@ impl Action for K8sExec {
             ));
         }
 
-        limits(params.timeout_seconds).map(|_| ())
+        params.limits().map(|_| ())
     }
 
     fn risk(&self, target: Option<&ResourceRef>, params: &ExecParams) -> Risk {
@@ -97,15 +130,9 @@ impl Action for K8sExec {
     }
 
     async fn run(&self, context: &Context, params: ExecParams) -> Result<ExecOutput, ActionError> {
-        let limits = limits(params.timeout_seconds)?;
+        let limits = params.limits()?;
         let cluster = self.kube.cluster(context).await?;
-
-        let request = ExecRequest {
-            pod: params.pod,
-            namespace: params.namespace,
-            container: params.container,
-            command: params.command,
-        };
+        let request = params.request();
 
         cluster
             .exec(&request, limits, context.stop().cancelled())
@@ -114,24 +141,40 @@ impl Action for K8sExec {
     }
 }
 
-fn limits(timeout_seconds: Option<u64>) -> Result<ExecLimits, ActionError> {
-    let defaults = ExecLimits::default();
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
 
-    let Some(seconds) = timeout_seconds else {
-        return Ok(defaults);
-    };
+    use synt_kube::ExecLimits;
 
-    let timeout = Duration::from_secs(seconds);
+    use super::ExecParams;
 
-    if timeout.is_zero() || timeout > LONGEST_TIMEOUT {
-        return Err(ActionError::InvalidParams(format!(
-            "timeout_seconds must be between 1 and {}, got {seconds}",
-            LONGEST_TIMEOUT.as_secs()
-        )));
+    fn params(timeout_seconds: Option<u64>) -> ExecParams {
+        ExecParams {
+            pod: "api".to_owned(),
+            namespace: None,
+            container: None,
+            command: vec!["true".to_owned()],
+            timeout_seconds,
+        }
     }
 
-    Ok(ExecLimits {
-        timeout,
-        ..defaults
-    })
+    #[test]
+    fn no_timeout_keeps_the_default_limits() {
+        assert_eq!(params(None).limits().unwrap(), ExecLimits::default());
+    }
+
+    #[test]
+    fn a_timeout_replaces_only_the_time_limit() {
+        let limits = params(Some(30)).limits().unwrap();
+
+        assert_eq!(limits.timeout, Duration::from_secs(30));
+        assert_eq!(limits.output_bytes, ExecLimits::default().output_bytes);
+    }
+
+    #[test]
+    fn a_timeout_of_zero_or_over_a_day_is_refused() {
+        assert!(params(Some(0)).limits().is_err());
+        assert!(params(Some(24 * 60 * 60 + 1)).limits().is_err());
+    }
 }

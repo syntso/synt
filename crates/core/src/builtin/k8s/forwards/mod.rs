@@ -1,7 +1,13 @@
-mod forward_info;
-mod forwards;
-mod open_forward;
+mod close;
+mod entry;
+mod info;
+mod list;
+mod open;
+mod registry;
 
-pub(crate) use forward_info::ForwardInfo;
-pub(crate) use forwards::Forwards;
-pub(crate) use open_forward::OpenForward;
+pub(crate) use close::K8sPortForwardClose;
+use entry::OpenForward;
+pub(crate) use info::ForwardInfo;
+pub(crate) use list::K8sPortForwardList;
+pub(crate) use open::K8sPortForward;
+pub(crate) use registry::Forwards;

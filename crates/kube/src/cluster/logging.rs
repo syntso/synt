@@ -10,36 +10,25 @@ impl Cluster {
     pub async fn logs(&self, request: &LogRequest) -> Result<LogText, KubeError> {
         let params = LogParams {
             limit_bytes: Some(i64::try_from(LARGEST_LOG).unwrap_or(i64::MAX)),
-            ..log_params(request, false)
+            ..request.params(false)
         };
 
-        let text = self.pods(request).logs(&request.pod, &params).await?;
+        let text = self.pods_of(request).logs(&request.pod, &params).await?;
 
         Ok(LogText::new(text, LARGEST_LOG))
     }
 
     pub async fn follow_logs(&self, request: &LogRequest) -> Result<LogStream, KubeError> {
-        let params = log_params(request, true);
-        let reader = self.pods(request).log_stream(&request.pod, &params).await?;
+        let params = request.params(true);
+        let reader = self
+            .pods_of(request)
+            .log_stream(&request.pod, &params)
+            .await?;
 
         Ok(LogStream::new(reader))
     }
 
-    fn pods(&self, request: &LogRequest) -> Api<Pod> {
-        let namespace = request.namespace.as_deref().unwrap_or(self.namespace());
-
-        Api::namespaced(self.client().clone(), namespace)
-    }
-}
-
-fn log_params(request: &LogRequest, follow: bool) -> LogParams {
-    LogParams {
-        container: request.container.clone(),
-        follow,
-        previous: request.previous,
-        since_seconds: request.since_seconds.map(i64::from),
-        tail_lines: request.tail_lines.map(i64::from),
-        timestamps: request.timestamps,
-        ..LogParams::default()
+    fn pods_of(&self, request: &LogRequest) -> Api<Pod> {
+        self.pods(request.namespace.as_deref())
     }
 }

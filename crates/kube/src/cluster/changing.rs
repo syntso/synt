@@ -6,8 +6,6 @@ use super::Cluster;
 use crate::{Deleted, Kind, KubeError, ObjectRef, Restarted, Scaled};
 
 const RESTARTED_AT: &str = "kubectl.kubernetes.io/restartedAt";
-const RESTARTABLE: [&str; 3] = ["Deployment", "StatefulSet", "DaemonSet"];
-const APPS: &str = "apps";
 const LARGEST_REPLICAS: u32 = 10_000;
 
 impl Cluster {
@@ -49,7 +47,7 @@ impl Cluster {
         name: &str,
         namespace: Option<&str>,
     ) -> Result<Restarted, KubeError> {
-        if kind.group() != APPS || !RESTARTABLE.contains(&kind.name()) {
+        if !kind.is_restartable() {
             return Err(KubeError::invalid(format!(
                 "{kind} cannot be restarted; only deployments, stateful sets and daemon sets can"
             )));

@@ -1,9 +1,11 @@
-mod forward_status;
-mod forward_target;
-mod forward_traffic;
-mod port_forward;
+mod port;
+mod relay;
+mod status;
+mod target;
+mod traffic;
 
-pub use forward_status::ForwardStatus;
-pub use forward_target::ForwardTarget;
-use forward_traffic::ForwardTraffic;
-pub use port_forward::PortForward;
+pub use port::PortForward;
+pub(crate) use relay::Relay;
+pub use status::ForwardStatus;
+pub use target::ForwardTarget;
+use traffic::ForwardTraffic;

@@ -1,11 +1,11 @@
 mod applying;
 mod changing;
-mod client_through;
-mod cluster;
+mod connection;
 mod executing;
 mod forwarding;
 mod logging;
+mod placed;
 mod reading;
 mod watching;
 
-pub use cluster::Cluster;
+pub use connection::Cluster;

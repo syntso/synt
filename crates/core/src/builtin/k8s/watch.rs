@@ -6,9 +6,8 @@ use synt_journal::ResourceRef;
 use synt_kube::{Namespaces, WatchRequest};
 use synt_proto::StreamId;
 
-use super::object_names::{check_kind, check_namespace};
-use super::stream_pump::{outbound, pump_watch};
-use super::streams::StreamStarted;
+use super::names::{check_kind, check_namespaces};
+use super::streams::{Pump, StreamStarted};
 use super::{KindFacts, Kube};
 
 #[derive(Debug, Clone)]
@@ -59,15 +58,7 @@ impl Action for K8sWatch {
         params: &WatchParams,
     ) -> Result<(), ActionError> {
         check_kind(&params.kind)?;
-        check_namespace(params.namespace.as_deref())?;
-
-        if params.all_namespaces && params.namespace.is_some() {
-            return Err(ActionError::InvalidParams(
-                "give a namespace or all_namespaces, not both".to_owned(),
-            ));
-        }
-
-        Ok(())
+        check_namespaces(params.namespace.as_deref(), params.all_namespaces)
     }
 
     fn inspect(
@@ -99,7 +90,7 @@ impl Action for K8sWatch {
     ) -> Result<StreamStarted, ActionError> {
         let cluster = self.kube.cluster(context).await?;
         let kind = self.kube.kind(context, &cluster, &params.kind).await?;
-        let outbound = outbound(context, params.stream)?;
+        let pump = Pump::open(context, params.stream)?;
 
         let request = WatchRequest {
             namespaces: Namespaces::from_request(params.namespace, params.all_namespaces),
@@ -111,7 +102,7 @@ impl Action for K8sWatch {
         self.kube
             .streams()
             .start(context, Self::ID, about, move |stop| async move {
-                let ended = pump_watch(watch, outbound, stop).await;
+                let ended = pump.run(watch, stop).await;
                 drop(cluster);
                 ended
             });

@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 use crate::error::first_line;
+use crate::objects::Fields;
 use crate::{KubeError, ObjectRef};
 
 const LARGEST_COUNT: usize = 100;
@@ -20,7 +21,7 @@ impl Manifest {
 
         let mut objects = Vec::new();
         for document in documents.into_iter().filter(|document| !document.is_null()) {
-            objects.extend(expanded(document)?);
+            objects.extend(Self::items_of(document)?);
         }
 
         if objects.is_empty() {
@@ -33,7 +34,7 @@ impl Manifest {
             )));
         }
 
-        objects.iter().try_for_each(check)?;
+        objects.iter().try_for_each(Self::check)?;
 
         Ok(Self { objects })
     }
@@ -43,70 +44,54 @@ impl Manifest {
     }
 
     pub fn refs(&self) -> Vec<ObjectRef> {
-        self.objects.iter().map(object_ref).collect()
+        self.objects.iter().map(ObjectRef::of).collect()
     }
 
     pub fn holds_secrets(&self) -> bool {
         self.objects
             .iter()
-            .any(|object| text(object, "kind") == Some(SECRET))
-    }
-}
-
-pub(crate) fn object_ref(object: &Value) -> ObjectRef {
-    ObjectRef {
-        kind: text(object, "kind").unwrap_or_default().to_owned(),
-        name: metadata_text(object, "name").unwrap_or_default().to_owned(),
-        namespace: metadata_text(object, "namespace").map(str::to_owned),
-    }
-}
-
-pub(crate) fn text<'a>(object: &'a Value, field: &str) -> Option<&'a str> {
-    object.get(field).and_then(Value::as_str)
-}
-
-pub(crate) fn metadata_text<'a>(object: &'a Value, field: &str) -> Option<&'a str> {
-    object
-        .get("metadata")
-        .and_then(|metadata| text(metadata, field))
-}
-
-fn expanded(document: Value) -> Result<Vec<Value>, KubeError> {
-    let is_list = text(&document, "kind").is_some_and(|kind| kind.ends_with(LIST_SUFFIX));
-
-    if !is_list {
-        return Ok(vec![document]);
+            .any(|object| object.text("kind") == Some(SECRET))
     }
 
-    match document.get("items") {
-        Some(Value::Array(items)) => Ok(items.clone()),
-        _ => Err(KubeError::invalid("a List in the manifest has no items")),
-    }
-}
+    fn items_of(mut document: Value) -> Result<Vec<Value>, KubeError> {
+        let is_list = document
+            .text("kind")
+            .is_some_and(|kind| kind.ends_with(LIST_SUFFIX));
 
-fn check(object: &Value) -> Result<(), KubeError> {
-    if !object.is_object() {
-        return Err(KubeError::invalid(
-            "every document of the manifest must be an object",
-        ));
-    }
+        if !is_list {
+            return Ok(vec![document]);
+        }
 
-    for field in ["apiVersion", "kind"] {
-        if text(object, field).is_none_or(str::is_empty) {
-            return Err(KubeError::invalid(format!(
-                "an object in the manifest has no {field}"
-            )));
+        match document.get_mut("items").map(Value::take) {
+            Some(Value::Array(items)) => Ok(items),
+            _ => Err(KubeError::invalid("a List in the manifest has no items")),
         }
     }
 
-    if metadata_text(object, "name").is_none_or(str::is_empty) {
-        let kind = text(object, "kind").unwrap_or_default();
-        return Err(KubeError::invalid(format!(
-            "a {kind} in the manifest has no metadata.name; generated names cannot be applied"
-        )));
-    }
+    fn check(object: &Value) -> Result<(), KubeError> {
+        if !object.is_object() {
+            return Err(KubeError::invalid(
+                "every document of the manifest must be an object",
+            ));
+        }
 
-    Ok(())
+        for field in ["apiVersion", "kind"] {
+            if object.text(field).is_none_or(str::is_empty) {
+                return Err(KubeError::invalid(format!(
+                    "an object in the manifest has no {field}"
+                )));
+            }
+        }
+
+        if object.metadata_text("name").is_none_or(str::is_empty) {
+            let kind = object.text("kind").unwrap_or_default();
+            return Err(KubeError::invalid(format!(
+                "a {kind} in the manifest has no metadata.name; generated names cannot be applied"
+            )));
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
