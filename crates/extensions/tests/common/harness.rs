@@ -9,7 +9,7 @@ use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{ActionId, Actor, ResourceRef, Seq};
 use tempfile::TempDir;
 
-use super::{CoreStub, FakeCaller};
+use super::{CoreStub, FakeCaller, RecordingScreen};
 
 pub const SAMPLE_MANIFEST: &str = r#"
 id = "t"
@@ -31,6 +31,7 @@ pub struct Harness {
     pub extensions: Extensions,
     pub registry: Registry,
     pub caller: Arc<FakeCaller>,
+    pub screen: Arc<RecordingScreen>,
 }
 
 impl Harness {
@@ -63,7 +64,8 @@ impl Harness {
         let extensions = Extensions::open(&data, &state, runtime, remote).unwrap();
 
         let caller = Arc::new(FakeCaller::default());
-        extensions.connect(Arc::clone(&caller) as _);
+        let screen = Arc::new(RecordingScreen::default());
+        extensions.connect(Arc::clone(&caller) as _, Arc::clone(&screen) as _);
 
         let mut registry = Registry::new();
         registry.attach(Arc::new(CoreStub));
@@ -74,6 +76,7 @@ impl Harness {
             extensions,
             registry,
             caller,
+            screen,
         }
     }
 
