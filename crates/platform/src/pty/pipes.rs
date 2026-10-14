@@ -3,6 +3,8 @@ use std::thread;
 
 use tokio::sync::mpsc;
 
+use super::CursorQuestion;
+
 const READ_CHUNK: usize = 16 * 1024;
 
 pub(super) fn spawn(name: &str, work: impl FnOnce() + Send + 'static) -> io::Result<()> {
@@ -11,20 +13,32 @@ pub(super) fn spawn(name: &str, work: impl FnOnce() + Send + 'static) -> io::Res
     Ok(())
 }
 
-pub(super) fn read_into(mut reader: Box<dyn Read + Send>, output: &mpsc::Sender<Vec<u8>>) {
+pub(super) fn read_into(
+    mut reader: Box<dyn Read + Send>,
+    output: &mpsc::Sender<Vec<u8>>,
+    mut question: CursorQuestion,
+) {
     let mut buffer = vec![0_u8; READ_CHUNK];
 
     loop {
         let read = match reader.read(&mut buffer) {
-            Ok(0) => return,
+            Ok(0) => break,
             Ok(read) => read,
             Err(error) if error.kind() == ErrorKind::Interrupted => continue,
-            Err(_) => return,
+            Err(_) => break,
         };
 
-        if output.blocking_send(buffer[..read].to_vec()).is_err() {
+        let shown = question.screen(&buffer[..read]);
+
+        if !shown.is_empty() && output.blocking_send(shown).is_err() {
             return;
         }
+    }
+
+    let rest = question.rest();
+
+    if !rest.is_empty() {
+        let _ = output.blocking_send(rest);
     }
 }
 

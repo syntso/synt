@@ -4,6 +4,8 @@ use portable_pty::{Child, ChildKiller};
 
 use crate::PtyEnd;
 
+pub(crate) const ASKS_FOR_CURSOR: bool = true;
+
 pub(crate) fn login_shell() -> Option<PathBuf> {
     None
 }

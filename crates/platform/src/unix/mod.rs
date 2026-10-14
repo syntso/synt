@@ -19,6 +19,6 @@ pub(crate) use permissions::{owned_by_current_user, writable_by_others};
 pub(crate) use plain_file::{create_new_file, open_no_follow, open_without_waiting};
 pub(crate) use private::create_private_directory;
 pub(crate) use private::replace_private_file;
-pub(crate) use pty_process::{force_stop, login_shell, wait_for};
+pub(crate) use pty_process::{ASKS_FOR_CURSOR, force_stop, login_shell, wait_for};
 pub(crate) use shutdown::shutdown_signal;
 pub(crate) use stream::{Stream, connect};

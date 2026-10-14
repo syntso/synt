@@ -3,7 +3,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use portable_pty::{Child, ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use tokio::sync::{mpsc, oneshot};
 
-use super::{PtyOutput, pipes};
+use super::{CursorQuestion, PtyOutput, pipes};
 use crate::{PlatformError, native};
 
 const INPUT_BACKLOG: usize = 256;
@@ -118,14 +118,25 @@ fn start_pipes(
     let (input, typed) = mpsc::channel(INPUT_BACKLOG);
     let (shown, data) = mpsc::channel(OUTPUT_BACKLOG);
     let (exited, exit) = oneshot::channel();
+    let question = cursor_question(&input);
 
     pipes::spawn("synt-pty-wait", move || {
         let _ = exited.send(native::wait_for(child));
     })?;
-    pipes::spawn("synt-pty-read", move || pipes::read_into(reader, &shown))?;
+    pipes::spawn("synt-pty-read", move || {
+        pipes::read_into(reader, &shown, question);
+    })?;
     pipes::spawn("synt-pty-write", move || pipes::write_from(writer, typed))?;
 
     Ok((input, PtyOutput::new(data, exit)))
+}
+
+fn cursor_question(input: &mpsc::Sender<Vec<u8>>) -> CursorQuestion {
+    if native::ASKS_FOR_CURSOR {
+        CursorQuestion::expected(input.clone())
+    } else {
+        CursorQuestion::not_expected()
+    }
 }
 
 fn login_command(term: &str) -> CommandBuilder {

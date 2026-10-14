@@ -8,6 +8,8 @@ use portable_pty::{Child, ChildKiller};
 
 use crate::PtyEnd;
 
+pub(crate) const ASKS_FOR_CURSOR: bool = false;
+
 pub(crate) fn login_shell() -> Option<PathBuf> {
     let user = User::from_uid(unistd::getuid()).ok()??;
 
