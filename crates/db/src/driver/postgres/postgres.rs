@@ -14,8 +14,8 @@ use super::decode::decode;
 use super::failure::failure;
 use super::raw_cell::RawCell;
 use super::text_param::TextParam;
-use crate::rows::Collector;
-use crate::schema::{Column, ForeignKeyPart, IndexPart, Schema, TableName};
+use crate::catalog::{Column, ForeignKeyPart, IndexPart, Schema, TableName};
+use crate::paging::Collector;
 
 use crate::{DbError, Place, Query, Rows, Server, TlsMode};
 

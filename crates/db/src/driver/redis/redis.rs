@@ -11,7 +11,7 @@ use tokio::time;
 use tokio_rustls::TlsConnector;
 
 use super::reply::rows;
-use crate::rows::Collector;
+use crate::paging::Collector;
 
 use crate::{DbError, Page, Rows, Server, TlsMode};
 

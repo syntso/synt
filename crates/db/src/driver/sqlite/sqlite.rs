@@ -8,8 +8,8 @@ use serde_json::{Value, json};
 use super::catalog;
 use super::cells::{from_json, to_json};
 use super::failure::failure;
-use crate::rows::Collector;
-use crate::schema::{Column, ForeignKeyPart, IndexPart, Schema, TableName};
+use crate::catalog::{Column, ForeignKeyPart, IndexPart, Schema, TableName};
+use crate::paging::Collector;
 use crate::{Access, DbError, Place, Query, Rows, Server};
 
 const BUSY_LIMIT: Duration = Duration::from_secs(5);

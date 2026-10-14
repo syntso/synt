@@ -56,7 +56,7 @@ impl Schema {
 #[cfg(test)]
 mod tests {
     use super::Schema;
-    use crate::schema::{ForeignKeyPart, IndexPart, TableName};
+    use crate::catalog::{ForeignKeyPart, IndexPart, TableName};
 
     fn table(name: &str) -> TableName {
         TableName {

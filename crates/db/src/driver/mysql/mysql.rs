@@ -7,8 +7,8 @@ use tokio::time;
 use super::catalog;
 use super::decode::decode;
 use super::failure::{failure, lacks_tls};
-use crate::rows::Collector;
-use crate::schema::{Column, ForeignKeyPart, IndexPart, Schema, TableName};
+use crate::catalog::{Column, ForeignKeyPart, IndexPart, Schema, TableName};
+use crate::paging::Collector;
 use crate::tls::SystemRoots;
 use crate::{DbError, Place, Query, Rows, Server, TlsMode};
 
