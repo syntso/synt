@@ -4,7 +4,7 @@ mod common;
 
 use std::time::Duration;
 
-use common::Team;
+use common::{Device, Team};
 use synt_sync::Access;
 use tokio::time;
 
@@ -310,4 +310,22 @@ async fn a_document_that_cannot_be_read_does_not_hold_up_the_others() {
     );
     assert!(team.bob.read("resources/db.toml").is_some());
     assert!(linked.symlink_metadata().unwrap().file_type().is_symlink());
+}
+
+#[tokio::test]
+async fn a_merge_that_changes_nothing_on_disk_is_not_reported_as_applied() {
+    let shared = tempfile::tempdir().unwrap();
+    let alice = Device::new(shared.path());
+    let bob = Device::new(shared.path());
+    alice.enable().await;
+    bob.enable().await;
+    alice.share_with(&bob).await;
+
+    alice.sync().await;
+    let joined = bob.sync().await;
+    let merged = alice.sync().await;
+
+    assert_eq!(joined.merged, 1);
+    assert!(joined.applied.is_empty(), "{:?}", joined.applied);
+    assert!(merged.applied.is_empty(), "{:?}", merged.applied);
 }

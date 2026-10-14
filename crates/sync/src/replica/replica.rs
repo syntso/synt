@@ -243,13 +243,15 @@ impl Replica {
             return Ok(false);
         }
 
+        let changes = current != target.body;
         match &target.body {
-            Some(body) => self.files.write(&target.path, body)?,
-            None => self.files.remove(&target.path)?,
+            Some(body) if changes => self.files.write(&target.path, body)?,
+            None if changes => self.files.remove(&target.path)?,
+            _ => {}
         }
         self.history.set_on_disk(&self.project, target)?;
 
-        Ok(true)
+        Ok(changes)
     }
 
     fn known_documents(&self) -> Result<BTreeMap<DocumentPath, StoredDocument>, SyncError> {
