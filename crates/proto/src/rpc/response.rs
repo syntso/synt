@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-use super::json_rpc::JsonRpc;
+use super::version::JsonRpcVersion;
 use super::{Outcome, RequestId};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Response {
-    jsonrpc: JsonRpc,
+    jsonrpc: JsonRpcVersion,
     pub id: Option<RequestId>,
 
     #[serde(flatten)]
@@ -15,7 +15,7 @@ pub struct Response {
 impl Response {
     pub fn new(id: Option<RequestId>, outcome: impl Into<Outcome>) -> Self {
         Self {
-            jsonrpc: JsonRpc,
+            jsonrpc: JsonRpcVersion,
             id,
             outcome: outcome.into(),
         }

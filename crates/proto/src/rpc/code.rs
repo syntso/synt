@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ErrorCode(pub i64);
+pub struct ErrorCode(i64);
 
 impl ErrorCode {
     pub const PARSE_ERROR: Self = Self(-32_700);
@@ -20,6 +20,14 @@ impl ErrorCode {
     pub const DENIED: Self = Self(-32_012);
     pub const JOURNAL_UNAVAILABLE: Self = Self(-32_013);
     pub const APPROVAL_UNKNOWN: Self = Self(-32_014);
+
+    pub const fn new(code: i64) -> Self {
+        Self(code)
+    }
+
+    pub const fn get(self) -> i64 {
+        self.0
+    }
 }
 
 impl fmt::Display for ErrorCode {

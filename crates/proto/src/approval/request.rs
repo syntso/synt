@@ -1,25 +1,25 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{ApprovalId, Requester, RiskLevel};
-use crate::Notice;
+use super::ApprovalId;
+use crate::{ActionId, Actor, Notice, ResourceRef, Risk};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ApprovalRequest {
     pub id: ApprovalId,
-    pub actor: Requester,
-    pub action: String,
+    pub actor: Actor,
+    pub action: ActionId,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub on_behalf_of: Option<Requester>,
+    pub on_behalf_of: Option<Actor>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
+    pub target: Option<ResourceRef>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub destination: Option<String>,
 
-    pub risk: RiskLevel,
+    pub risk: Risk,
 
     #[serde(default)]
     pub params: Value,

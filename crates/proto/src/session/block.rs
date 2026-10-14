@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+use super::SessionId;
 use crate::{Notice, StreamId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionBlock {
-    pub session: u64,
+    pub session: SessionId,
     pub stream: StreamId,
     pub block: u64,
 
@@ -28,13 +29,13 @@ mod tests {
     use serde_json::json;
 
     use super::SessionBlock;
-    use crate::{Notice, StreamId};
+    use crate::{Notice, SessionId, StreamId};
 
     #[test]
     fn a_block_travels_as_a_notification() {
         let block = SessionBlock {
-            session: 57,
-            stream: StreamId(1),
+            session: SessionId::new(57),
+            stream: StreamId::new(1),
             block: 3,
             command: Some("false".to_owned()),
             exit: Some(1),

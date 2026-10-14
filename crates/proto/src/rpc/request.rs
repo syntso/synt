@@ -1,14 +1,18 @@
+mod id;
+
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::json_rpc::JsonRpc;
-use super::{RequestId, RpcError, params};
+use super::RpcError;
+use super::version::JsonRpcVersion;
 use crate::Method;
+
+pub use id::RequestId;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Request {
-    jsonrpc: JsonRpc,
+    jsonrpc: JsonRpcVersion,
     pub id: RequestId,
     pub method: String,
 
@@ -25,7 +29,7 @@ impl Request {
         let params = serde_json::to_value(params)?;
 
         Ok(Self {
-            jsonrpc: JsonRpc,
+            jsonrpc: JsonRpcVersion,
             id,
             method: method.name().to_owned(),
             params,
@@ -37,10 +41,11 @@ impl Request {
     }
 
     pub fn params<T: DeserializeOwned>(&self) -> Result<T, RpcError> {
-        params::read(&self.params)
+        T::deserialize(&self.params).map_err(|error| RpcError::invalid_params(error.to_string()))
     }
 
     pub fn into_params<T: DeserializeOwned>(self) -> Result<T, RpcError> {
-        params::take(self.params)
+        serde_json::from_value(self.params)
+            .map_err(|error| RpcError::invalid_params(error.to_string()))
     }
 }

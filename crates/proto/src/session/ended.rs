@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-use super::EndReason;
+use super::{EndReason, SessionId};
 use crate::{Notice, StreamId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionEnded {
-    pub session: u64,
+    pub session: SessionId,
     pub stream: StreamId,
     pub reason: EndReason,
 

@@ -1,12 +1,15 @@
 use bytes::{Buf, BufMut, BytesMut};
-use tokio_util::codec::{Decoder, Encoder};
+use tokio::io::{AsyncRead, AsyncWrite, ReadHalf, WriteHalf};
+use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
 
-use super::{Frame, StreamId};
-use crate::error::FrameError;
+use super::Frame;
+use crate::ProtoError;
 
 const HEADER_LENGTH: usize = 5;
-const STREAM_ID_LENGTH: usize = 4;
 const READ_AHEAD: usize = 64 * 1024;
+
+pub type FrameReader<S> = FramedRead<ReadHalf<S>, FrameCodec>;
+pub type FrameWriter<S> = FramedWrite<WriteHalf<S>, FrameCodec>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct FrameCodec {
@@ -26,15 +29,33 @@ impl FrameCodec {
         Self { limit }
     }
 
+    pub fn split<S>(stream: S, incoming_limit: usize) -> (FrameReader<S>, FrameWriter<S>)
+    where
+        S: AsyncRead + AsyncWrite,
+    {
+        let (read, write) = tokio::io::split(stream);
+
+        let reader = FramedRead::new(read, Self::with_limit(incoming_limit));
+        let writer = FramedWrite::new(write, Self::new());
+
+        (reader, writer)
+    }
+
     pub fn limit(self) -> usize {
         self.limit
     }
 
-    fn too_large(self, size: usize) -> FrameError {
-        FrameError::TooLarge {
+    fn check(self, size: usize) -> Result<u32, ProtoError> {
+        let too_large = ProtoError::TooLarge {
             size,
             limit: self.limit,
+        };
+
+        if size > self.limit {
+            return Err(too_large);
         }
+
+        u32::try_from(size).map_err(|_| too_large)
     }
 }
 
@@ -46,19 +67,17 @@ impl Default for FrameCodec {
 
 impl Decoder for FrameCodec {
     type Item = Frame;
-    type Error = FrameError;
+    type Error = ProtoError;
 
-    fn decode(&mut self, source: &mut BytesMut) -> Result<Option<Frame>, FrameError> {
+    fn decode(&mut self, source: &mut BytesMut) -> Result<Option<Frame>, ProtoError> {
         if source.len() < HEADER_LENGTH {
             return Ok(None);
         }
 
         let length = u32::from_be_bytes([source[0], source[1], source[2], source[3]]);
         let length = usize::try_from(length).unwrap_or(usize::MAX);
+        self.check(length)?;
 
-        if length > self.limit {
-            return Err(self.too_large(length));
-        }
         if source.len() < HEADER_LENGTH + length {
             let missing = HEADER_LENGTH + length - source.len();
             source.reserve(missing.min(READ_AHEAD));
@@ -66,59 +85,31 @@ impl Decoder for FrameCodec {
         }
 
         let kind = source[4];
-
         source.advance(HEADER_LENGTH);
         let body = source.split_to(length);
 
-        match kind {
-            Frame::MESSAGE => Ok(Some(Frame::Message(body.freeze()))),
-            Frame::STREAM => stream_frame(body).map(Some),
-            unknown => Err(FrameError::UnknownKind(unknown)),
-        }
+        Frame::decode(kind, body).map(Some)
     }
 }
 
 impl Encoder<Frame> for FrameCodec {
-    type Error = FrameError;
+    type Error = ProtoError;
 
-    fn encode(&mut self, frame: Frame, target: &mut BytesMut) -> Result<(), FrameError> {
-        let (kind, prefix, body) = match &frame {
-            Frame::Message(body) => (Frame::MESSAGE, None, body),
-            Frame::Stream { stream, data } => (Frame::STREAM, Some(stream.0), data),
-        };
-
-        let length = body.len() + prefix.map_or(0, |_| STREAM_ID_LENGTH);
-
-        if length > self.limit {
-            return Err(self.too_large(length));
-        }
-
-        let encoded_length = u32::try_from(length).map_err(|_| self.too_large(length))?;
+    fn encode(&mut self, frame: Frame, target: &mut BytesMut) -> Result<(), ProtoError> {
+        let length = frame.encoded_length();
+        let encoded_length = self.check(length)?;
 
         target.reserve(HEADER_LENGTH + length);
         target.put_u32(encoded_length);
-        target.put_u8(kind);
+        target.put_u8(frame.kind());
 
-        if let Some(stream) = prefix {
-            target.put_u32(stream);
+        if let Some(stream) = frame.stream_id() {
+            target.put_u32(stream.get());
         }
-        target.put_slice(body);
+        target.put_slice(frame.body());
 
         Ok(())
     }
-}
-
-fn stream_frame(mut body: BytesMut) -> Result<Frame, FrameError> {
-    if body.len() < STREAM_ID_LENGTH {
-        return Err(FrameError::Truncated);
-    }
-
-    let stream = StreamId(body.get_u32());
-
-    Ok(Frame::Stream {
-        stream,
-        data: body.freeze(),
-    })
 }
 
 #[cfg(test)]
@@ -127,7 +118,7 @@ mod tests {
     use tokio_util::codec::{Decoder, Encoder};
 
     use super::FrameCodec;
-    use crate::error::FrameError;
+    use crate::ProtoError;
     use crate::wire::{Frame, StreamId};
 
     fn encode(frame: Frame) -> BytesMut {
@@ -141,7 +132,7 @@ mod tests {
         let frames = [
             Frame::message(Bytes::from_static(b"{\"jsonrpc\":\"2.0\"}")),
             Frame::Stream {
-                stream: StreamId(7),
+                stream: StreamId::new(7),
                 data: Bytes::from_static(b"\x1b[32mok"),
             },
             Frame::message(Bytes::new()),
@@ -175,7 +166,15 @@ mod tests {
         let mut header = BytesMut::from(&[0xff, 0xff, 0xff, 0xff, 1][..]);
         let refused = FrameCodec::with_limit(1024).decode(&mut header);
 
-        assert!(matches!(refused, Err(FrameError::TooLarge { .. })));
+        assert!(matches!(refused, Err(ProtoError::TooLarge { .. })));
+    }
+
+    #[test]
+    fn refuses_to_send_frames_over_the_limit() {
+        let frame = Frame::message(Bytes::from(vec![0; 2048]));
+        let refused = FrameCodec::with_limit(1024).encode(frame, &mut BytesMut::new());
+
+        assert!(matches!(refused, Err(ProtoError::TooLarge { .. })));
     }
 
     #[test]
@@ -192,7 +191,7 @@ mod tests {
         let mut buffer = BytesMut::from(&[0, 0, 0, 0, 9][..]);
         assert!(matches!(
             FrameCodec::new().decode(&mut buffer),
-            Err(FrameError::UnknownKind(9))
+            Err(ProtoError::UnknownKind(9))
         ));
     }
 
@@ -201,7 +200,7 @@ mod tests {
         let mut buffer = BytesMut::from(&[0, 0, 0, 2, 2, 0, 0][..]);
         assert!(matches!(
             FrameCodec::new().decode(&mut buffer),
-            Err(FrameError::Truncated)
+            Err(ProtoError::Truncated)
         ));
     }
 }
