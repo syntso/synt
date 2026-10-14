@@ -53,7 +53,7 @@ impl Blocks {
         self.count += 1;
 
         let block = Block {
-            block: self.count,
+            number: self.count,
             command: open.command,
             exit,
             duration_ms: milliseconds(now.saturating_duration_since(open.started)),
@@ -96,7 +96,7 @@ mod tests {
             .unwrap();
 
         assert!(opened.is_none());
-        assert_eq!(block.block, 1);
+        assert_eq!(block.number, 1);
         assert_eq!(block.command.as_deref(), Some("false"));
         assert_eq!(block.exit, Some(1));
         assert_eq!(block.duration_ms, 15);

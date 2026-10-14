@@ -4,4 +4,4 @@ mod revoke;
 
 pub use grant_info::GrantInfo;
 pub use list::GrantList;
-pub use revoke::{GrantRevoke, RevokeParams, Revoked};
+pub use revoke::GrantRevoke;

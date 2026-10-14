@@ -5,7 +5,8 @@ use crate::terminal::SessionId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Block {
-    pub block: u64,
+    #[serde(rename = "block")]
+    pub number: u64,
     pub command: Option<String>,
     pub exit: Option<i32>,
     pub duration_ms: u64,
@@ -18,7 +19,7 @@ impl Block {
         SessionBlock {
             session: session.value(),
             stream,
-            block: self.block,
+            block: self.number,
             command: self.command.clone(),
             exit: self.exit,
             duration_ms: self.duration_ms,

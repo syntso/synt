@@ -5,8 +5,8 @@ mod key_name_params;
 mod list;
 mod remove;
 
-pub use generate::{GenerateParams, KeyGenerate};
-pub use import::{ImportParams, KeyImport};
+pub use generate::KeyGenerate;
+pub use import::KeyImport;
 pub use key_kind::KeyKind;
 pub use key_name_params::KeyNameParams;
 pub use list::KeyList;

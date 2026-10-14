@@ -2,6 +2,6 @@ mod close;
 mod list;
 mod open;
 
-pub use close::{ProjectClose, ProjectIdParams};
+pub use close::ProjectClose;
 pub use list::ProjectList;
-pub use open::{ProjectOpen, ProjectPathParams};
+pub use open::ProjectOpen;

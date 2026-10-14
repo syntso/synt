@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::Resource;
+use crate::projects::Resource;
 use crate::terminal::{Blocks, Scanner};
 
 pub struct Seen {
