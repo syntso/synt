@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use synt_journal::ActionId;
 
-use super::{Expect, OnFailure, Retry, is_default};
+use super::{Expect, OnFailure, Retry};
 use crate::runbooks::template::params_in;
 
 const LONGEST_TITLE: usize = 200;
@@ -77,4 +77,8 @@ impl Step {
     pub(crate) fn retry(&self) -> Retry {
         self.retry.unwrap_or(Retry::ONCE)
     }
+}
+
+fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    *value == T::default()
 }
