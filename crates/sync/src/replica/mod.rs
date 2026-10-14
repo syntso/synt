@@ -1,11 +1,11 @@
-mod conflicts;
 mod outcome;
+mod project;
 mod recorded;
-mod replica;
+mod scan;
 mod settled;
 
-pub(crate) use conflicts::conflicts;
 use outcome::Outcome;
+pub(crate) use project::Replica;
 pub(crate) use recorded::Recorded;
-pub(crate) use replica::Replica;
+use scan::Scan;
 pub(crate) use settled::Settled;

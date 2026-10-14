@@ -1,18 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use super::conflicts::is_conflicted;
-use super::{Outcome, Recorded, Settled};
+use super::{Outcome, Recorded, Scan, Settled};
 use crate::SyncError;
 use crate::clock::unix_millis;
-use crate::document::{DocumentKind, DocumentPath, Draft, ProjectFiles, Revision};
+use crate::document::{DocumentPath, Draft, ProjectFiles, Revision};
 use crate::history::{History, StoredDocument};
 use crate::id::{MemberId, ProjectId, RevisionId};
-use crate::merge::{DocumentGraph, DocumentMerger, merge_heads};
-use crate::report::{Applied, RevisionInfo};
+use crate::merge::{DocumentGraph, DocumentMerger, ThreeWay};
+use crate::report::RevisionInfo;
 use crate::seal::Naming;
-
-const EVERYTHING_AT_LEAST: usize = 2;
 
 pub(crate) struct Replica {
     history: History,
@@ -30,6 +27,7 @@ impl Replica {
         files: ProjectFiles,
         naming: Naming,
         me: MemberId,
+        merger: Option<Arc<dyn DocumentMerger>>,
     ) -> Self {
         Self {
             history,
@@ -37,38 +35,22 @@ impl Replica {
             files,
             naming,
             me,
-            merger: None,
+            merger,
         }
     }
 
-    #[must_use]
-    pub(crate) fn with_merger(mut self, merger: Option<Arc<dyn DocumentMerger>>) -> Self {
-        self.merger = merger;
-        self
+    pub(crate) fn project(&self) -> &ProjectId {
+        &self.project
     }
 
     pub(crate) fn record_edits(&self) -> Result<Recorded, SyncError> {
         self.files.check_root(&self.project)?;
 
-        let known = self.known_documents()?;
-        let mut paths: BTreeSet<DocumentPath> = self.files.paths()?;
-        paths.extend(known.keys().cloned());
+        let scan = self.scan()?;
+        scan.refuse_removing_everything()?;
 
-        let mut recorded = Recorded::default();
-        let mut edits = Vec::new();
-        let mut live = 0;
-
-        for path in paths {
-            match self.look_at(&path, known.get(&path)) {
-                Ok((was_live, edit)) => {
-                    live += usize::from(was_live && path.kind() != &DocumentKind::Project);
-                    edits.extend(edit);
-                }
-                Err(error) => recorded.problems.push(format!("{path}: {error}")),
-            }
-        }
-
-        refuse_removing_everything(live, &edits)?;
+        let (edits, problems) = scan.into_parts();
+        let mut recorded = Recorded { edits: 0, problems };
 
         for edit in edits {
             match self.record(&edit) {
@@ -110,24 +92,14 @@ impl Replica {
             SyncError::invalid(format!("revision {chosen} is not in the history of {path}"))
         })?;
 
-        let heads = graph.heads();
-        if !is_conflicted(&heads) {
+        if !graph.has_conflict() {
             return Err(SyncError::invalid(format!(
                 "{path} has no conflict to resolve"
             )));
         }
 
-        let resolution = Revision::new(
-            &self.naming,
-            Draft {
-                path: path.clone(),
-                parents: heads.iter().map(|head| head.id.clone()).collect(),
-                at: unix_millis(),
-                body: chosen.body.clone(),
-                conflicts: Vec::new(),
-                author: Some(self.me.clone()),
-            },
-        );
+        let heads = graph.heads().iter().map(|head| head.id.clone()).collect();
+        let resolution = self.authored(path, heads, chosen.body.clone());
         self.history.insert(&self.project, &resolution, false)?;
         self.settle()?;
 
@@ -140,21 +112,35 @@ impl Replica {
         let on_disk = self.stored(path)?.and_then(|stored| stored.on_disk);
         let heads: BTreeSet<&RevisionId> = graph.heads().iter().map(|head| &head.id).collect();
 
-        Ok(graph
+        let infos = graph
             .revisions()
             .rev()
-            .map(|revision| RevisionInfo {
-                revision: revision.id.clone(),
-                parents: revision.parents.clone(),
-                at: revision.at,
-                author: revision.author.clone(),
-                removed: revision.is_removal(),
-                bytes: revision.body.as_ref().map_or(0, Vec::len),
-                conflicts: revision.conflicts.clone(),
-                head: heads.contains(&revision.id),
-                on_disk: on_disk.as_ref() == Some(&revision.id),
+            .map(|revision| {
+                let head = heads.contains(&revision.id);
+                let on_disk = on_disk.as_ref() == Some(&revision.id);
+
+                revision.info(head, on_disk)
             })
-            .collect())
+            .collect();
+
+        Ok(infos)
+    }
+
+    fn scan(&self) -> Result<Scan, SyncError> {
+        let known = self.known_documents()?;
+        let mut paths: BTreeSet<DocumentPath> = self.files.paths()?;
+        paths.extend(known.keys().cloned());
+
+        let mut scan = Scan::default();
+
+        for path in paths {
+            match self.look_at(&path, known.get(&path)) {
+                Ok((was_live, edit)) => scan.found(&path, was_live, edit),
+                Err(error) => scan.failed(&path, &error),
+            }
+        }
+
+        Ok(scan)
     }
 
     fn look_at(
@@ -176,19 +162,28 @@ impl Replica {
             return Ok((was_live, None));
         }
 
-        let edit = Revision::new(
-            &self.naming,
-            Draft {
-                path: path.clone(),
-                parents: on_disk.map(|revision| revision.id).into_iter().collect(),
-                at: unix_millis(),
-                body: current,
-                conflicts: Vec::new(),
-                author: Some(self.me.clone()),
-            },
-        );
+        let parents = on_disk.map(|revision| revision.id).into_iter().collect();
+        let edit = self.authored(path, parents, current);
 
         Ok((was_live, Some(edit)))
+    }
+
+    fn authored(
+        &self,
+        path: &DocumentPath,
+        parents: Vec<RevisionId>,
+        body: Option<Vec<u8>>,
+    ) -> Revision {
+        let draft = Draft {
+            path: path.clone(),
+            parents,
+            at: unix_millis(),
+            body,
+            conflicts: Vec::new(),
+            author: Some(self.me.clone()),
+        };
+
+        Revision::new(&self.naming, draft)
     }
 
     fn record(&self, edit: &Revision) -> Result<(), SyncError> {
@@ -208,7 +203,7 @@ impl Replica {
 
         Ok(Outcome {
             merged,
-            applied: applied.then(|| applied_change(&target)),
+            applied: applied.then(|| target.applied()),
         })
     }
 
@@ -226,9 +221,9 @@ impl Replica {
         let base = graph
             .merge_base(&heads)
             .and_then(|base| base.body.as_deref());
-        let extensions = self.merger.as_deref();
+        let three_way = ThreeWay::new(first.path.kind(), base, self.merger.as_deref());
 
-        let Some(merged) = merge_heads(first.path.kind(), base, &heads, extensions) else {
+        let Some(merged) = three_way.heads(&heads) else {
             return Ok(None);
         };
 
@@ -302,32 +297,5 @@ impl Replica {
         let graph = self.history.graph(&self.project, document)?;
 
         Ok(graph.get(on_disk).cloned())
-    }
-}
-
-fn refuse_removing_everything(live: usize, edits: &[Revision]) -> Result<(), SyncError> {
-    let removals = edits
-        .iter()
-        .filter(|edit| edit.is_removal() && !edit.parents.is_empty())
-        .count();
-
-    if removals < EVERYTHING_AT_LEAST || removals < live {
-        return Ok(());
-    }
-
-    Err(SyncError::Project(format!(
-        "every one of the {removals} documents of the project is missing from its folder; \
-         the round is skipped so the other members keep them. Put the files back, remove them \
-         a few at a time, or run sync.disable to stop syncing this project"
-    )))
-}
-
-fn applied_change(revision: &Revision) -> Applied {
-    Applied {
-        path: revision.path.get().to_owned(),
-        revision: revision.id.clone(),
-        author: revision.author.clone(),
-        removed: revision.is_removal(),
-        conflicts: revision.conflicts.len(),
     }
 }

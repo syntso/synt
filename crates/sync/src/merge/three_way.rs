@@ -1,64 +1,65 @@
-use super::toml_merge::merge_toml;
-use super::{DocumentMerger, Merged};
+use super::{DocumentMerger, Merged, TomlText};
 use crate::document::{DocumentKind, Revision};
 
 pub(crate) const REMOVED_AND_CHANGED: &str = "removed on one device and changed on another";
 
-pub(crate) fn merge_heads(
-    kind: &DocumentKind,
-    base: Option<&[u8]>,
-    heads: &[&Revision],
-    merger: Option<&dyn DocumentMerger>,
-) -> Option<Merged> {
-    let (first, rest) = heads.split_first()?;
-    let mut result = Merged::clean(first.body.as_deref());
-
-    for newer in rest {
-        let step = merge_two(
-            kind,
-            base,
-            result.body.as_deref(),
-            newer.body.as_deref(),
-            merger,
-        )?;
-
-        result.body = step.body;
-        result.conflicts.extend(step.conflicts);
-    }
-
-    result.conflicts.sort();
-    result.conflicts.dedup();
-
-    Some(result)
+pub(crate) struct ThreeWay<'a> {
+    kind: &'a DocumentKind,
+    base: Option<&'a [u8]>,
+    merger: Option<&'a dyn DocumentMerger>,
 }
 
-fn merge_two(
-    kind: &DocumentKind,
-    base: Option<&[u8]>,
-    older: Option<&[u8]>,
-    newer: Option<&[u8]>,
-    merger: Option<&dyn DocumentMerger>,
-) -> Option<Merged> {
-    if older == newer || base == newer {
-        return Some(Merged::clean(older));
+impl<'a> ThreeWay<'a> {
+    pub(crate) fn new(
+        kind: &'a DocumentKind,
+        base: Option<&'a [u8]>,
+        merger: Option<&'a dyn DocumentMerger>,
+    ) -> Self {
+        Self { kind, base, merger }
     }
 
-    if base == older {
-        return Some(Merged::clean(newer));
+    pub(crate) fn heads(&self, heads: &[&Revision]) -> Option<Merged> {
+        let (first, rest) = heads.split_first()?;
+        let mut result = Merged::clean(first.body.as_deref());
+
+        for newer in rest {
+            let step = self.pair(result.body.as_deref(), newer.body.as_deref())?;
+
+            result.body = step.body;
+            result.conflicts.extend(step.conflicts);
+        }
+
+        result.conflicts.sort();
+        result.conflicts.dedup();
+
+        Some(result)
     }
 
-    match (older, newer) {
-        (Some(older), Some(newer)) if kind.is_core() => Some(merge_toml(base, older, newer)),
-        (Some(older), Some(newer)) => merger?
-            .merge(kind, base, older, newer)
-            .map(|body| Merged::clean(Some(&body))),
-        (kept, None) | (None, kept) => Some(Merged::conflicted(kept, REMOVED_AND_CHANGED)),
+    fn pair(&self, older: Option<&[u8]>, newer: Option<&[u8]>) -> Option<Merged> {
+        if older == newer || self.base == newer {
+            return Some(Merged::clean(older));
+        }
+
+        if self.base == older {
+            return Some(Merged::clean(newer));
+        }
+
+        match (older, newer) {
+            (Some(older), Some(newer)) if self.kind.is_core() => {
+                Some(TomlText::merge(self.base, older, newer))
+            }
+            (Some(older), Some(newer)) => self
+                .merger?
+                .merge(self.kind, self.base, older, newer)
+                .map(|body| Merged::clean(Some(&body))),
+            (kept, None) | (None, kept) => Some(Merged::conflicted(kept, REMOVED_AND_CHANGED)),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{REMOVED_AND_CHANGED, merge_heads};
+    use super::{REMOVED_AND_CHANGED, ThreeWay};
     use crate::document::{DocumentKind, DocumentPath, Draft, Revision};
     use crate::id::ProjectId;
     use crate::merge::DocumentMerger;
@@ -111,13 +112,9 @@ mod tests {
         let edited = revision(&naming, "resources/a.toml", Some("a = 2"), 1);
         let removed = revision(&naming, "resources/a.toml", None, 2);
 
-        let merged = merge_heads(
-            &DocumentKind::Resource,
-            Some(b"a = 1"),
-            &[&edited, &removed],
-            None,
-        )
-        .unwrap();
+        let merged = ThreeWay::new(&DocumentKind::Resource, Some(b"a = 1"), None)
+            .heads(&[&edited, &removed])
+            .unwrap();
 
         assert_eq!(merged.body.as_deref(), Some(&b"a = 2"[..]));
         assert_eq!(merged.conflicts, vec![REMOVED_AND_CHANGED]);
@@ -129,13 +126,9 @@ mod tests {
         let untouched = revision(&naming, "resources/a.toml", Some("a = 1"), 1);
         let removed = revision(&naming, "resources/a.toml", None, 2);
 
-        let merged = merge_heads(
-            &DocumentKind::Resource,
-            Some(b"a = 1"),
-            &[&untouched, &removed],
-            None,
-        )
-        .unwrap();
+        let merged = ThreeWay::new(&DocumentKind::Resource, Some(b"a = 1"), None)
+            .heads(&[&untouched, &removed])
+            .unwrap();
 
         assert_eq!(merged.body, None);
         assert!(merged.conflicts.is_empty());
@@ -151,13 +144,9 @@ mod tests {
         ];
         let heads: Vec<&Revision> = heads.iter().collect();
 
-        let merged = merge_heads(
-            &DocumentKind::Resource,
-            Some(b"a = 1\nb = 1\nc = 1"),
-            &heads,
-            None,
-        )
-        .unwrap();
+        let merged = ThreeWay::new(&DocumentKind::Resource, Some(b"a = 1\nb = 1\nc = 1"), None)
+            .heads(&heads)
+            .unwrap();
         let table: toml::Table = std::str::from_utf8(&merged.body.unwrap())
             .unwrap()
             .parse()
@@ -173,8 +162,9 @@ mod tests {
         let older = revision(&naming, "extensions/uml/a.uml", Some("left"), 1);
         let newer = revision(&naming, "extensions/uml/a.uml", Some("right"), 2);
 
-        let merged =
-            merge_heads(&uml(), Some(b"base"), &[&older, &newer], Some(&Concatenate)).unwrap();
+        let merged = ThreeWay::new(&uml(), Some(b"base"), Some(&Concatenate))
+            .heads(&[&older, &newer])
+            .unwrap();
 
         assert_eq!(merged.body.as_deref(), Some(&b"left+right"[..]));
     }
@@ -185,7 +175,11 @@ mod tests {
         let older = revision(&naming, "extensions/uml/a.uml", Some("left"), 1);
         let newer = revision(&naming, "extensions/uml/a.uml", Some("right"), 2);
 
-        assert!(merge_heads(&uml(), Some(b"base"), &[&older, &newer], None).is_none());
+        assert!(
+            ThreeWay::new(&uml(), Some(b"base"), None)
+                .heads(&[&older, &newer])
+                .is_none()
+        );
     }
 
     #[test]
@@ -194,7 +188,9 @@ mod tests {
         let older = revision(&naming, "extensions/uml/a.uml", Some("base"), 1);
         let newer = revision(&naming, "extensions/uml/a.uml", Some("right"), 2);
 
-        let merged = merge_heads(&uml(), Some(b"base"), &[&older, &newer], None).unwrap();
+        let merged = ThreeWay::new(&uml(), Some(b"base"), None)
+            .heads(&[&older, &newer])
+            .unwrap();
 
         assert_eq!(merged.body.as_deref(), Some(&b"right"[..]));
     }

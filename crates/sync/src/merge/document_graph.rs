@@ -1,7 +1,9 @@
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::document::Revision;
+use crate::document::{DocumentPath, Revision};
 use crate::id::RevisionId;
+use crate::report::ConflictInfo;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct DocumentGraph {
@@ -68,6 +70,38 @@ impl DocumentGraph {
             .max_by(|one, other| order(one, other))
     }
 
+    pub(crate) fn has_conflict(&self) -> bool {
+        match self.heads().as_slice() {
+            [head] => !head.conflicts.is_empty(),
+            heads => heads.len() > 1,
+        }
+    }
+
+    pub(crate) fn conflict(&self, path: &DocumentPath) -> Option<ConflictInfo> {
+        if !self.has_conflict() {
+            return None;
+        }
+
+        let path = path.get().to_owned();
+        let heads = self.heads();
+
+        if let [merge] = heads.as_slice() {
+            return Some(ConflictInfo {
+                path,
+                merged: Some(merge.id.clone()),
+                candidates: merge.parents.clone(),
+                fields: merge.conflicts.clone(),
+            });
+        }
+
+        Some(ConflictInfo {
+            path,
+            merged: None,
+            candidates: heads.iter().map(|head| head.id.clone()).collect(),
+            fields: Vec::new(),
+        })
+    }
+
     fn ancestors(&self, id: &RevisionId) -> BTreeSet<RevisionId> {
         let mut seen = BTreeSet::new();
         let mut waiting = vec![id.clone()];
@@ -86,7 +120,7 @@ impl DocumentGraph {
     }
 }
 
-fn order(one: &Revision, other: &Revision) -> std::cmp::Ordering {
+fn order(one: &Revision, other: &Revision) -> Ordering {
     (one.at, &one.id).cmp(&(other.at, &other.id))
 }
 
@@ -185,5 +219,38 @@ mod tests {
         let graph = DocumentGraph::new([one, other]);
 
         assert!(graph.merge_base(&graph.heads()).is_none());
+    }
+
+    #[test]
+    fn two_heads_are_a_conflict_between_both_candidates() {
+        let builder = Builder::new();
+        let first = builder.revision("a = 1", 1, &[]);
+        let left = builder.revision("a = 2", 2, &[&first]);
+        let right = builder.revision("a = 3", 3, &[&first]);
+
+        let graph = DocumentGraph::new([first, left.clone(), right.clone()]);
+        let conflict = graph.conflict(&DocumentPath::parse("synt.toml").unwrap());
+
+        assert!(graph.has_conflict());
+        assert_eq!(
+            conflict.map(|conflict| (conflict.merged, conflict.candidates)),
+            Some((None, vec![left.id, right.id]))
+        );
+    }
+
+    #[test]
+    fn a_clean_line_has_no_conflict() {
+        let builder = Builder::new();
+        let first = builder.revision("a = 1", 1, &[]);
+        let second = builder.revision("a = 2", 2, &[&first]);
+
+        let graph = DocumentGraph::new([first, second]);
+
+        assert!(!graph.has_conflict());
+        assert!(
+            graph
+                .conflict(&DocumentPath::parse("synt.toml").unwrap())
+                .is_none()
+        );
     }
 }
