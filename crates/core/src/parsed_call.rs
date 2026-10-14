@@ -23,33 +23,14 @@ impl ParsedCall {
         let action = ActionId::new(&call.action)
             .map_err(|error| RpcError::invalid_params(error.to_string()))?;
 
-        let target = call
-            .target
-            .map(ResourceRef::new)
-            .transpose()
-            .map_err(|error| RpcError::invalid_params(error.to_string()))?;
-
-        if let Some(target) = &target
-            && target.as_str().contains(WILDCARDS)
-        {
-            return Err(RpcError::invalid_params(format!(
-                "the target {target} holds * or ?; a target names one thing"
-            )));
-        }
+        let target = call.target.map(one_target).transpose()?;
 
         let handle = registry.get(&action);
         let shown_params = handle.as_ref().map_or_else(
             || call.params.clone(),
             |handle| handle.recorded_params(&call.params),
         );
-
-        let recorded = match parent {
-            Some(parent) => json!({ "params": &shown_params, "parent": parent }),
-            None => json!({ "params": &shown_params }),
-        };
-        let details = Details::from_serialize(&recorded).map_err(|error| {
-            RpcError::invalid_params(format!("parameters cannot be recorded: {error}"))
-        })?;
+        let details = details(&shown_params, parent)?;
 
         Ok(Self {
             action,
@@ -60,4 +41,28 @@ impl ParsedCall {
             shown_params,
         })
     }
+}
+
+fn one_target(text: String) -> Result<ResourceRef, RpcError> {
+    let target =
+        ResourceRef::new(text).map_err(|error| RpcError::invalid_params(error.to_string()))?;
+
+    if target.as_str().contains(WILDCARDS) {
+        return Err(RpcError::invalid_params(format!(
+            "the target {target} holds * or ?; a target names one thing"
+        )));
+    }
+
+    Ok(target)
+}
+
+fn details(shown_params: &Value, parent: Option<Seq>) -> Result<Details, RpcError> {
+    let recorded = match parent {
+        Some(parent) => json!({ "params": shown_params, "parent": parent }),
+        None => json!({ "params": shown_params }),
+    };
+
+    Details::from_serialize(&recorded).map_err(|error| {
+        RpcError::invalid_params(format!("parameters cannot be recorded: {error}"))
+    })
 }
