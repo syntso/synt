@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, RwLock, RwLockReadGuard};
+use std::sync::{
+    Arc, Mutex, MutexGuard, OnceLock, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard,
+};
 
 use semver::Version;
 use synt_actions::{ActionError, Catalog, Description, Handle, Registry, Risk};
@@ -277,11 +279,11 @@ impl Extensions {
     }
 
     fn info(&self, entry: Installed) -> ExtensionInfo {
-        if let Some(loaded) = self.read_loaded().get(&entry.id) {
+        if let Some(loaded) = read(&self.loaded).get(&entry.id) {
             return ExtensionInfo::loaded(loaded);
         }
 
-        let problem = self.read_problems().get(&entry.id).cloned();
+        let problem = read(&self.problems).get(&entry.id).cloned();
         let manifest = self.folder.read(&entry.id).map(|(manifest, _, _)| manifest);
 
         ExtensionInfo::resting(entry, manifest.ok(), problem)
@@ -333,42 +335,19 @@ impl Extensions {
     fn note_problem(&self, id: &str, error: &ExtensionError) {
         eprintln!("synt-core: extension {id} is not loaded: {error}");
 
-        self.problems
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(id.to_owned(), error.to_string());
+        written(&self.problems).insert(id.to_owned(), error.to_string());
     }
 
     fn put_loaded(&self, loaded: Arc<Loaded>) {
         let id = loaded.installed.id.clone();
 
-        self.problems
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(&id);
-        self.loaded
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(id, loaded);
+        written(&self.problems).remove(&id);
+        written(&self.loaded).insert(id, loaded);
     }
 
     fn take_loaded(&self, id: &str) {
-        self.loaded
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(id);
-        self.problems
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(id);
-    }
-
-    fn read_loaded(&self) -> RwLockReadGuard<'_, BTreeMap<String, Arc<Loaded>>> {
-        self.loaded.read().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    fn read_problems(&self) -> RwLockReadGuard<'_, BTreeMap<String, String>> {
-        self.problems.read().unwrap_or_else(PoisonError::into_inner)
+        written(&self.loaded).remove(id);
+        written(&self.problems).remove(id);
     }
 
     fn begin_change(&self) -> MutexGuard<'_, ()> {
@@ -380,11 +359,11 @@ impl Catalog for Extensions {
     fn get(&self, id: &ActionId) -> Option<Handle> {
         let (extension, _) = id.as_str().split_once('.')?;
 
-        self.read_loaded().get(extension)?.handle(id)
+        read(&self.loaded).get(extension)?.handle(id)
     }
 
     fn describe(&self) -> Vec<Description> {
-        self.read_loaded()
+        read(&self.loaded)
             .values()
             .flat_map(|loaded| loaded.describe())
             .collect()
@@ -430,4 +409,12 @@ fn namespaces(registry: &Registry) -> BTreeSet<String> {
         .filter_map(|id| id.as_str().split_once('.'))
         .map(|(namespace, _)| namespace.to_owned())
         .collect()
+}
+
+fn read<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
+    lock.read().unwrap_or_else(PoisonError::into_inner)
+}
+
+fn written<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
+    lock.write().unwrap_or_else(PoisonError::into_inner)
 }

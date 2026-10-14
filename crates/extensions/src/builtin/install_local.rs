@@ -8,7 +8,6 @@ use synt_journal::ResourceRef;
 
 use super::ExtensionInfo;
 use super::blocking::{blocking, failure};
-use super::install::installed_summary;
 use crate::Extensions;
 use crate::extension::Candidate;
 
@@ -81,7 +80,7 @@ impl Action for ExtensionInstallLocal {
     }
 
     fn summary(&self, output: &ExtensionInfo) -> Value {
-        installed_summary(output)
+        output.install_summary()
     }
 
     async fn run(

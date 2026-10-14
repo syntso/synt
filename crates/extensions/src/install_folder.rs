@@ -4,10 +4,8 @@ use std::path::{Path, PathBuf};
 
 use crate::ExtensionError;
 use crate::manifest::Manifest;
-use crate::package::{Package, sha256};
+use crate::package::{COMPONENT_FILE, MANIFEST_FILE, Package, sha256};
 
-const MANIFEST: &str = "extension.toml";
-const COMPONENT: &str = "extension.wasm";
 const STAGING: &str = ".staging";
 
 #[derive(Debug, Clone)]
@@ -28,8 +26,8 @@ impl InstallFolder {
         fs::create_dir_all(&staging)?;
 
         let manifest = package.manifest.to_toml()?;
-        fs::write(staging.join(MANIFEST), &manifest)?;
-        fs::write(staging.join(COMPONENT), &package.wasm)?;
+        fs::write(staging.join(MANIFEST_FILE), &manifest)?;
+        fs::write(staging.join(COMPONENT_FILE), &package.wasm)?;
 
         let place = self.place(&package.manifest.id);
         clear(&place)?;
@@ -41,9 +39,9 @@ impl InstallFolder {
     pub(crate) fn read(&self, id: &str) -> Result<(Manifest, String, Vec<u8>), ExtensionError> {
         let place = self.place(id);
 
-        let text = fs::read_to_string(place.join(MANIFEST))?;
+        let text = fs::read_to_string(place.join(MANIFEST_FILE))?;
         let manifest = Manifest::parse(&text)?;
-        let wasm = fs::read(place.join(COMPONENT))?;
+        let wasm = fs::read(place.join(COMPONENT_FILE))?;
 
         Ok((manifest, sha256(text.as_bytes()), wasm))
     }

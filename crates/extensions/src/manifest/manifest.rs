@@ -4,7 +4,7 @@ use synt_journal::ActionId;
 use super::Capabilities;
 use crate::ExtensionError;
 
-pub const SUPPORTED_API: &str = "0.1";
+const SUPPORTED_API: &str = "0.1";
 
 const LONGEST_ID: usize = 40;
 const LONGEST_TEXT: usize = 200;

@@ -3,6 +3,9 @@ use sha2::{Digest, Sha256};
 
 use crate::manifest::Manifest;
 
+pub(crate) const MANIFEST_FILE: &str = "extension.toml";
+pub(crate) const COMPONENT_FILE: &str = "extension.wasm";
+
 #[derive(Debug, Clone)]
 pub(crate) struct Package {
     pub(crate) manifest: Manifest,

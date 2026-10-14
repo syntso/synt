@@ -8,9 +8,11 @@ use super::Installed;
 use super::schema;
 use crate::ExtensionError;
 
-pub const STORAGE_LIMIT: u64 = 1024 * 1024;
+const STORAGE_LIMIT: u64 = 1024 * 1024;
 
 const BUSY_WAIT: Duration = Duration::from_secs(5);
+const INSTALLED_COLUMNS: &str =
+    "id, version, sha256, manifest_sha256, signed, enabled, installed_at";
 
 #[derive(Debug, Clone)]
 pub struct Shelf {
@@ -34,10 +36,9 @@ impl Shelf {
 
     pub fn installed(&self) -> Result<Vec<Installed>, ExtensionError> {
         let connection = self.lock();
-        let mut statement = connection.prepare(
-            "SELECT id, version, sha256, manifest_sha256, signed, enabled, installed_at FROM extensions \
-             ORDER BY id",
-        )?;
+        let mut statement = connection.prepare(&format!(
+            "SELECT {INSTALLED_COLUMNS} FROM extensions ORDER BY id"
+        ))?;
 
         let rows = statement
             .query_map([], installed)?
@@ -50,8 +51,7 @@ impl Shelf {
         let found = self
             .lock()
             .query_row(
-                "SELECT id, version, sha256, manifest_sha256, signed, enabled, installed_at \
-                 FROM extensions WHERE id = ?1",
+                &format!("SELECT {INSTALLED_COLUMNS} FROM extensions WHERE id = ?1"),
                 [id],
                 installed,
             )
@@ -72,9 +72,10 @@ impl Shelf {
         }
 
         transaction.execute(
-            "INSERT OR REPLACE INTO extensions \
-             (id, version, sha256, manifest_sha256, signed, enabled, installed_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            &format!(
+                "INSERT OR REPLACE INTO extensions ({INSTALLED_COLUMNS}) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
+            ),
             (
                 &entry.id,
                 &entry.version,

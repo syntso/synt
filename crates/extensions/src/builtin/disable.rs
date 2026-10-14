@@ -1,4 +1,4 @@
-use serde_json::{Value, json};
+use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::blocking::blocking;
@@ -26,7 +26,7 @@ impl Action for ExtensionDisable {
     type Output = ExtensionInfo;
 
     fn summary(&self, output: &ExtensionInfo) -> Value {
-        json!({ "id": output.id, "version": output.version, "enabled": output.enabled })
+        output.state_summary()
     }
 
     async fn run(

@@ -1,4 +1,5 @@
 use serde::Serialize;
+use serde_json::{Value, json};
 
 use crate::extension::Loaded;
 use crate::manifest::{Capabilities, Manifest};
@@ -50,5 +51,20 @@ impl ExtensionInfo {
             actions: Vec::new(),
             problem,
         }
+    }
+
+    pub(crate) fn state_summary(&self) -> Value {
+        json!({ "id": self.id, "version": self.version, "enabled": self.enabled })
+    }
+
+    pub(crate) fn install_summary(&self) -> Value {
+        json!({
+            "id": self.id,
+            "version": self.version,
+            "sha256": self.sha256,
+            "signed": self.signed,
+            "capabilities": self.capabilities,
+            "actions": self.actions,
+        })
     }
 }

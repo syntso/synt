@@ -1,6 +1,6 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
@@ -54,7 +54,7 @@ impl Action for ExtensionInstall {
     }
 
     fn summary(&self, output: &ExtensionInfo) -> Value {
-        installed_summary(output)
+        output.install_summary()
     }
 
     async fn run(
@@ -69,15 +69,4 @@ impl Action for ExtensionInstall {
 
         blocking(move || extensions.install(candidate)).await
     }
-}
-
-pub(super) fn installed_summary(output: &ExtensionInfo) -> Value {
-    json!({
-        "id": output.id,
-        "version": output.version,
-        "sha256": output.sha256,
-        "signed": output.signed,
-        "capabilities": output.capabilities,
-        "actions": output.actions,
-    })
 }

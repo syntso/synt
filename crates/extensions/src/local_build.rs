@@ -3,10 +3,8 @@ use std::path::{Path, PathBuf};
 
 use crate::ExtensionError;
 use crate::manifest::Manifest;
-use crate::package::Package;
+use crate::package::{COMPONENT_FILE, MANIFEST_FILE, Package};
 
-const MANIFEST: &str = "extension.toml";
-const COMPONENT: &str = "extension.wasm";
 const BUILD_OUTPUT: [&str; 3] = ["target", "wasm32-wasip2", "release"];
 const LARGEST_COMPONENT: u64 = 32 * 1024 * 1024;
 
@@ -22,7 +20,7 @@ impl LocalBuild {
     }
 
     pub(crate) fn read(&self) -> Result<Package, ExtensionError> {
-        let manifest_path = self.folder.join(MANIFEST);
+        let manifest_path = self.folder.join(MANIFEST_FILE);
         let text = fs::read_to_string(&manifest_path).map_err(|error| {
             ExtensionError::Refused(format!("{}: {error}", manifest_path.display()))
         })?;
@@ -42,7 +40,7 @@ impl LocalBuild {
     }
 
     fn component(&self) -> Result<PathBuf, ExtensionError> {
-        let beside = self.folder.join(COMPONENT);
+        let beside = self.folder.join(COMPONENT_FILE);
         if beside.is_file() {
             return Ok(beside);
         }
@@ -55,7 +53,7 @@ impl LocalBuild {
         match built.as_slice() {
             [only] => Ok(only.clone()),
             [] => Err(ExtensionError::Refused(format!(
-                "no {COMPONENT} in {} and no build in {}; run cargo build --release --target \
+                "no {COMPONENT_FILE} in {} and no build in {}; run cargo build --release --target \
                  wasm32-wasip2 first",
                 self.folder.display(),
                 output.display()
