@@ -27,6 +27,7 @@ synt-platform.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "sync", "time"] }
 toml.workspace = true
+toml_edit.workspace = true
 x25519-dalek.workspace = true
 zeroize.workspace = true
 

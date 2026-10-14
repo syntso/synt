@@ -1,4 +1,5 @@
 use toml::{Table, Value};
+use toml_edit::{DocumentMut, Item, TableLike};
 
 use super::Merged;
 
@@ -104,7 +105,83 @@ fn text(merged: &Table, older: (&[u8], &Table), newer: (&[u8], &Table)) -> Vec<u
         return older.0.to_vec();
     }
 
-    merged.to_string().into_bytes()
+    rewritten(merged, older.0, newer.0).unwrap_or_else(|| merged.to_string().into_bytes())
+}
+
+fn rewritten(merged: &Table, older: &[u8], newer: &[u8]) -> Option<Vec<u8>> {
+    let older = document(older)?;
+    let mut newer = document(newer)?;
+
+    apply(newer.as_table_mut(), Some(older.as_table()), merged);
+
+    let text = newer.to_string();
+    let faithful = text.parse::<Table>().ok().as_ref() == Some(merged);
+
+    faithful.then(|| text.into_bytes())
+}
+
+fn apply(target: &mut dyn TableLike, older: Option<&dyn TableLike>, merged: &Table) {
+    let stale: Vec<String> = target
+        .iter()
+        .map(|(key, _)| key.to_owned())
+        .filter(|key| !merged.contains_key(key))
+        .collect();
+
+    for key in stale {
+        target.remove(&key);
+    }
+
+    for (key, wanted) in merged {
+        let older_item = older.and_then(|older| older.get(key));
+
+        if target
+            .get(key)
+            .and_then(|item| item_value(key, item))
+            .as_ref()
+            == Some(wanted)
+        {
+            continue;
+        }
+
+        if let (Some(inner), Value::Table(wanted)) = (
+            target.get_mut(key).and_then(Item::as_table_like_mut),
+            wanted,
+        ) {
+            apply(inner, older_item.and_then(Item::as_table_like), wanted);
+            continue;
+        }
+
+        let replacement = older_item
+            .filter(|item| item_value(key, item).as_ref() == Some(wanted))
+            .cloned()
+            .or_else(|| fresh_item(key, wanted));
+
+        match (target.get_mut(key), replacement) {
+            (Some(item), Some(replacement)) => *item = replacement,
+            (None, Some(replacement)) => {
+                target.insert(key, replacement);
+            }
+            (_, None) => {}
+        }
+    }
+}
+
+fn item_value(key: &str, item: &Item) -> Option<Value> {
+    let mut alone = DocumentMut::new();
+    alone.insert(key, item.clone());
+
+    alone.to_string().parse::<Table>().ok()?.remove(key)
+}
+
+fn fresh_item(key: &str, value: &Value) -> Option<Item> {
+    let mut alone = Table::new();
+    alone.insert(key.to_owned(), value.clone());
+
+    document(alone.to_string().as_bytes())?.remove(key)
+}
+
+fn document(bytes: &[u8]) -> Option<DocumentMut> {
+    std::str::from_utf8(bytes).ok()?.parse().ok()
 }
 
 #[cfg(test)]
@@ -211,6 +288,36 @@ mod tests {
         let (merged, _) = merge(base, older, newer);
 
         assert_eq!(merged, newer);
+    }
+
+    #[test]
+    fn comments_and_order_survive_a_merge_of_different_fields() {
+        let base = "# the API host\nname = \"api\"\naddress = \"10.0.1.12\" # moved in May\nuser = \"deploy\"\n";
+        let older = "# the API host\nname = \"api\"\naddress = \"10.0.9.9\" # moved in October\nuser = \"deploy\"\n";
+        let newer = "# the API host\nname = \"api\"\naddress = \"10.0.1.12\" # moved in May\n# ops owns it now\nuser = \"ops\"\n";
+
+        let (merged, conflicts) = merge(base, older, newer);
+
+        assert_eq!(
+            merged,
+            "# the API host\nname = \"api\"\naddress = \"10.0.9.9\" # moved in October\n# ops owns it now\nuser = \"ops\"\n"
+        );
+        assert!(conflicts.is_empty());
+    }
+
+    #[test]
+    fn comments_inside_nested_tables_survive_too() {
+        let base = "[params]\n# what runs\ncommand = \"uptime\"\ntimeout = 10\n";
+        let older = "[params]\n# what runs\ncommand = \"uptime -p\"\ntimeout = 10\n";
+        let newer = "[params]\n# what runs\ncommand = \"uptime\"\n# seconds\ntimeout = 30\n";
+
+        let (merged, conflicts) = merge(base, older, newer);
+
+        assert_eq!(
+            merged,
+            "[params]\n# what runs\ncommand = \"uptime -p\"\n# seconds\ntimeout = 30\n"
+        );
+        assert!(conflicts.is_empty());
     }
 
     #[test]

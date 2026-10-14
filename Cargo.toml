@@ -77,6 +77,7 @@ tokio-postgres-rustls = "0.14.0"
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
 tokio-util = { version = "0.7.20", features = ["codec"] }
 toml = "1.1.8"
+toml_edit = { version = "0.25.17", default-features = false, features = ["display", "parse"] }
 tower = { version = "0.5.3", features = ["util"] }
 ureq = { version = "3.4.2", default-features = false, features = ["rustls-no-provider"] }
 vte = { version = "0.15.0", default-features = false }
