@@ -1,5 +1,6 @@
 use std::sync::{Arc, OnceLock};
 
+use data_encoding::BASE64;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
@@ -56,7 +57,7 @@ impl Action for ExtensionHttp {
         let body_bytes = params
             .get("body")
             .and_then(Value::as_str)
-            .map(|body| body.len() / 4 * 3);
+            .map(decoded_length);
 
         json!({
             "method": params.get("method"),
@@ -69,7 +70,7 @@ impl Action for ExtensionHttp {
     }
 
     fn summary(&self, output: &HttpResponse) -> Value {
-        json!({ "status": output.status, "body_bytes": output.body.len() / 4 * 3 })
+        json!({ "status": output.status, "body_bytes": decoded_length(&output.body) })
     }
 
     async fn run(
@@ -95,6 +96,12 @@ impl Action for ExtensionHttp {
         })
         .await
     }
+}
+
+fn decoded_length(base64: &str) -> usize {
+    BASE64
+        .decode(base64.as_bytes())
+        .map_or(0, |bytes| bytes.len())
 }
 
 fn list<'v>(params: &'v Value, field: &str) -> &'v [Value] {
