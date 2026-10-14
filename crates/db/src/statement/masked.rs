@@ -60,16 +60,29 @@ impl Scanner<'_> {
     }
 
     fn identifier(&mut self) {
-        self.keep('`');
+        let mut name = String::from('`');
+        let mut closed = false;
 
         for character in self.rest.by_ref() {
-            self.out.push(character);
+            name.push(character);
 
             if character == '`' {
+                closed = true;
                 break;
             }
         }
 
+        let plain = name
+            .trim_matches('`')
+            .chars()
+            .all(|character| character.is_alphanumeric() || "_$ ".contains(character));
+
+        if !closed || !plain {
+            self.keep(MASK);
+            return;
+        }
+
+        self.out.push_str(&name);
         self.previous = Some('`');
     }
 
@@ -230,6 +243,13 @@ mod tests {
             masked("SELECT `select` FROM `t`"),
             "SELECT `select` FROM `t`"
         );
+    }
+
+    #[test]
+    fn a_backtick_name_that_is_more_than_a_word_is_masked() {
+        assert_eq!(masked("SELECT `d'"), "SELECT ?");
+        assert_eq!(masked("SELECT `it's` FROM t"), "SELECT ? FROM t");
+        assert_eq!(masked("SELECT `a--b`, `c/*d`"), "SELECT ?, ?");
     }
 
     #[test]
