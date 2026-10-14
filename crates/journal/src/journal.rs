@@ -89,12 +89,7 @@ impl Journal {
         let linker = Linker::derive(&keys.device_key()?, id);
         let tail = db.tail()?;
 
-        let anchors = match stored {
-            Some(anchors) => anchors,
-            None if tail.is_none() => Anchors::genesis(linker.genesis()),
-            None => return Err(JournalError::AnchorsMissing(id)),
-        };
-
+        let anchors = known_anchors(stored, tail.is_none(), &linker, id)?;
         let head = recover(&db, &linker, anchors)?;
         let anchors = anchors.with_head(head);
 
@@ -225,6 +220,19 @@ impl Journal {
             })),
             None => Ok(()),
         }
+    }
+}
+
+fn known_anchors(
+    stored: Option<Anchors>,
+    empty: bool,
+    linker: &Linker,
+    id: JournalId,
+) -> Result<Anchors, JournalError> {
+    match stored {
+        Some(anchors) => Ok(anchors),
+        None if empty => Ok(Anchors::genesis(linker.genesis())),
+        None => Err(JournalError::AnchorsMissing(id)),
     }
 }
 
