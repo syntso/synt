@@ -1,15 +1,18 @@
 use std::collections::HashMap;
 use std::fmt::{self, Debug, Formatter};
 use std::future::Future;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::Duration;
 
 use tokio::time;
 
 use super::{SessionSlot, Sftp};
+use crate::locked::locked;
 use crate::{Pool, SshError, Target};
 
 const IDLE: Duration = Duration::from_secs(30);
+
+type Slots = HashMap<Target, Arc<SessionSlot>>;
 
 #[derive(Clone)]
 pub struct FileSessions {
@@ -18,14 +21,14 @@ pub struct FileSessions {
 
 struct Shared {
     pool: Pool,
-    slots: Mutex<HashMap<Target, Arc<SessionSlot>>>,
+    slots: Mutex<Slots>,
 }
 
 impl FileSessions {
     pub fn new(pool: Pool) -> Self {
         let shared = Shared {
             pool,
-            slots: Mutex::new(HashMap::new()),
+            slots: Mutex::new(Slots::new()),
         };
 
         Self {
@@ -116,27 +119,27 @@ impl FileSessions {
 }
 
 impl Shared {
-    fn slots(&self) -> MutexGuard<'_, HashMap<Target, Arc<SessionSlot>>> {
-        self.slots.lock().unwrap_or_else(PoisonError::into_inner)
+    fn slots(&self) -> MutexGuard<'_, Slots> {
+        locked(&self.slots)
     }
 
     fn is_current(&self, target: &Target, slot: &Arc<SessionSlot>) -> bool {
-        self.slots()
-            .get(target)
-            .is_some_and(|current| Arc::ptr_eq(current, slot))
+        holds(&self.slots(), target, slot)
     }
 
     fn discard(&self, target: &Target, slot: &Arc<SessionSlot>) {
         let mut slots = self.slots();
 
-        let current = slots
-            .get(target)
-            .is_some_and(|entry| Arc::ptr_eq(entry, slot));
-
-        if current {
+        if holds(&slots, target, slot) {
             slots.remove(target);
         }
     }
+}
+
+fn holds(slots: &Slots, target: &Target, slot: &Arc<SessionSlot>) -> bool {
+    slots
+        .get(target)
+        .is_some_and(|current| Arc::ptr_eq(current, slot))
 }
 
 impl Debug for FileSessions {

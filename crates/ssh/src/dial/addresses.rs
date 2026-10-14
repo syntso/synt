@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use tokio::net;
 
-use crate::pool::locked;
+use crate::locked::locked;
 
 const REMEMBERED_FOR: Duration = Duration::from_secs(60);
 

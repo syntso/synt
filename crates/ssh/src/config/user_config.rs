@@ -1,12 +1,13 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 
 use ssh2_config::{HostParams, ParseRule, SshConfig};
 
 use super::HostSettings;
 use crate::SshError;
+use crate::locked::locked;
 use crate::ssh_directory::SshDirectory;
 
 const CONFIG_FILE: &str = "config";
@@ -86,14 +87,14 @@ impl UserConfig {
 }
 
 fn recall(path: &Path, text: &[u8]) -> Option<Arc<SshConfig>> {
-    let remembered = REMEMBERED.lock().unwrap_or_else(PoisonError::into_inner);
+    let remembered = locked(&REMEMBERED);
     let (known_path, known_text, parsed) = remembered.as_ref()?;
 
     (known_path == path && known_text == text).then(|| Arc::clone(parsed))
 }
 
 fn remember(path: PathBuf, text: Vec<u8>, parsed: Arc<SshConfig>) {
-    let mut remembered = REMEMBERED.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut remembered = locked(&REMEMBERED);
 
     *remembered = Some((path, text, parsed));
 }

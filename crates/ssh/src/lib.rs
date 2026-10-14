@@ -7,6 +7,7 @@ mod exec;
 pub mod fuzzing;
 mod home;
 mod known_hosts;
+mod locked;
 mod pool;
 mod session;
 mod sftp;

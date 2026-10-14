@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
 
 use super::{Destination, Tunnel, TunnelId, TunnelStatus};
-use crate::pool::locked;
+use crate::locked::locked;
 use crate::{Pool, SshError, Target};
 
 #[derive(Clone)]

@@ -5,7 +5,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::time;
 
-use super::{ConnectionStatus, DialAttempt, Holders, Lease, Phase, Slots, locked};
+use super::{ConnectionStatus, DialAttempt, Holders, Lease, Phase, Slots};
+use crate::locked::locked;
 use crate::session::Connection;
 use crate::{Algorithms, SshError, Target};
 

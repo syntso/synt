@@ -2,7 +2,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use crate::SshError;
-use crate::pool::locked;
+use crate::locked::locked;
 
 #[derive(Debug, Default)]
 pub(crate) struct Traffic {

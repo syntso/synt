@@ -117,17 +117,7 @@ impl<'a> Authenticator<'a> {
             KeyFile::Loaded(key) => key,
         };
 
-        let public = key.public_key().clone();
-        let hash = rsa_hash(handle, &public).await;
-        let signing = PrivateKeyWithHashAlg::new(Arc::new(*key), hash);
-        self.tried.push(path.display().to_string());
-
-        let result = handle
-            .authenticate_publickey(self.target.user(), signing)
-            .await
-            .map_err(|error| self.lost(&error))?;
-
-        Ok(accepted(&result).then_some(public))
+        self.offer(handle, *key, path.display().to_string()).await
     }
 
     async fn try_vault_key<H: Handler>(
@@ -136,10 +126,21 @@ impl<'a> Authenticator<'a> {
         name: &str,
     ) -> Result<Option<PublicKey>, SshError> {
         let key = read_vault_key(self.vault.clone(), name).await?;
+
+        self.offer(handle, key, format!("{SECRET_PREFIX}{name}"))
+            .await
+    }
+
+    async fn offer<H: Handler>(
+        &mut self,
+        handle: &mut Handle<H>,
+        key: PrivateKey,
+        label: String,
+    ) -> Result<Option<PublicKey>, SshError> {
         let public = key.public_key().clone();
         let hash = rsa_hash(handle, &public).await;
         let signing = PrivateKeyWithHashAlg::new(Arc::new(key), hash);
-        self.tried.push(format!("{SECRET_PREFIX}{name}"));
+        self.tried.push(label);
 
         let result = handle
             .authenticate_publickey(self.target.user(), signing)

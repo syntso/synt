@@ -1,9 +1,10 @@
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use tokio::sync::OnceCell;
 
 use super::Sftp;
+use crate::locked::locked;
 use crate::{Pool, SshError, Target};
 
 pub(super) struct SessionSlot {
@@ -40,10 +41,7 @@ impl SessionSlot {
     }
 
     pub(super) fn touch(&self) {
-        *self
-            .last_used
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner) = Instant::now();
+        *locked(&self.last_used) = Instant::now();
     }
 
     pub(super) fn idle_left(&self, idle: Duration) -> Option<Duration> {
@@ -56,10 +54,7 @@ impl SessionSlot {
             return Some(idle);
         }
 
-        let last_used = *self
-            .last_used
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let last_used = *locked(&self.last_used);
 
         idle.checked_sub(last_used.elapsed())
             .filter(|left| !left.is_zero())

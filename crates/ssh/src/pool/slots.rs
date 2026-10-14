@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use super::{ConnectionStatus, Lease, Slot, locked};
+use super::{ConnectionStatus, Lease, Slot};
 use crate::Target;
+use crate::locked::locked;
 use crate::session::Connector;
 
 pub(crate) struct Slots {

@@ -6,7 +6,7 @@ use russh::client::{Handle, Msg};
 use tokio::runtime;
 
 use super::ClientHandler;
-use crate::pool::locked;
+use crate::locked::locked;
 
 #[derive(Default)]
 pub(crate) struct Spare {

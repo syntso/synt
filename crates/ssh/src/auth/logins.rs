@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use russh::keys::PublicKey;
 
 use crate::Target;
-use crate::pool::locked;
+use crate::locked::locked;
 
 #[derive(Default)]
 pub(crate) struct Logins {
