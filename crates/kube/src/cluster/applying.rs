@@ -17,9 +17,16 @@ struct Placed {
 impl Cluster {
     pub async fn plan(&self, manifest: &Manifest, force: bool) -> Result<Plan, KubeError> {
         let mut objects = Vec::new();
+        let mut new_namespaces = Vec::new();
 
         for object in manifest.objects() {
-            objects.push(self.plan_one(object, force).await?);
+            let (planned, kind) = self.plan_one(object, force, &new_namespaces).await?;
+
+            if kind.is_namespace() && planned.change == Change::Create {
+                new_namespaces.push(planned.object.name.clone());
+            }
+
+            objects.push(planned);
         }
 
         Ok(Plan { objects })
@@ -39,19 +46,24 @@ impl Cluster {
         Ok(applied)
     }
 
-    async fn plan_one(&self, object: &Value, force: bool) -> Result<PlannedObject, KubeError> {
+    async fn plan_one(
+        &self,
+        object: &Value,
+        force: bool,
+        new_namespaces: &[String],
+    ) -> Result<(PlannedObject, Kind), KubeError> {
         let placed = self.place_object(object).await?;
+        let waits_for_namespace = placed
+            .object
+            .namespace
+            .as_ref()
+            .is_some_and(|namespace| new_namespaces.contains(namespace));
 
-        let live = placed.api.get_opt(&placed.object.name).await?;
-        let params = patch_params(force).dry_run();
-        let dry_run = placed
-            .api
-            .patch(&placed.object.name, &params, &Patch::Apply(object))
-            .await
-            .map_err(|error| refused(&placed.object, error))?;
-
-        let mut before = live.map(|live| without_noise(tidy(live, &placed.kind)));
-        let mut after = without_noise(tidy(dry_run, &placed.kind));
+        let (mut before, mut after) = if waits_for_namespace {
+            (None, without_noise(object.clone()))
+        } else {
+            self.dry_run(&placed, object, force).await?
+        };
 
         let change = match &before {
             None => Change::Create,
@@ -63,13 +75,34 @@ impl Cluster {
             hide_secret_values(before.as_mut(), &mut after);
         }
 
-        let diff = unified(&placed.object.to_string(), before.as_ref(), &after);
-
-        Ok(PlannedObject {
+        let planned = PlannedObject {
+            diff: unified(&placed.object.to_string(), before.as_ref(), &after),
             object: placed.object,
             change,
-            diff,
-        })
+            server_checked: !waits_for_namespace,
+        };
+
+        Ok((planned, placed.kind))
+    }
+
+    async fn dry_run(
+        &self,
+        placed: &Placed,
+        object: &Value,
+        force: bool,
+    ) -> Result<(Option<Value>, Value), KubeError> {
+        let live = placed.api.get_opt(&placed.object.name).await?;
+        let params = patch_params(force).dry_run();
+        let dry_run = placed
+            .api
+            .patch(&placed.object.name, &params, &Patch::Apply(object))
+            .await
+            .map_err(|error| refused(&placed.object, error))?;
+
+        let before = live.map(|live| without_noise(tidy(live, &placed.kind)));
+        let after = without_noise(tidy(dry_run, &placed.kind));
+
+        Ok((before, after))
     }
 
     async fn apply_one(&self, object: &Value, force: bool) -> Result<AppliedObject, KubeError> {

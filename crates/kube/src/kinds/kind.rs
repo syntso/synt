@@ -6,6 +6,7 @@ use kube::discovery::ApiResource;
 
 const CORE_GROUP: &str = "";
 const SECRET: &str = "Secret";
+const NAMESPACE: &str = "Namespace";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Kind {
@@ -43,6 +44,10 @@ impl Kind {
 
     pub fn is_secret(&self) -> bool {
         self.resource.group == CORE_GROUP && self.resource.kind == SECRET
+    }
+
+    pub fn is_namespace(&self) -> bool {
+        self.resource.group == CORE_GROUP && self.resource.kind == NAMESPACE
     }
 
     pub(crate) fn resource(&self) -> &ApiResource {

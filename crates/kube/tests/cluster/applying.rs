@@ -137,3 +137,36 @@ async fn a_deployment_scales_restarts_and_goes_away() {
 
     lab.finish().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
+async fn objects_in_a_namespace_the_manifest_creates_are_planned_from_the_manifest() {
+    let Some(lab) = Lab::start().await else {
+        return;
+    };
+
+    let fresh = format!("{}-fresh", lab.namespace);
+    let manifest = Manifest::parse(&format!(
+        "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: {fresh}\n---\n\
+         apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: settings\n  namespace: {fresh}\ndata:\n  mode: fast\n"
+    ))
+    .unwrap();
+
+    let first = lab.cluster.plan(&manifest, false).await.unwrap();
+    lab.cluster.apply(&manifest, false).await.unwrap();
+    let second = lab.cluster.plan(&manifest, false).await.unwrap();
+
+    let checked: Vec<(Change, bool)> = first
+        .objects
+        .iter()
+        .map(|planned| (planned.change, planned.server_checked))
+        .collect();
+    assert_eq!(checked, [(Change::Create, true), (Change::Create, false)]);
+    assert!(first.diff().contains("+  mode: fast"), "{}", first.diff());
+    assert!(second.objects.iter().all(|planned| planned.server_checked));
+    assert_eq!(second.count(Change::Unchanged), 2);
+
+    let namespaces = lab.cluster.kind("namespaces").await.unwrap();
+    lab.cluster.delete(&namespaces, &fresh, None).await.unwrap();
+    lab.finish().await;
+}
