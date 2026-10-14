@@ -1,5 +1,4 @@
-use super::Classification;
-use crate::Effect;
+use crate::{Classification, Effect};
 
 const READ: [&str; 92] = [
     "BITCOUNT",
@@ -207,53 +206,66 @@ const WRITE: [&str; 98] = [
 
 const CONTAINERS: [&str; 5] = ["OBJECT", "MEMORY", "XINFO", "COMMAND", "XGROUP"];
 
-pub(super) fn classify<S: AsRef<str>>(words: &[S]) -> Classification {
-    let Some(first) = words.first() else {
-        return Classification::new(Effect::Privileged, "empty");
-    };
-
-    let name = first.as_ref().trim().to_ascii_uppercase();
-
-    if CONTAINERS.contains(&name.as_str()) {
-        return container(&name, words.get(1).map(AsRef::as_ref));
-    }
-
-    Classification::new(effect(&name), name.to_ascii_lowercase())
+pub(super) struct RedisCommand {
+    name: String,
+    container: bool,
 }
 
-fn container(name: &str, sub: Option<&str>) -> Classification {
-    let full = match sub {
-        Some(sub) => format!("{name} {}", sub.trim().to_ascii_uppercase()),
-        None => name.to_owned(),
-    };
+impl RedisCommand {
+    pub(super) fn parse<S: AsRef<str>>(words: &[S]) -> Option<Self> {
+        let (first, rest) = words.split_first()?;
+        let name = first.as_ref().trim().to_ascii_uppercase();
 
-    let effect = if READ.contains(&full.as_str()) || READ_CONTAINERS.contains(&full.as_str()) {
-        Effect::Read
-    } else if full.starts_with("XGROUP ") {
-        Effect::Write
-    } else {
+        if !CONTAINERS.contains(&name.as_str()) {
+            return Some(Self {
+                name,
+                container: false,
+            });
+        }
+
+        let name = match rest.first() {
+            Some(sub) => format!("{name} {}", sub.as_ref().trim().to_ascii_uppercase()),
+            None => name,
+        };
+
+        Some(Self {
+            name,
+            container: true,
+        })
+    }
+
+    pub(super) fn classification(&self) -> Classification {
+        Classification::new(self.effect(), self.name.to_ascii_lowercase())
+    }
+
+    fn effect(&self) -> Effect {
+        let name = self.name.as_str();
+
+        if READ.contains(&name) || (self.container && READ_CONTAINERS.contains(&name)) {
+            return Effect::Read;
+        }
+
+        let writes = if self.container {
+            name.starts_with("XGROUP ")
+        } else {
+            WRITE.contains(&name)
+        };
+
+        if writes {
+            return Effect::Write;
+        }
+
         Effect::Privileged
-    };
-
-    Classification::new(effect, full.to_ascii_lowercase())
-}
-
-fn effect(name: &str) -> Effect {
-    if READ.contains(&name) {
-        return Effect::Read;
     }
-
-    if WRITE.contains(&name) {
-        return Effect::Write;
-    }
-
-    Effect::Privileged
 }
 
 #[cfg(test)]
 mod tests {
-    use super::classify;
-    use crate::Effect;
+    use crate::{Classification, Effect};
+
+    fn classify(words: &[&str]) -> Classification {
+        Classification::of_command(words)
+    }
 
     fn effect(words: &[&str]) -> Effect {
         classify(words).effect

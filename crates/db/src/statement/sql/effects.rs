@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use sqlparser::ast::{Expr, ObjectName, ObjectNamePart, Query, SetExpr, Statement, Visitor};
 
-use super::risky_functions::is_risky;
+use super::risky::is_risky;
 use crate::Effect;
 
 #[derive(Debug, Default)]

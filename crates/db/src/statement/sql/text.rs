@@ -1,135 +1,46 @@
-use sqlparser::ast::{CopySource, CopyTarget, ObjectName, SetExpr, Statement, Visit};
+use sqlparser::ast::Statement;
 use sqlparser::parser::Parser;
 
-use super::Classification;
-use super::effects::Effects;
-use crate::{Effect, Engine};
+use super::single::SingleStatement;
+use crate::{Classification, Engine};
 
-const UNPARSABLE: &str = "unparsable";
-const SEVERAL: &str = "several statements";
-const EMPTY: &str = "empty";
-
-const INFO_PRAGMAS: [&str; 9] = [
-    "table_info",
-    "table_xinfo",
-    "table_list",
-    "index_list",
-    "index_info",
-    "index_xinfo",
-    "foreign_key_list",
-    "foreign_key_check",
-    "integrity_check",
-];
-
-pub(super) fn classify(engine: Engine, text: &str) -> Classification {
-    let Some(dialect) = engine.dialect() else {
-        return Classification::new(Effect::Privileged, UNPARSABLE);
-    };
-
-    let Ok(statements) = Parser::parse_sql(dialect.as_ref(), text) else {
-        return Classification::new(Effect::Privileged, UNPARSABLE);
-    };
-
-    match statements.as_slice() {
-        [] => Classification::new(Effect::Privileged, EMPTY),
-        [statement] => Classification::new(effect(statement), kind(statement)),
-        _ => Classification::new(Effect::Privileged, SEVERAL),
-    }
+pub(in crate::statement) struct SqlText<'a> {
+    engine: Engine,
+    text: &'a str,
 }
 
-fn effect(statement: &Statement) -> Effect {
-    let own = own_effect(statement);
-
-    let mut effects = Effects::default();
-    let _visited = statement.visit(&mut effects);
-
-    effects.found().map_or(own, |found| found.max(own))
-}
-
-fn own_effect(statement: &Statement) -> Effect {
-    match statement {
-        Statement::Query(_)
-        | Statement::Explain { analyze: false, .. }
-        | Statement::ExplainTable { .. }
-        | Statement::ShowFunctions { .. }
-        | Statement::ShowVariable { .. }
-        | Statement::ShowStatus { .. }
-        | Statement::ShowVariables { .. }
-        | Statement::ShowCreate { .. }
-        | Statement::ShowColumns { .. }
-        | Statement::ShowDatabases { .. }
-        | Statement::ShowSchemas { .. }
-        | Statement::ShowCharset(_)
-        | Statement::ShowTables { .. }
-        | Statement::ShowViews { .. }
-        | Statement::ShowCollation { .. } => Effect::Read,
-        Statement::Pragma { name, value, .. } => pragma_effect(name, value.is_some()),
-        Statement::Explain {
-            analyze: true,
-            statement,
-            ..
-        } => own_effect(statement),
-        Statement::Insert(_)
-        | Statement::Update(_)
-        | Statement::Delete(_)
-        | Statement::Merge(_)
-        | Statement::Copy {
-            to: false,
-            source: CopySource::Table { .. },
-            target: CopyTarget::Stdin,
-            ..
-        } => Effect::Write,
-        _ => Effect::Privileged,
-    }
-}
-
-fn pragma_effect(name: &ObjectName, sets_value: bool) -> Effect {
-    let name = name.to_string().to_ascii_lowercase();
-    let name = name.rsplit('.').next().unwrap_or_default();
-
-    if !sets_value || INFO_PRAGMAS.contains(&name) {
-        return Effect::Read;
+impl<'a> SqlText<'a> {
+    pub(in crate::statement) fn new(engine: Engine, text: &'a str) -> Self {
+        Self { engine, text }
     }
 
-    Effect::Privileged
-}
+    pub(in crate::statement) fn classification(&self) -> Classification {
+        let Some(statements) = self.parse() else {
+            return Classification::unparsable();
+        };
 
-fn kind(statement: &Statement) -> String {
-    let known = match statement {
-        Statement::Query(query) => match query.body.as_ref() {
-            SetExpr::Insert(_) => "insert",
-            SetExpr::Update(_) => "update",
-            SetExpr::Delete(_) => "delete",
-            SetExpr::Merge(_) => "merge",
-            _ => "select",
-        },
-        Statement::Insert(_) => "insert",
-        Statement::Update(_) => "update",
-        Statement::Delete(_) => "delete",
-        Statement::Merge(_) => "merge",
-        Statement::Copy { .. } => "copy",
-        Statement::Explain { .. } => "explain",
-        Statement::ExplainTable { .. } => "describe",
-        Statement::Pragma { .. } => "pragma",
-        _ => return first_word(statement),
-    };
+        match statements.as_slice() {
+            [] => Classification::empty(),
+            [statement] => SingleStatement::new(statement).classification(),
+            _ => Classification::several(),
+        }
+    }
 
-    known.to_owned()
-}
+    fn parse(&self) -> Option<Vec<Statement>> {
+        let dialect = self.engine.dialect()?;
 
-fn first_word(statement: &Statement) -> String {
-    let text = statement.to_string();
-
-    text.split_whitespace()
-        .next()
-        .unwrap_or(UNPARSABLE)
-        .to_ascii_lowercase()
+        Parser::parse_sql(dialect.as_ref(), self.text).ok()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::classify;
-    use crate::{Effect, Engine};
+    use super::SqlText;
+    use crate::{Classification, Effect, Engine};
+
+    fn classify(engine: Engine, text: &str) -> Classification {
+        SqlText::new(engine, text).classification()
+    }
 
     fn effect(engine: Engine, text: &str) -> Effect {
         classify(engine, text).effect
