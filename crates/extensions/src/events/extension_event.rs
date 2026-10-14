@@ -25,7 +25,27 @@ impl ExtensionEvent {
         self
     }
 
-    pub(crate) fn caused_by(&self, extension: &str) -> bool {
-        matches!(&self.actor, Some(Actor::Plugin(name)) if name.as_str() == extension)
+    pub(crate) fn caused_by_an_extension(&self) -> bool {
+        matches!(&self.actor, Some(Actor::Plugin(_)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use synt_journal::{Actor, Name};
+
+    use super::ExtensionEvent;
+    use crate::manifest::EventTopic;
+
+    #[test]
+    fn knows_when_an_extension_caused_it() {
+        let event = ExtensionEvent::new(EventTopic::Journal, json!({}));
+        let by_agent = event.clone().by(Actor::Agent(Name::new("bot").unwrap()));
+        let by_extension = event.clone().by(Actor::Plugin(Name::new("other").unwrap()));
+
+        assert!(!event.caused_by_an_extension());
+        assert!(!by_agent.caused_by_an_extension());
+        assert!(by_extension.caused_by_an_extension());
     }
 }

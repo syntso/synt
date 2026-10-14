@@ -84,10 +84,9 @@ impl Loaded {
     }
 
     pub(crate) fn hear(&self, event: &ExtensionEvent) -> bool {
-        let id = &self.installed.id;
         let listens = self.guest.manifest().capabilities.hears(event.topic);
 
-        if !listens || event.caused_by(id) {
+        if !listens || event.caused_by_an_extension() {
             return false;
         }
 
