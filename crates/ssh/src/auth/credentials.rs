@@ -5,7 +5,7 @@ use russh::keys::agent::AgentIdentity;
 
 use super::{Agent, Candidate, KeyFile, KeySource, agent};
 use crate::Target;
-use crate::home::ssh_directory;
+use crate::ssh_directory::SshDirectory;
 
 const DEFAULT_KEYS: [&str; 3] = ["id_ed25519", "id_ecdsa", "id_rsa"];
 const MOST_ATTEMPTS: usize = 5;
@@ -16,7 +16,11 @@ pub(crate) struct Credentials {
 }
 
 impl Credentials {
-    pub(crate) async fn gather(target: &Target, accepted_before: Option<PublicKey>) -> Self {
+    pub(crate) async fn gather(
+        target: &Target,
+        accepted_before: Option<PublicKey>,
+        directory: &SshDirectory,
+    ) -> Self {
         if let Some(name) = target.vault_key() {
             return Self::vault_only(name);
         }
@@ -28,7 +32,7 @@ impl Credentials {
         };
 
         let configured = !target.identity_files().is_empty();
-        let mut candidates = file_candidates(&key_paths(target), &held).await;
+        let mut candidates = file_candidates(&key_paths(target, directory), &held).await;
 
         if !configured {
             add_other_agent_keys(&mut candidates, held);
@@ -64,14 +68,15 @@ async fn held_keys(agent: &mut Agent) -> Vec<PublicKey> {
     identities.into_iter().filter_map(public_key).collect()
 }
 
-fn key_paths(target: &Target) -> Vec<PathBuf> {
+fn key_paths(target: &Target, directory: &SshDirectory) -> Vec<PathBuf> {
     let configured = target.identity_files();
 
     if !configured.is_empty() {
         return configured.to_vec();
     }
 
-    ssh_directory()
+    directory
+        .path()
         .map(|directory| DEFAULT_KEYS.map(|name| directory.join(name)).to_vec())
         .unwrap_or_default()
 }

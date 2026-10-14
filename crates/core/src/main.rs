@@ -83,7 +83,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let projects = Projects::start(state.clone())?;
     let always = AlwaysGrants::load(state, seal)?;
 
-    let pool = Pool::with_key_vault(Arc::new(keys.clone()));
+    let pool = Pool::builder().key_vault(Arc::new(keys.clone())).build();
 
     let mut registry = Registry::new();
     registry.register(Ping)?;

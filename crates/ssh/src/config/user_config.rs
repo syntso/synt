@@ -7,7 +7,7 @@ use ssh2_config::{HostParams, ParseRule, SshConfig};
 
 use super::HostSettings;
 use crate::SshError;
-use crate::home::ssh_directory;
+use crate::ssh_directory::SshDirectory;
 
 const CONFIG_FILE: &str = "config";
 const NO_JUMP: &str = "none";
@@ -23,7 +23,7 @@ pub(crate) struct UserConfig {
 
 impl UserConfig {
     pub(crate) fn load() -> Result<Self, SshError> {
-        let path = ssh_directory()?.join(CONFIG_FILE);
+        let path = SshDirectory::User.path()?.join(CONFIG_FILE);
 
         let text = match fs::read(&path) {
             Ok(text) => text,

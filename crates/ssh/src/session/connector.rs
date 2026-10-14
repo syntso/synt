@@ -9,21 +9,28 @@ use super::{Algorithms, ClientHandler, Connection, HandshakeError, client_config
 use crate::auth::{Authenticator, Credentials, Logins};
 use crate::dial::{Addresses, race};
 use crate::known_hosts::KnownHosts;
+use crate::ssh_directory::SshDirectory;
 use crate::{KeyVault, SshError, Target};
 
-#[derive(Default)]
 pub(crate) struct Connector {
     addresses: Addresses,
     logins: Logins,
     vault: Option<Arc<dyn KeyVault>>,
+    directory: SshDirectory,
 }
 
 impl Connector {
-    pub(crate) fn with_vault(vault: Arc<dyn KeyVault>) -> Self {
+    pub(crate) fn new(vault: Option<Arc<dyn KeyVault>>, directory: SshDirectory) -> Self {
         Self {
-            vault: Some(vault),
-            ..Self::default()
+            addresses: Addresses::default(),
+            logins: Logins::default(),
+            vault,
+            directory,
         }
+    }
+
+    pub(crate) fn directory(&self) -> &SshDirectory {
+        &self.directory
     }
 
     pub(crate) async fn open(
@@ -31,12 +38,13 @@ impl Connector {
         hop: &Target,
         through: Option<&Connection>,
     ) -> Result<Connection, SshError> {
-        let known_hosts = Arc::new(KnownHosts::load().await?);
+        let known_hosts = Arc::new(KnownHosts::load(&self.directory).await?);
         let config = Arc::new(client_config(&known_hosts, hop));
         let negotiated = Arc::new(OnceLock::new());
 
         let reaching = self.reach(hop, through, &config, &known_hosts, &negotiated);
-        let gathering = Credentials::gather(hop, self.logins.accepted_key(hop));
+        let accepted_before = self.logins.accepted_key(hop);
+        let gathering = Credentials::gather(hop, accepted_before, &self.directory);
         let (reached, credentials) = tokio::join!(reaching, gathering);
         let mut handle = reached?;
 

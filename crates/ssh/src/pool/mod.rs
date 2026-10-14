@@ -6,6 +6,7 @@ mod lease;
 mod locked;
 mod phase;
 mod pool;
+mod pool_builder;
 mod slot;
 mod slots;
 
@@ -17,5 +18,6 @@ pub use lease::Lease;
 pub(crate) use locked::locked;
 use phase::Phase;
 pub use pool::Pool;
+pub use pool_builder::PoolBuilder;
 use slot::Slot;
 use slots::Slots;

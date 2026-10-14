@@ -1,13 +1,10 @@
 use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
-use std::time::Duration;
 
-use super::{ConnectionState, ConnectionStatus, Lease, Slots};
+use super::{ConnectionState, ConnectionStatus, Lease, PoolBuilder, Slots};
 use crate::known_hosts::KnownHosts;
-use crate::session::Connector;
-use crate::{KeyVault, SshError, Target};
-
-const GRACE: Duration = Duration::from_secs(30);
+use crate::ssh_directory::SshDirectory;
+use crate::{SshError, Target};
 
 #[derive(Clone)]
 pub struct Pool {
@@ -16,19 +13,15 @@ pub struct Pool {
 
 impl Pool {
     pub fn new() -> Self {
-        Self::with_grace(GRACE)
+        Self::builder().build()
     }
 
-    pub fn with_grace(grace: Duration) -> Self {
-        Self {
-            slots: Slots::new(grace, Connector::default()),
-        }
+    pub fn builder() -> PoolBuilder {
+        PoolBuilder::new()
     }
 
-    pub fn with_key_vault(vault: Arc<dyn KeyVault>) -> Self {
-        Self {
-            slots: Slots::new(GRACE, Connector::with_vault(vault)),
-        }
+    pub(super) fn from_slots(slots: Arc<Slots>) -> Self {
+        Self { slots }
     }
 
     pub async fn acquire(&self, target: &Target) -> Result<Lease, SshError> {
@@ -39,7 +32,7 @@ impl Pool {
     }
 
     pub async fn warm(&self, target: &Target) -> Result<ConnectionState, SshError> {
-        refuse_unknown_hops(target).await?;
+        refuse_unknown_hops(target, self.slots.connector().directory()).await?;
 
         let lease = self.acquire(target).await?;
         lease.keep_spare_session().await?;
@@ -72,8 +65,8 @@ impl Debug for Pool {
     }
 }
 
-async fn refuse_unknown_hops(target: &Target) -> Result<(), SshError> {
-    let known_hosts = KnownHosts::load().await?;
+async fn refuse_unknown_hops(target: &Target, directory: &SshDirectory) -> Result<(), SshError> {
+    let known_hosts = KnownHosts::load(directory).await?;
 
     let unknown = hops(target).into_iter().find(|hop| {
         known_hosts

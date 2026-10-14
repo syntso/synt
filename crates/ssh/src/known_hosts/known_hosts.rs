@@ -5,7 +5,7 @@ use russh::keys::{Algorithm, PublicKey};
 
 use super::{Entry, Marker, Verdict};
 use crate::SshError;
-use crate::home::ssh_directory;
+use crate::ssh_directory::SshDirectory;
 
 const FILES: [&str; 2] = ["known_hosts", "known_hosts2"];
 const DEFAULT_PORT: u16 = 22;
@@ -16,8 +16,8 @@ pub(crate) struct KnownHosts {
 }
 
 impl KnownHosts {
-    pub(crate) async fn load() -> Result<Self, SshError> {
-        let directory = ssh_directory()?;
+    pub(crate) async fn load(directory: &SshDirectory) -> Result<Self, SshError> {
+        let directory = directory.path()?;
         let mut entries = Vec::new();
 
         for file in FILES {
