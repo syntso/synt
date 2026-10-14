@@ -1,8 +1,10 @@
 mod error_code;
 mod json_rpc;
 mod message;
+mod notice;
 mod notification;
 mod outcome;
+mod params;
 mod request;
 mod request_id;
 mod response;
@@ -10,6 +12,7 @@ mod rpc_error;
 
 pub use error_code::ErrorCode;
 pub use message::Message;
+pub use notice::Notice;
 pub use notification::Notification;
 pub use outcome::Outcome;
 pub use request::Request;

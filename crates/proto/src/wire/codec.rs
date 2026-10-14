@@ -1,7 +1,8 @@
 use bytes::{Buf, BufMut, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 
-use super::{Frame, FrameError, StreamId};
+use super::{Frame, StreamId};
+use crate::error::FrameError;
 
 const HEADER_LENGTH: usize = 5;
 const STREAM_ID_LENGTH: usize = 4;
@@ -126,7 +127,8 @@ mod tests {
     use tokio_util::codec::{Decoder, Encoder};
 
     use super::FrameCodec;
-    use crate::wire::{Frame, FrameError, StreamId};
+    use crate::error::FrameError;
+    use crate::wire::{Frame, StreamId};
 
     fn encode(frame: Frame) -> BytesMut {
         let mut buffer = BytesMut::new();

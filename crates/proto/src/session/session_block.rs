@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{Notification, StreamId};
+use crate::{Notice, StreamId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionBlock {
@@ -19,13 +19,8 @@ pub struct SessionBlock {
     pub output_end: u64,
 }
 
-impl SessionBlock {
-    pub const METHOD: &'static str = "session.block";
-
-    pub fn to_notification(&self) -> Result<Notification, serde_json::Error> {
-        let params = serde_json::to_value(self)?;
-        Ok(Notification::new(Self::METHOD, params))
-    }
+impl Notice for SessionBlock {
+    const METHOD: &'static str = "session.block";
 }
 
 #[cfg(test)]
@@ -33,7 +28,7 @@ mod tests {
     use serde_json::json;
 
     use super::SessionBlock;
-    use crate::StreamId;
+    use crate::{Notice, StreamId};
 
     #[test]
     fn a_block_travels_as_a_notification() {

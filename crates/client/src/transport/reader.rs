@@ -42,11 +42,7 @@ pub(super) async fn route<R>(
 }
 
 fn end_stream(streams: &Streams, notification: &Notification) {
-    if notification.method != SessionEnded::METHOD {
-        return;
-    }
-
-    let Ok(ended) = notification.params::<SessionEnded>() else {
+    let Some(Ok(ended)) = notification.read::<SessionEnded>() else {
         return;
     };
 

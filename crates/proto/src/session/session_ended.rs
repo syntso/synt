@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::EndReason;
-use crate::{Notification, StreamId};
+use crate::{Notice, StreamId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionEnded {
@@ -18,11 +18,6 @@ pub struct SessionEnded {
     pub duration_ms: u64,
 }
 
-impl SessionEnded {
-    pub const METHOD: &'static str = "session.ended";
-
-    pub fn to_notification(&self) -> Result<Notification, serde_json::Error> {
-        let params = serde_json::to_value(self)?;
-        Ok(Notification::new(Self::METHOD, params))
-    }
+impl Notice for SessionEnded {
+    const METHOD: &'static str = "session.ended";
 }

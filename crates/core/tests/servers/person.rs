@@ -39,9 +39,5 @@ impl Drop for Person {
 }
 
 fn question(notification: &Notification) -> Option<ApprovalRequest> {
-    if notification.method != ApprovalRequest::METHOD {
-        return None;
-    }
-
-    notification.params().ok()
+    notification.read::<ApprovalRequest>()?.ok()
 }

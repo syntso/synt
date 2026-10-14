@@ -3,7 +3,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use synt_journal::Actor;
-use synt_proto::{ApprovalAnswer, ApprovalDecision, ApprovalId, ErrorCode, Message, RpcError};
+use synt_proto::{
+    ApprovalAnswer, ApprovalDecision, ApprovalId, ErrorCode, Message, Notice, RpcError,
+};
 use tokio::sync::mpsc;
 use tokio::time;
 use tokio_util::sync::CancellationToken;

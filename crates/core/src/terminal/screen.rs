@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use bytes::Bytes;
-use synt_proto::{Frame, Message, Notification, StreamId};
+use synt_proto::{Frame, Message, Notice, Notification, StreamId};
 use synt_ssh::TerminalSize;
 
 use super::{Attachment, Block, Blocks, Ending, Replay, Scanner, SessionId};

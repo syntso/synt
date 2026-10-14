@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::json_rpc::JsonRpc;
-use super::{RequestId, RpcError};
+use super::{RequestId, RpcError, params};
 use crate::Method;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -37,11 +37,10 @@ impl Request {
     }
 
     pub fn params<T: DeserializeOwned>(&self) -> Result<T, RpcError> {
-        T::deserialize(&self.params).map_err(|error| RpcError::invalid_params(error.to_string()))
+        params::read(&self.params)
     }
 
     pub fn into_params<T: DeserializeOwned>(self) -> Result<T, RpcError> {
-        serde_json::from_value(self.params)
-            .map_err(|error| RpcError::invalid_params(error.to_string()))
+        params::take(self.params)
     }
 }

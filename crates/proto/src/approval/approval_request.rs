@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::{ApprovalId, Requester, RiskLevel};
-use crate::Notification;
+use crate::Notice;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ApprovalRequest {
@@ -25,11 +25,6 @@ pub struct ApprovalRequest {
     pub params: Value,
 }
 
-impl ApprovalRequest {
-    pub const METHOD: &'static str = "approval.requested";
-
-    pub fn to_notification(&self) -> Result<Notification, serde_json::Error> {
-        let params = serde_json::to_value(self)?;
-        Ok(Notification::new(Self::METHOD, params))
-    }
+impl Notice for ApprovalRequest {
+    const METHOD: &'static str = "approval.requested";
 }

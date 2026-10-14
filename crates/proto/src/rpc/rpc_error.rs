@@ -38,10 +38,4 @@ impl RpcError {
     pub fn internal(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::INTERNAL, message)
     }
-
-    #[must_use]
-    pub fn with_data(mut self, data: Value) -> Self {
-        self.data = Some(data);
-        self
-    }
 }

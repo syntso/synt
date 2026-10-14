@@ -2,8 +2,8 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::RpcError;
 use super::json_rpc::JsonRpc;
+use super::{Notice, RpcError, params};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Notification {
@@ -24,6 +24,14 @@ impl Notification {
     }
 
     pub fn params<T: DeserializeOwned>(&self) -> Result<T, RpcError> {
-        T::deserialize(&self.params).map_err(|error| RpcError::invalid_params(error.to_string()))
+        params::read(&self.params)
+    }
+
+    pub fn read<T: Notice>(&self) -> Option<Result<T, RpcError>> {
+        if self.method != T::METHOD {
+            return None;
+        }
+
+        Some(self.params())
     }
 }

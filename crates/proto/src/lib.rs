@@ -1,5 +1,6 @@
 mod action;
 mod approval;
+mod error;
 mod handshake;
 mod method;
 mod rpc;
@@ -10,10 +11,11 @@ pub use action::{ActionCall, ActionDescription, ActionOutcome, RequestSeq};
 pub use approval::{
     ApprovalAnswer, ApprovalDecision, ApprovalId, ApprovalRequest, Requester, RiskLevel,
 };
+pub use error::FrameError;
 pub use handshake::{ClientKind, Hello, ProtocolVersion, Welcome};
 pub use method::Method;
-pub use rpc::{ErrorCode, Message, Notification, Outcome, Request, RequestId, Response, RpcError};
-pub use session::{EndReason, SessionBlock, SessionEnded};
-pub use wire::{
-    Credit, Frame, FrameCodec, FrameError, FrameReader, FrameWriter, StreamId, split_framed,
+pub use rpc::{
+    ErrorCode, Message, Notice, Notification, Outcome, Request, RequestId, Response, RpcError,
 };
+pub use session::{EndReason, SessionBlock, SessionEnded};
+pub use wire::{Credit, Frame, FrameCodec, FrameReader, FrameWriter, StreamId, split_framed};

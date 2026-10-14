@@ -1,7 +1,9 @@
 use std::time::Duration;
 
 use synt_client::{Client, ClientError};
-use synt_proto::{ActionCall, ActionOutcome, ApprovalDecision, ApprovalRequest, Notification};
+use synt_proto::{
+    ActionCall, ActionOutcome, ApprovalDecision, ApprovalRequest, Notice, Notification,
+};
 use tokio::sync::broadcast::{self, error::TryRecvError};
 use tokio::time;
 
@@ -32,7 +34,7 @@ impl Approver {
     pub fn was_not_asked(&mut self) -> bool {
         loop {
             match self.questions.try_recv() {
-                Ok(notification) if is_question(&notification) => return false,
+                Ok(notification) if notification.method == ApprovalRequest::METHOD => return false,
                 Ok(_) => {}
                 Err(TryRecvError::Empty | TryRecvError::Closed) => return true,
                 Err(TryRecvError::Lagged(_)) => return false,
@@ -78,13 +80,9 @@ impl Approver {
         loop {
             let notification = self.questions.recv().await.unwrap();
 
-            if is_question(&notification) {
-                return notification.params().unwrap();
+            if let Some(question) = notification.read::<ApprovalRequest>() {
+                return question.unwrap();
             }
         }
     }
-}
-
-fn is_question(notification: &Notification) -> bool {
-    notification.method == ApprovalRequest::METHOD
 }
