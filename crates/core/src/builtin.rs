@@ -15,10 +15,10 @@ mod ssh;
 mod tunnel;
 
 pub use db::Databases;
-pub use grant::{GrantList, GrantRevoke};
+pub use grant::{GrantActions, GrantList, GrantRevoke};
 pub use journal::{JournalPage, JournalVerify};
 pub use k8s::Kube;
-pub use key::{KeyGenerate, KeyImport, KeyList, KeyRemove};
+pub use key::{KeyActions, KeyGenerate, KeyImport, KeyList, KeyRemove};
 pub use ping::{Ping, Pong};
 pub use project::{ProjectClose, ProjectList, ProjectOpen};
 pub use resource::{ResourceGet, ResourceList, ResourcePut, ResourceRemove};
@@ -26,7 +26,7 @@ pub use runbook::{
     RunbookExport, RunbookFromBlocks, RunbookFromJournal, RunbookGet, RunbookList, RunbookPut,
     RunbookRun, RunbookStop,
 };
-pub use secret::{SecretList, SecretPut, SecretRemove};
+pub use secret::{SecretActions, SecretList, SecretPut, SecretRemove};
 pub use session::{
     LocalSessionOpen, SessionAttach, SessionBlocks, SessionClose, SessionIntegration, SessionList,
     SessionResize, SshSessionOpen,

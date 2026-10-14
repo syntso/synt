@@ -1,3 +1,9 @@
+mod database;
+
+pub(crate) use database::ResolvedDatabase;
+
+use std::fmt;
+
 use synt_kube::ClusterSpec;
 use synt_ssh::{Destination, Target};
 
@@ -30,14 +36,24 @@ impl Resolved {
             Self::Cluster { .. } => "cluster",
         }
     }
+}
 
-    pub(crate) fn describe(&self) -> String {
+impl fmt::Display for Resolved {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Host(host) => login_label(host),
+            Self::Host(host) => write!(formatter, "{}", login_label(host)),
             Self::Tunnel { host, remote, .. } => {
-                format!("{} forwarding to {}", login_label(host), remote)
+                write!(formatter, "{} forwarding to {remote}", login_label(host))
             }
-            Self::Cluster { spec, via } => cluster(spec, via.as_ref()),
+            Self::Cluster { spec, via } => {
+                let context = spec.context.as_deref().unwrap_or("the current context");
+                write!(formatter, "{context} in {}", spec.kubeconfig)?;
+
+                match via {
+                    Some(via) => write!(formatter, " via {}", login_label(via)),
+                    None => Ok(()),
+                }
+            }
         }
     }
 }
@@ -52,14 +68,4 @@ pub(crate) fn login_label(target: &Target) -> String {
     let jumps: Vec<String> = target.jumps().iter().map(login_label).collect();
 
     format!("{place} via [{}]", jumps.join(", "))
-}
-
-fn cluster(spec: &ClusterSpec, via: Option<&Target>) -> String {
-    let context = spec.context.as_deref().unwrap_or("the current context");
-    let place = format!("{context} in {}", spec.kubeconfig);
-
-    match via {
-        Some(via) => format!("{place} via {}", login_label(via)),
-        None => place,
-    }
 }

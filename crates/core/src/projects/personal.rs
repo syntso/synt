@@ -1,13 +1,15 @@
+mod clusters;
+
+use clusters::Clusters;
+
 use synt_kube::{ClusterSpec, KubeconfigSource};
 use synt_ssh::Target;
 
 use super::{
-    ClusterResource, HostResource, Problem, ProjectInfo, Resolved, Resource, ResourceEntry,
-    ResourceListing,
+    ClusterResource, HostResource, Problem, ProjectInfo, ProjectPlace, ProjectSource, Resolved,
+    ResolvedDatabase, Resource, ResourceEntry, ResourceListing,
 };
 use crate::CoreError;
-
-pub(crate) const PERSONAL: &str = "personal";
 
 const NAME: &str = "Personal";
 const CONFIG: &str = ".ssh/config";
@@ -19,71 +21,18 @@ pub(crate) struct Personal {
 }
 
 impl Personal {
+    pub(crate) const SLUG: &str = "personal";
+
     pub(crate) fn new(kubeconfig: KubeconfigSource) -> Self {
         Self { kubeconfig }
     }
 
+    pub(crate) fn is_named(project: &str) -> bool {
+        project.eq_ignore_ascii_case(Self::SLUG)
+    }
+
     pub(crate) fn kubeconfig(&self) -> &KubeconfigSource {
         &self.kubeconfig
-    }
-
-    pub(crate) fn info(&self) -> Result<ProjectInfo, CoreError> {
-        let aliases = aliases()?;
-        let (clusters, problems) = self.clusters(&aliases);
-
-        Ok(ProjectInfo {
-            id: PERSONAL.to_owned(),
-            name: NAME.to_owned(),
-            slug: PERSONAL.to_owned(),
-            path: config_path(),
-            read_only: true,
-            resources: aliases.len() + clusters.len(),
-            problems,
-        })
-    }
-
-    pub(crate) fn listing(&self) -> Result<ResourceListing, CoreError> {
-        let aliases = aliases()?;
-        let (clusters, problems) = self.clusters(&aliases);
-
-        let mut resources = aliases
-            .iter()
-            .map(|alias| host_entry(alias))
-            .collect::<Result<Vec<_>, _>>()?;
-        resources.extend(clusters);
-
-        Ok(ResourceListing {
-            project: PERSONAL.to_owned(),
-            resources,
-            problems,
-        })
-    }
-
-    pub(crate) fn resource(&self, name: &str) -> Result<ResourceEntry, CoreError> {
-        let aliases = aliases()?;
-
-        if aliases.iter().any(|alias| alias == name) {
-            return host_entry(name);
-        }
-
-        self.cluster(&aliases, name)
-    }
-
-    pub(crate) fn resolve(&self, name: &str) -> Result<Resolved, CoreError> {
-        let aliases = aliases()?;
-
-        if aliases.iter().any(|alias| alias == name) {
-            return Ok(Resolved::Host(Target::resolve(name)?));
-        }
-
-        let Resource::Cluster(cluster) = self.cluster(&aliases, name)?.resource else {
-            return Err(missing(name));
-        };
-
-        Ok(Resolved::Cluster {
-            spec: self.spec(cluster.context),
-            via: None,
-        })
     }
 
     pub(crate) fn context(&self, context: &str) -> Resolved {
@@ -91,13 +40,6 @@ impl Personal {
             spec: self.spec(Some(context.to_owned())),
             via: None,
         }
-    }
-
-    pub(crate) fn read_only() -> CoreError {
-        CoreError::Project(format!(
-            "the Personal project is read-only; edit {} or the kubeconfig instead",
-            config_path()
-        ))
     }
 
     fn spec(&self, context: Option<String>) -> ClusterSpec {
@@ -108,133 +50,189 @@ impl Personal {
         }
     }
 
-    fn cluster(&self, aliases: &[String], name: &str) -> Result<ResourceEntry, CoreError> {
-        let (clusters, _) = self.clusters(aliases);
-
-        clusters
-            .into_iter()
-            .find(|entry| entry.name == name)
-            .ok_or_else(|| missing(name))
+    fn aliases() -> Result<Vec<String>, CoreError> {
+        Ok(synt_ssh::config_aliases()?)
     }
 
-    fn clusters(&self, aliases: &[String]) -> (Vec<ResourceEntry>, Vec<Problem>) {
+    fn host(alias: &str) -> Result<ResourceEntry, CoreError> {
+        let target = Target::resolve(alias)?;
+        let host = HostResource::of_target(&target);
+
+        Ok(ResourceEntry::new(alias, Resource::Host(host)))
+    }
+
+    fn cluster(&self, aliases: &[String], name: &str) -> Result<ResourceEntry, CoreError> {
+        self.clusters(aliases)
+            .entries
+            .into_iter()
+            .find(|entry| entry.name == name)
+            .ok_or_else(|| Self::missing(name))
+    }
+
+    fn clusters(&self, aliases: &[String]) -> Clusters {
+        let mut clusters = Clusters::default();
+
         if !self.kubeconfig.exists() {
-            return (Vec::new(), Vec::new());
+            return clusters;
         }
 
         let contexts = match self.kubeconfig.contexts() {
             Ok(contexts) => contexts,
             Err(error) => {
-                let problem = Problem {
+                clusters.problems.push(Problem {
                     file: self.kubeconfig.to_string(),
                     error: error.to_string(),
-                };
-                return (Vec::new(), vec![problem]);
+                });
+                return clusters;
             }
         };
 
-        let mut entries: Vec<ResourceEntry> = Vec::new();
-
         for context in contexts {
-            let name = resource_name(&context.name);
-            let taken = aliases.contains(&name) || entries.iter().any(|entry| entry.name == name);
+            let name = Self::resource_name(&context.name);
+            let taken =
+                aliases.contains(&name) || clusters.entries.iter().any(|entry| entry.name == name);
 
             if name.is_empty() || taken {
                 continue;
             }
 
-            entries.push(cluster_entry(name, context.name));
+            let cluster = ClusterResource::of_context(context.name);
+            clusters
+                .entries
+                .push(ResourceEntry::new(&name, Resource::Cluster(cluster)));
         }
 
-        (entries, Vec::new())
+        clusters
+    }
+
+    fn resource_name(context: &str) -> String {
+        let allowed =
+            |character: char| character.is_ascii_alphanumeric() || "-_.".contains(character);
+
+        let name: String = context
+            .chars()
+            .map(|character| if allowed(character) { character } else { '-' })
+            .collect();
+
+        name.trim_start_matches('.')
+            .chars()
+            .take(LONGEST_NAME)
+            .collect()
+    }
+
+    fn missing(name: &str) -> CoreError {
+        CoreError::NoPersonalResource {
+            name: name.to_owned(),
+            config: Self::config_path(),
+        }
+    }
+
+    fn config_path() -> String {
+        synt_platform::home_directory().map_or_else(
+            |_| format!("~/{CONFIG}"),
+            |home| home.join(CONFIG).display().to_string(),
+        )
     }
 }
 
-fn aliases() -> Result<Vec<String>, CoreError> {
-    Ok(synt_ssh::config_aliases()?)
-}
+impl ProjectSource for Personal {
+    fn info(&self) -> Result<ProjectInfo, CoreError> {
+        let aliases = Self::aliases()?;
+        let clusters = self.clusters(&aliases);
 
-fn host_entry(alias: &str) -> Result<ResourceEntry, CoreError> {
-    let target = Target::resolve(alias)?;
+        Ok(ProjectInfo {
+            id: Self::SLUG.to_owned(),
+            name: NAME.to_owned(),
+            slug: Self::SLUG.to_owned(),
+            path: Self::config_path(),
+            read_only: true,
+            resources: aliases.len() + clusters.entries.len(),
+            problems: clusters.problems,
+        })
+    }
 
-    Ok(ResourceEntry {
-        name: alias.to_owned(),
-        resource: Resource::Host(host_resource(&target)),
-    })
-}
+    fn listing(&self) -> Result<ResourceListing, CoreError> {
+        let aliases = Self::aliases()?;
+        let clusters = self.clusters(&aliases);
 
-fn cluster_entry(name: String, context: String) -> ResourceEntry {
-    ResourceEntry {
-        name,
-        resource: Resource::Cluster(ClusterResource {
-            kubeconfig: None,
-            context: Some(context),
-            namespace: None,
+        let mut resources = aliases
+            .iter()
+            .map(|alias| Self::host(alias))
+            .collect::<Result<Vec<_>, _>>()?;
+        resources.extend(clusters.entries);
+
+        Ok(ResourceListing {
+            project: Self::SLUG.to_owned(),
+            resources,
+            problems: clusters.problems,
+        })
+    }
+
+    fn resource(&self, name: &str) -> Result<ResourceEntry, CoreError> {
+        let aliases = Self::aliases()?;
+
+        if aliases.iter().any(|alias| alias == name) {
+            return Self::host(name);
+        }
+
+        self.cluster(&aliases, name)
+    }
+
+    fn resolve(&self, name: &str) -> Result<Resolved, CoreError> {
+        let aliases = Self::aliases()?;
+
+        if aliases.iter().any(|alias| alias == name) {
+            return Ok(Resolved::Host(Target::resolve(name)?));
+        }
+
+        let Resource::Cluster(cluster) = self.cluster(&aliases, name)?.resource else {
+            return Err(Self::missing(name));
+        };
+
+        Ok(Resolved::Cluster {
+            spec: self.spec(cluster.context),
             via: None,
-        }),
+        })
     }
-}
 
-fn resource_name(context: &str) -> String {
-    let allowed = |character: char| character.is_ascii_alphanumeric() || "-_.".contains(character);
-
-    let name: String = context
-        .chars()
-        .map(|character| if allowed(character) { character } else { '-' })
-        .collect();
-
-    name.trim_start_matches('.')
-        .chars()
-        .take(LONGEST_NAME)
-        .collect()
-}
-
-fn missing(name: &str) -> CoreError {
-    CoreError::Project(format!(
-        "there is no Host {name} in {} and no kubeconfig context of that name",
-        config_path()
-    ))
-}
-
-fn host_resource(target: &Target) -> HostResource {
-    let via = target
-        .jumps()
-        .iter()
-        .map(Target::label)
-        .collect::<Vec<_>>()
-        .join(",");
-
-    HostResource {
-        address: target.host().to_owned(),
-        port: Some(target.port()),
-        user: Some(target.user().to_owned()),
-        via: (!via.is_empty()).then_some(via),
-        identity: target
-            .identity_files()
-            .first()
-            .map(|path| path.display().to_string()),
+    fn database(&self, _name: &str) -> Result<ResolvedDatabase, CoreError> {
+        Err(CoreError::PersonalHasNoDatabases)
     }
-}
 
-fn config_path() -> String {
-    synt_platform::home_directory().map_or_else(
-        |_| format!("~/{CONFIG}"),
-        |home| home.join(CONFIG).display().to_string(),
-    )
+    fn put(
+        &mut self,
+        _name: &str,
+        _admitted: Option<&str>,
+        _resource: Resource,
+    ) -> Result<ResourceEntry, CoreError> {
+        Err(CoreError::PersonalReadOnly(Self::config_path()))
+    }
+
+    fn remove(&mut self, _name: &str, _admitted: Option<&str>) -> Result<ResourceEntry, CoreError> {
+        Err(CoreError::PersonalReadOnly(Self::config_path()))
+    }
+
+    fn place(&self) -> Result<ProjectPlace, CoreError> {
+        Err(CoreError::PersonalHasNoFiles)
+    }
+
+    fn canonical_name(&self) -> String {
+        Self::SLUG.to_owned()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::resource_name;
+    use super::Personal;
 
     #[test]
     fn a_context_name_becomes_a_resource_name() {
-        assert_eq!(resource_name("kind-synt"), "kind-synt");
+        assert_eq!(Personal::resource_name("kind-synt"), "kind-synt");
         assert_eq!(
-            resource_name("arn:aws:eks:eu-west-1:123:cluster/orders"),
+            Personal::resource_name("arn:aws:eks:eu-west-1:123:cluster/orders"),
             "arn-aws-eks-eu-west-1-123-cluster-orders"
         );
-        assert_eq!(resource_name("..hidden"), "hidden");
-        assert_eq!(resource_name(&"x".repeat(80)).len(), 64);
+        assert_eq!(Personal::resource_name("..hidden"), "hidden");
+        assert_eq!(Personal::resource_name(&"x".repeat(80)).len(), 64);
     }
 }

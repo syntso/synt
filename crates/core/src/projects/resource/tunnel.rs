@@ -2,7 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use synt_ssh::Destination;
 
-use crate::projects::names::check_name;
+use super::{ResourceName, ResourceSpec};
+use crate::CoreError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -15,23 +16,8 @@ pub struct TunnelResource {
 }
 
 impl TunnelResource {
-    pub(crate) fn check(&self) -> Result<(), String> {
-        check_name(&self.host).map_err(|reason| format!("host: {reason}"))?;
-
-        if self.local == Some(0) {
-            return Err("local must be between 1 and 65535".to_owned());
-        }
-
-        self.destination().map(|_| ())
-    }
-
-    pub(crate) fn destination(&self) -> Result<Destination, String> {
-        let invalid = || {
-            format!(
-                "remote must be host:port, such as orders-db:5432, got {:?}",
-                self.remote
-            )
-        };
+    pub(crate) fn destination(&self) -> Result<Destination, CoreError> {
+        let invalid = || CoreError::NotARemote(self.remote.clone());
 
         let (host, port) = self.remote.rsplit_once(':').ok_or_else(invalid)?;
         let host = host.trim_start_matches('[').trim_end_matches(']');
@@ -42,5 +28,21 @@ impl TunnelResource {
         }
 
         Ok(Destination::new(host, port))
+    }
+}
+
+impl ResourceSpec for TunnelResource {
+    fn kind(&self) -> &'static str {
+        "tunnel"
+    }
+
+    fn check(&self) -> Result<(), CoreError> {
+        ResourceName::check(&self.host, "host")?;
+
+        if self.local == Some(0) {
+            return Err(CoreError::PortZero("local"));
+        }
+
+        self.destination().map(drop)
     }
 }

@@ -1,6 +1,9 @@
+use std::fmt;
+
 use synt_ssh::Target;
 
-use super::{DatabaseResource, Resolved};
+use super::login_label;
+use crate::projects::DatabaseResource;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedDatabase {
@@ -8,13 +11,13 @@ pub(crate) struct ResolvedDatabase {
     pub(crate) via: Option<Target>,
 }
 
-impl ResolvedDatabase {
-    pub(crate) fn describe(&self) -> String {
-        let place = self.resource.describe();
+impl fmt::Display for ResolvedDatabase {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}", self.resource)?;
 
         match &self.via {
-            Some(host) => format!("{place} via {}", Resolved::Host(host.clone()).describe()),
-            None => place,
+            Some(host) => write!(formatter, " via {}", login_label(host)),
+            None => Ok(()),
         }
     }
 }

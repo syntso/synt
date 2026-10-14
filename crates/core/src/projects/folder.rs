@@ -1,67 +1,55 @@
 use std::collections::BTreeMap;
-use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
-use synt_platform::{read_plain_file, replace_file};
 use synt_ssh::Target;
 
-use super::ProjectInfo;
-use super::file::ProjectFile;
-use crate::CoreError;
-use crate::projects::names::check_name;
-use crate::projects::{
-    Problem, Resolved, ResolvedDatabase, Resource, ResourceEntry, ResourceListing,
+use super::{
+    HostResource, Problem, ProjectFile, ProjectId, ProjectInfo, ProjectPlace, ProjectSlug,
+    ProjectSource, Resolved, ResolvedDatabase, Resource, ResourceEntry, ResourceFolder,
+    ResourceListing, ResourceName,
 };
+use crate::CoreError;
 
-pub(crate) const PROJECT_FILE: &str = "synt.toml";
-pub(crate) const RESOURCES: &str = "resources";
-
-const EXTENSION: &str = "toml";
 const LONGEST_VIA_CHAIN: usize = 8;
-const LARGEST_FILE: u64 = 64 * 1024;
-const ID_LENGTH: usize = 32;
 
 #[derive(Debug)]
-pub(crate) struct Project {
-    id: String,
+pub(crate) struct ProjectFolder {
+    id: ProjectId,
     name: String,
-    slug: String,
+    slug: ProjectSlug,
     path: PathBuf,
     resources: BTreeMap<String, Resource>,
     problems: BTreeMap<String, String>,
 }
 
-impl Project {
-    pub(crate) fn load(path: &Path, slug: String) -> Result<Self, CoreError> {
-        let file = read_or_create_project_file(path, &slug)?;
-        let id = file.id.filter(|id| is_project_id(id)).ok_or_else(|| {
-            CoreError::Project(format!(
-                "{} needs an id of {ID_LENGTH} lowercase hex characters",
-                path.join(PROJECT_FILE).display()
-            ))
-        })?;
+impl ProjectFolder {
+    pub(crate) fn load(path: &Path, slug: ProjectSlug) -> Result<Self, CoreError> {
+        let file = ProjectFile::read_or_create(path, &slug)?;
+        let id = file
+            .id()
+            .cloned()
+            .ok_or_else(|| CoreError::ProjectIdMissing(ProjectFile::path_in(path)))?;
 
-        prepare_resources_folder(path)?;
+        ResourceFolder::prepare(path)?;
 
-        let mut project = Self {
+        let mut folder = Self {
             id,
-            name: file.name.unwrap_or_else(|| slug.clone()),
+            name: file.name().map_or_else(|| slug.to_string(), str::to_owned),
             slug,
             path: path.to_owned(),
             resources: BTreeMap::new(),
             problems: BTreeMap::new(),
         };
-        project.rescan();
+        folder.rescan();
 
-        Ok(project)
+        Ok(folder)
     }
 
-    pub(crate) fn id(&self) -> &str {
+    pub(crate) fn id(&self) -> &ProjectId {
         &self.id
     }
 
-    pub(crate) fn slug(&self) -> &str {
+    pub(crate) fn slug(&self) -> &ProjectSlug {
         &self.slug
     }
 
@@ -69,139 +57,13 @@ impl Project {
         &self.path
     }
 
-    pub(crate) fn info(&self) -> ProjectInfo {
-        ProjectInfo {
-            id: self.id.clone(),
-            name: self.name.clone(),
-            slug: self.slug.clone(),
-            path: self.path.display().to_string(),
-            read_only: false,
-            resources: self.resources.len(),
-            problems: self.problems(),
-        }
-    }
-
-    pub(crate) fn listing(&self) -> ResourceListing {
-        let resources = self
-            .resources
-            .iter()
-            .map(|(name, resource)| ResourceEntry {
-                name: name.clone(),
-                resource: resource.clone(),
-            })
-            .collect();
-
-        ResourceListing {
-            project: self.slug.clone(),
-            resources,
-            problems: self.problems(),
-        }
-    }
-
-    pub(crate) fn resource(&self, name: &str) -> Result<ResourceEntry, CoreError> {
-        let resource = self.find(name)?;
-
-        Ok(ResourceEntry {
-            name: name.to_owned(),
-            resource: resource.clone(),
-        })
-    }
-
-    pub(crate) fn resolve(&self, name: &str) -> Result<Resolved, CoreError> {
-        match self.find(name)? {
-            Resource::Host(_) => Ok(Resolved::Host(self.host_target(name)?)),
-            Resource::Tunnel(tunnel) => {
-                let remote = tunnel
-                    .destination()
-                    .map_err(|reason| self.broken(name, &reason))?;
-
-                Ok(Resolved::Tunnel {
-                    host: self.host_target(&tunnel.host)?,
-                    remote,
-                    local: tunnel.local,
-                })
-            }
-            Resource::Cluster(cluster) => {
-                let spec = cluster
-                    .spec()
-                    .map_err(|reason| self.broken(name, &reason))?;
-                let via = cluster
-                    .via
-                    .as_deref()
-                    .map(|via| self.host_target(via))
-                    .transpose()?;
-
-                Ok(Resolved::Cluster { spec, via })
-            }
-            Resource::Database(_) => Err(CoreError::Project(format!(
-                "@{}/{name} is a database; reach it with the db.* actions",
-                self.slug
-            ))),
-        }
-    }
-
-    pub(crate) fn database(&self, name: &str) -> Result<ResolvedDatabase, CoreError> {
-        let found = self.find(name)?;
-        let Resource::Database(database) = found else {
-            return Err(CoreError::Project(format!(
-                "@{}/{name} is a {}, not a database",
-                self.slug,
-                found.kind()
-            )));
-        };
-
-        let via = database
-            .via
-            .as_deref()
-            .map(|host| self.host_target(host))
-            .transpose()?;
-
-        Ok(ResolvedDatabase {
-            resource: database.clone(),
-            via,
-        })
-    }
-
-    pub(crate) fn put(&mut self, name: &str, resource: Resource) -> Result<(), CoreError> {
-        check_name(name).map_err(CoreError::Project)?;
-        resource.check().map_err(CoreError::Project)?;
-
-        let text = resource
-            .to_toml()
-            .map_err(|error| CoreError::Project(format!("cannot write {name}: {error}")))?;
-
-        check_resources_folder(&self.path)
-            .and_then(|()| replace_file(&self.resource_path(name), text.as_bytes()))
-            .map_err(|error| CoreError::Project(format!("cannot write {name}: {error}")))?;
-
-        self.resources.insert(name.to_owned(), resource);
-        self.problems.remove(&resource_file(name));
-
-        Ok(())
-    }
-
-    pub(crate) fn remove(&mut self, name: &str) -> Result<Resource, CoreError> {
-        check_name(name).map_err(CoreError::Project)?;
-
-        let resource = self.find(name)?.clone();
-
-        match fs::remove_file(self.resource_path(name)) {
-            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
-            _ => {}
-        }
-
-        self.resources.remove(name);
-        self.problems.remove(&resource_file(name));
-
-        Ok(resource)
-    }
-
     pub(crate) fn rescan(&mut self) -> Vec<String> {
         let mut changes = self.reread_project_file();
-        let found = match self.resource_files() {
+
+        let found = match ResourceFolder::of(&self.path).list() {
             Ok(found) => found,
             Err(error) => {
-                changes.push(format!("cannot read {RESOURCES}: {error}"));
+                changes.push(format!("cannot read {}: {error}", ResourceFolder::NAME));
                 return changes;
             }
         };
@@ -216,60 +78,98 @@ impl Project {
     }
 
     fn find(&self, name: &str) -> Result<&Resource, CoreError> {
-        self.resources.get(name).ok_or_else(|| {
-            let broken = self
-                .problems
-                .get(&resource_file(name))
-                .map(|error| format!(": its file is broken: {error}"))
-                .unwrap_or_default();
+        if let Some(resource) = self.resources.get(name) {
+            return Ok(resource);
+        }
 
-            CoreError::Project(format!(
-                "project {} has no resource {name}{broken}",
-                self.slug
-            ))
-        })
+        let slug = self.slug.to_string();
+        let name = name.to_owned();
+
+        match self.problems.get(&ResourceFolder::file_label(&name)) {
+            Some(problem) => Err(CoreError::BrokenFile {
+                slug,
+                name,
+                problem: problem.clone(),
+            }),
+            None => Err(CoreError::NoResource { slug, name }),
+        }
     }
 
     fn host_target(&self, name: &str) -> Result<Target, CoreError> {
+        let chain = self.via_chain(name)?;
+        let mut hops = Vec::with_capacity(chain.len());
+
+        for (hop, host) in chain.iter().rev() {
+            hops.push(host.target().map_err(|reason| self.broken(hop, reason))?);
+        }
+
+        let target = hops
+            .pop()
+            .ok_or_else(|| self.broken(name, CoreError::EmptyChain))?;
+
+        Ok(target.through(hops))
+    }
+
+    fn via_chain<'a>(
+        &'a self,
+        name: &'a str,
+    ) -> Result<Vec<(&'a str, &'a HostResource)>, CoreError> {
         let mut chain = Vec::new();
         let mut next = Some(name);
 
         while let Some(current) = next {
             if chain.iter().any(|(known, _)| *known == current) {
-                return Err(self.broken(name, &format!("its via chain loops through {current}")));
-            }
-            if chain.len() > LONGEST_VIA_CHAIN {
-                return Err(self.broken(
-                    name,
-                    &format!("its via chain is longer than {LONGEST_VIA_CHAIN} hops"),
-                ));
+                return Err(self.broken(name, CoreError::LoopingChain(current.to_owned())));
             }
 
-            let resource = self.find(current)?;
-            let Resource::Host(host) = resource else {
-                return Err(CoreError::Project(format!(
-                    "{current} in project {} is a {}, not a host",
-                    self.slug,
-                    resource.kind()
-                )));
-            };
+            if chain.len() > LONGEST_VIA_CHAIN {
+                return Err(self.broken(name, CoreError::LongChain(LONGEST_VIA_CHAIN)));
+            }
+
+            let host = self.host(current)?;
 
             next = host.via.as_deref();
             chain.push((current, host));
         }
 
-        let mut hops = Vec::new();
-        for (hop, host) in chain.iter().rev() {
-            hops.push(host.target().map_err(|reason| self.broken(hop, &reason))?);
-        }
-
-        let target = hops.pop().ok_or_else(|| self.broken(name, "it is empty"))?;
-
-        Ok(target.through(hops))
+        Ok(chain)
     }
 
-    fn broken(&self, name: &str, reason: &str) -> CoreError {
-        CoreError::Project(format!("@{}/{name}: {reason}", self.slug))
+    fn host(&self, name: &str) -> Result<&HostResource, CoreError> {
+        match self.find(name)? {
+            Resource::Host(host) => Ok(host),
+            other => Err(CoreError::NotAHost {
+                slug: self.slug.to_string(),
+                name: name.to_owned(),
+                kind: other.kind(),
+            }),
+        }
+    }
+
+    fn via(&self, via: Option<&str>) -> Result<Option<Target>, CoreError> {
+        via.map(|via| self.host_target(via)).transpose()
+    }
+
+    fn broken(&self, name: &str, reason: CoreError) -> CoreError {
+        CoreError::BrokenResource {
+            slug: self.slug.to_string(),
+            name: name.to_owned(),
+            reason: Box::new(reason),
+        }
+    }
+
+    fn check_admitted(&self, name: &str, admitted: Option<&str>) -> Result<(), CoreError> {
+        let actual = format!("@{}/{name}", self.id);
+
+        if admitted == Some(actual.as_str()) {
+            return Ok(());
+        }
+
+        Err(CoreError::AdmittedElsewhere {
+            slug: self.slug.to_string(),
+            name: name.to_owned(),
+            actual,
+        })
     }
 
     fn problems(&self) -> Vec<Problem> {
@@ -283,51 +183,28 @@ impl Project {
     }
 
     fn reread_project_file(&mut self) -> Vec<String> {
-        let path = self.path.join(PROJECT_FILE);
-
-        let file = match read_project_file(&path) {
+        let file = match ProjectFile::read(&ProjectFile::path_in(&self.path)) {
             Ok(Some(file)) => file,
-            Ok(None) => return self.note_problem(PROJECT_FILE, "the file is missing".to_owned()),
-            Err(error) => return self.note_problem(PROJECT_FILE, error),
+            Ok(None) => return self.note_problem(ProjectFile::NAME, "the file is missing"),
+            Err(error) => return self.note_problem(ProjectFile::NAME, &error.to_string()),
         };
 
-        if file.id.as_deref() != Some(self.id.as_str()) {
+        if file.id() != Some(&self.id) {
             let reason = format!("the id cannot change; {} stays in use", self.id);
-            return self.note_problem(PROJECT_FILE, reason);
+            return self.note_problem(ProjectFile::NAME, &reason);
         }
 
-        let name = file.name.unwrap_or_else(|| self.slug.clone());
-        let solved = self.problems.remove(PROJECT_FILE).is_some();
+        let name = file
+            .name()
+            .map_or_else(|| self.slug.to_string(), str::to_owned);
+        let solved = self.problems.remove(ProjectFile::NAME).is_some();
 
         if name == self.name && !solved {
             return Vec::new();
         }
 
         self.name = name;
-        vec![format!("reloaded {PROJECT_FILE}")]
-    }
-
-    fn resource_files(&self) -> io::Result<BTreeMap<String, PathBuf>> {
-        check_resources_folder(&self.path)?;
-
-        let mut found = BTreeMap::new();
-
-        for entry in fs::read_dir(self.path.join(RESOURCES))? {
-            let entry = entry?;
-
-            if !entry.file_type()?.is_file() {
-                continue;
-            }
-
-            let path = entry.path();
-            let Some(name) = resource_name(&path) else {
-                continue;
-            };
-
-            found.insert(name, path);
-        }
-
-        Ok(found)
+        vec![format!("reloaded {}", ProjectFile::NAME)]
     }
 
     fn forget_missing(&mut self, found: &BTreeMap<String, PathBuf>) -> Vec<String> {
@@ -339,31 +216,35 @@ impl Project {
             .collect();
 
         self.problems.retain(|file, _| {
-            file == PROJECT_FILE || found.keys().any(|name| resource_file(name) == *file)
+            file == ProjectFile::NAME
+                || found
+                    .keys()
+                    .any(|name| ResourceFolder::file_label(name) == *file)
         });
 
         missing
             .into_iter()
             .map(|name| {
                 self.resources.remove(&name);
-                format!("removed {}", resource_file(&name))
+                format!("removed {}", ResourceFolder::file_label(&name))
             })
             .collect()
     }
 
     fn reload(&mut self, name: &str, path: &Path) -> Vec<String> {
-        let file = resource_file(name);
+        let file = ResourceFolder::file_label(name);
+        let known = self.resources.contains_key(name);
 
-        let parsed = check_name(name).and_then(|()| read_resource(path));
+        let parsed = ResourceName::parse(name).and_then(|_| ResourceFolder::read(path));
         let resource = match parsed {
             Ok(resource) => resource,
             Err(error) => {
-                let kept = if self.resources.contains_key(name) {
+                let kept = if known {
                     "; the last good version stays in use"
                 } else {
                     ""
                 };
-                return self.note_problem(&file, format!("{error}{kept}"));
+                return self.note_problem(&file, &format!("{error}{kept}"));
             }
         };
 
@@ -373,146 +254,142 @@ impl Project {
             return Vec::new();
         }
 
-        let verb = if self.resources.contains_key(name) {
-            "reloaded"
-        } else {
-            "loaded"
-        };
+        let verb = if known { "reloaded" } else { "loaded" };
         self.resources.insert(name.to_owned(), resource);
 
         vec![format!("{verb} {file}")]
     }
 
-    fn note_problem(&mut self, file: &str, error: String) -> Vec<String> {
-        if self.problems.get(file) == Some(&error) {
+    fn note_problem(&mut self, file: &str, error: &str) -> Vec<String> {
+        if self.problems.get(file).map(String::as_str) == Some(error) {
             return Vec::new();
         }
 
         let change = format!("{file} is broken: {error}");
-        self.problems.insert(file.to_owned(), error);
+        self.problems.insert(file.to_owned(), error.to_owned());
 
         vec![change]
     }
-
-    fn resource_path(&self, name: &str) -> PathBuf {
-        self.path.join(resource_file(name))
-    }
 }
 
-pub(crate) fn is_project_id(text: &str) -> bool {
-    text.len() == ID_LENGTH
-        && text
-            .chars()
-            .all(|character| character.is_ascii_digit() || ('a'..='f').contains(&character))
-}
-
-fn prepare_resources_folder(project: &Path) -> Result<(), CoreError> {
-    match fs::create_dir(project.join(RESOURCES)) {
-        Err(error) if error.kind() != io::ErrorKind::AlreadyExists => return Err(error.into()),
-        _ => {}
+impl ProjectSource for ProjectFolder {
+    fn info(&self) -> Result<ProjectInfo, CoreError> {
+        Ok(ProjectInfo {
+            id: self.id.to_string(),
+            name: self.name.clone(),
+            slug: self.slug.to_string(),
+            path: self.path.display().to_string(),
+            read_only: false,
+            resources: self.resources.len(),
+            problems: self.problems(),
+        })
     }
 
-    check_resources_folder(project).map_err(|error| CoreError::Project(error.to_string()))
-}
+    fn listing(&self) -> Result<ResourceListing, CoreError> {
+        let resources = self
+            .resources
+            .iter()
+            .map(|(name, resource)| ResourceEntry::new(name, resource.clone()))
+            .collect();
 
-fn check_resources_folder(project: &Path) -> io::Result<()> {
-    let folder = project.join(RESOURCES);
-
-    if fs::symlink_metadata(&folder)?.is_dir() {
-        return Ok(());
+        Ok(ResourceListing {
+            project: self.slug.to_string(),
+            resources,
+            problems: self.problems(),
+        })
     }
 
-    Err(io::Error::new(
-        io::ErrorKind::InvalidInput,
-        format!("{} must be a plain folder, not a link", folder.display()),
-    ))
-}
+    fn resource(&self, name: &str) -> Result<ResourceEntry, CoreError> {
+        let resource = self.find(name)?;
 
-fn read_text(path: &Path) -> io::Result<String> {
-    let bytes = read_plain_file(path, LARGEST_FILE)?;
-
-    String::from_utf8(bytes).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("{} is not UTF-8 text", path.display()),
-        )
-    })
-}
-
-fn resource_file(name: &str) -> String {
-    format!("{RESOURCES}/{name}.{EXTENSION}")
-}
-
-fn resource_name(path: &Path) -> Option<String> {
-    if path.extension()? != EXTENSION {
-        return None;
+        Ok(ResourceEntry::new(name, resource.clone()))
     }
 
-    let stem = path.file_stem()?.to_str()?;
-
-    if stem.starts_with('.') {
-        return None;
+    fn resolve(&self, name: &str) -> Result<Resolved, CoreError> {
+        match self.find(name)? {
+            Resource::Host(_) => Ok(Resolved::Host(self.host_target(name)?)),
+            Resource::Tunnel(tunnel) => Ok(Resolved::Tunnel {
+                host: self.host_target(&tunnel.host)?,
+                remote: tunnel
+                    .destination()
+                    .map_err(|reason| self.broken(name, reason))?,
+                local: tunnel.local,
+            }),
+            Resource::Cluster(cluster) => Ok(Resolved::Cluster {
+                spec: cluster.spec().map_err(|reason| self.broken(name, reason))?,
+                via: self.via(cluster.via.as_deref())?,
+            }),
+            Resource::Database(_) => Err(CoreError::IsADatabase {
+                slug: self.slug.to_string(),
+                name: name.to_owned(),
+            }),
+        }
     }
 
-    Some(stem.to_owned())
-}
+    fn database(&self, name: &str) -> Result<ResolvedDatabase, CoreError> {
+        let found = self.find(name)?;
 
-fn read_resource(path: &Path) -> Result<Resource, String> {
-    let text = read_text(path).map_err(|error| error.to_string())?;
+        let Resource::Database(database) = found else {
+            return Err(CoreError::NotADatabase {
+                slug: self.slug.to_string(),
+                name: name.to_owned(),
+                kind: found.kind(),
+            });
+        };
 
-    Resource::from_toml(&text)
-}
-
-fn read_project_file(path: &Path) -> Result<Option<ProjectFile>, String> {
-    let text = match read_text(path) {
-        Ok(text) => text,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error.to_string()),
-    };
-
-    toml::from_str(&text)
-        .map(Some)
-        .map_err(|error| error.message().to_owned())
-}
-
-fn read_or_create_project_file(path: &Path, slug: &str) -> Result<ProjectFile, CoreError> {
-    let file_path = path.join(PROJECT_FILE);
-    let invalid = |reason: String| CoreError::Project(format!("{}: {reason}", file_path.display()));
-
-    let existing = read_project_file(&file_path).map_err(invalid)?;
-
-    if let Some(file) = &existing
-        && file.id.is_some()
-    {
-        return Ok(file.clone());
+        Ok(ResolvedDatabase {
+            resource: database.clone(),
+            via: self.via(database.via.as_deref())?,
+        })
     }
 
-    let id = new_id()?;
-    let old = read_text(&file_path).unwrap_or_default();
-    let name_line = if existing
-        .as_ref()
-        .and_then(|file| file.name.as_ref())
-        .is_some()
-    {
-        String::new()
-    } else {
-        format!("name = {}\n", toml_string(slug))
-    };
+    fn put(
+        &mut self,
+        name: &str,
+        admitted: Option<&str>,
+        resource: Resource,
+    ) -> Result<ResourceEntry, CoreError> {
+        self.check_admitted(name, admitted)?;
 
-    let text = format!("id = \"{id}\"\n{name_line}{old}");
-    replace_file(&file_path, text.as_bytes())?;
+        let checked = ResourceName::parse(name)?;
+        resource.check()?;
 
-    let written = read_project_file(&file_path).map_err(invalid)?;
-    written.ok_or_else(|| invalid("the file vanished after it was written".to_owned()))
-}
+        ResourceFolder::of(&self.path)
+            .write(&checked, &resource)
+            .map_err(|reason| CoreError::ResourceWrite {
+                name: name.to_owned(),
+                reason: Box::new(reason),
+            })?;
 
-fn new_id() -> Result<String, CoreError> {
-    let mut bytes = [0_u8; 16];
-    getrandom::fill(&mut bytes).map_err(|error| CoreError::Random(error.to_string()))?;
+        self.resources.insert(name.to_owned(), resource.clone());
+        self.problems.remove(&ResourceFolder::file_label(name));
 
-    Ok(data_encoding::HEXLOWER.encode(&bytes))
-}
+        Ok(ResourceEntry::new(name, resource))
+    }
 
-fn toml_string(text: &str) -> String {
-    toml::Value::String(text.to_owned()).to_string()
+    fn remove(&mut self, name: &str, admitted: Option<&str>) -> Result<ResourceEntry, CoreError> {
+        self.check_admitted(name, admitted)?;
+
+        let checked = ResourceName::parse(name)?;
+        let resource = self.find(name)?.clone();
+
+        ResourceFolder::of(&self.path).remove(&checked)?;
+
+        self.resources.remove(name);
+        self.problems.remove(&ResourceFolder::file_label(name));
+
+        Ok(ResourceEntry::new(name, resource))
+    }
+
+    fn place(&self) -> Result<ProjectPlace, CoreError> {
+        Ok(ProjectPlace {
+            id: self.id.clone(),
+            slug: self.slug.clone(),
+            path: self.path.clone(),
+        })
+    }
+
+    fn canonical_name(&self) -> String {
+        self.id.to_string()
+    }
 }

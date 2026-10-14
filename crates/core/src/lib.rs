@@ -10,7 +10,7 @@ mod extensions;
 pub mod fuzzing;
 mod grants;
 mod idle;
-mod keys;
+mod journal_keys;
 mod link;
 mod locked;
 mod log;
@@ -27,19 +27,21 @@ mod ssh_keys;
 mod state;
 mod storage;
 mod terminal;
+mod vault;
 
 pub use broker::Broker;
 pub use builtin::{
-    Databases, Files, GrantList, GrantRevoke, JournalPage, JournalVerify, KeyGenerate, KeyImport,
-    KeyList, KeyRemove, Kube, LocalSessionOpen, Ping, Pong, ProjectClose, ProjectList, ProjectOpen,
-    ResourceGet, ResourceList, ResourcePut, ResourceRemove, SecretList, SecretPut, SecretRemove,
-    SessionAttach, SessionBlocks, SessionClose, SessionIntegration, SessionList, SessionResize,
-    SshConnections, SshExec, SshSessionOpen, SshWarm, TunnelClose, TunnelList, TunnelOpen,
+    Databases, Files, GrantActions, GrantList, GrantRevoke, JournalPage, JournalVerify, KeyActions,
+    KeyGenerate, KeyImport, KeyList, KeyRemove, Kube, LocalSessionOpen, Ping, Pong, ProjectClose,
+    ProjectList, ProjectOpen, ResourceGet, ResourceList, ResourcePut, ResourceRemove,
+    SecretActions, SecretList, SecretPut, SecretRemove, SessionAttach, SessionBlocks, SessionClose,
+    SessionIntegration, SessionList, SessionResize, SshConnections, SshExec, SshSessionOpen,
+    SshWarm, TunnelClose, TunnelList, TunnelOpen,
 };
 pub use core::{Core, VERSION};
 pub use error::CoreError;
 pub use extensions::{CoreCaller, CoreScreen, EventFeed, ExtensionMerger};
-pub use grants::{AlwaysGrants, GrantSeal};
+pub use grants::{AlwaysGrants, GrantId, GrantScope, GrantSeal, StandingGrant};
 pub use idle::{Activity, IdleWatch};
 pub use login_command::LoginCommand;
 pub use projects::{
@@ -47,9 +49,10 @@ pub use projects::{
     TunnelResource,
 };
 pub use runbooks::{Runbooks, Runs};
-pub use secrets::{SecretInfo, SecretName, Secrets};
+pub use secrets::{SecretInfo, SecretItem, SecretName, Secrets};
 pub use server::Server;
-pub use ssh_keys::{KeyName, SshKeys};
+pub use ssh_keys::{KeyInfo, KeyName, SshKeyItem, SshKeys};
 pub use state::State;
 pub use storage::Storage;
 pub use terminal::Terminals;
+pub use vault::{VaultKind, VaultName};

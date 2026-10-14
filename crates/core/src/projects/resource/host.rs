@@ -4,8 +4,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use synt_ssh::Target;
 
-use crate::projects::local_path::local_path;
-use crate::projects::names::check_name;
+use super::{ResourceName, ResourceSpec};
+use crate::CoreError;
+use crate::projects::LocalPath;
 use crate::ssh_keys::KeyName;
 
 const DEFAULT_PORT: u16 = 22;
@@ -30,38 +31,32 @@ pub struct HostResource {
 }
 
 impl HostResource {
-    pub(crate) fn check(&self) -> Result<(), String> {
-        if !is_plain_word(&self.address) {
-            return Err(format!(
-                "address must be a host name or address, got {:?}",
-                self.address
-            ));
-        }
+    pub(crate) fn of_target(target: &Target) -> Self {
+        let via = target
+            .jumps()
+            .iter()
+            .map(Target::label)
+            .collect::<Vec<_>>()
+            .join(",");
 
-        if self.port == Some(0) {
-            return Err("port must be between 1 and 65535".to_owned());
+        Self {
+            address: target.host().to_owned(),
+            port: Some(target.port()),
+            user: Some(target.user().to_owned()),
+            via: (!via.is_empty()).then_some(via),
+            identity: target
+                .identity_files()
+                .first()
+                .map(|path| path.display().to_string()),
         }
-
-        if let Some(user) = &self.user
-            && (!is_plain_word(user) || user.contains('@'))
-        {
-            return Err(format!("user must be a login name, got {user:?}"));
-        }
-
-        if let Some(via) = &self.via {
-            check_name(via).map_err(|reason| format!("via: {reason}"))?;
-        }
-
-        self.vault_key()?;
-        self.identity_files().map(|_| ())
     }
 
-    pub(crate) fn target(&self) -> Result<Target, String> {
+    pub(crate) fn target(&self) -> Result<Target, CoreError> {
         let user = self
             .user
             .clone()
             .or_else(synt_ssh::local_user)
-            .ok_or("no user given and none found in the environment")?;
+            .ok_or(CoreError::NoLocalUser)?;
 
         let target = Target::new(&self.address, self.port.unwrap_or(DEFAULT_PORT), user)
             .with_identity_files(self.identity_files()?);
@@ -72,15 +67,20 @@ impl HostResource {
         }
     }
 
-    fn vault_key(&self) -> Result<Option<KeyName>, String> {
+    fn vault_key(&self) -> Result<Option<KeyName>, CoreError> {
         let Some(identity) = self.identity.as_deref() else {
             return Ok(None);
         };
 
-        KeyName::from_reference(identity).transpose()
+        let named = KeyName::from_reference(identity).transpose();
+
+        named.map_err(|reason| CoreError::IdentityName {
+            identity: identity.to_owned(),
+            reason: Box::new(reason),
+        })
     }
 
-    fn identity_files(&self) -> Result<Vec<PathBuf>, String> {
+    fn identity_files(&self) -> Result<Vec<PathBuf>, CoreError> {
         let Some(identity) = self.identity.as_deref() else {
             return Ok(Vec::new());
         };
@@ -89,25 +89,53 @@ impl HostResource {
             return Ok(Vec::new());
         }
 
-        let path = local_path(identity).map_err(|_| {
-            format!(
-                "identity {identity:?} must be \"agent\", \"secret://<name>\", an absolute path, \
-                 or a path starting with ~/"
-            )
-        })?;
+        let path = LocalPath::parse(identity)
+            .map_err(|_| CoreError::NotAnIdentity(identity.to_owned()))?;
 
-        Ok(vec![path])
+        Ok(vec![path.into_path()])
+    }
+
+    fn is_plain_word(text: &str) -> bool {
+        !text.is_empty()
+            && !text.contains(|character: char| character.is_whitespace() || character.is_control())
     }
 }
 
-fn is_plain_word(text: &str) -> bool {
-    !text.is_empty()
-        && !text.contains(|character: char| character.is_whitespace() || character.is_control())
+impl ResourceSpec for HostResource {
+    fn kind(&self) -> &'static str {
+        "host"
+    }
+
+    fn check(&self) -> Result<(), CoreError> {
+        if !Self::is_plain_word(&self.address) {
+            return Err(CoreError::NotAnAddress {
+                field: "address",
+                value: self.address.clone(),
+            });
+        }
+
+        if self.port == Some(0) {
+            return Err(CoreError::PortZero("port"));
+        }
+
+        if let Some(user) = &self.user
+            && (!Self::is_plain_word(user) || user.contains('@'))
+        {
+            return Err(CoreError::NotALogin(user.clone()));
+        }
+
+        if let Some(via) = &self.via {
+            ResourceName::check(via, "via")?;
+        }
+
+        self.vault_key()?;
+        self.identity_files().map(drop)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::HostResource;
+    use super::{HostResource, ResourceSpec};
 
     fn host(identity: &str) -> HostResource {
         HostResource {

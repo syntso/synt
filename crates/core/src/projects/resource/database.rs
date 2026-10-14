@@ -1,3 +1,4 @@
+use std::fmt;
 use std::path::PathBuf;
 
 use schemars::JsonSchema;
@@ -5,10 +6,10 @@ use serde::{Deserialize, Serialize};
 use synt_db::{Engine, Server, TlsMode};
 use zeroize::Zeroizing;
 
-use crate::projects::names::check_name;
+use super::{ResourceName, ResourceSpec};
+use crate::CoreError;
+use crate::projects::LocalPath;
 use crate::secrets::SecretName;
-
-const HOME_PREFIX: &str = "~/";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -41,27 +42,15 @@ pub struct DatabaseResource {
 }
 
 impl DatabaseResource {
-    pub(crate) fn check(&self) -> Result<(), String> {
-        if self.engine == Engine::Sqlite {
-            return self.check_file();
-        }
-
-        self.check_network()
-    }
-
-    pub(crate) fn password_name(&self) -> Result<Option<SecretName>, String> {
+    pub(crate) fn password_name(&self) -> Result<Option<SecretName>, CoreError> {
         let Some(password) = self.password.as_deref() else {
             return Ok(None);
         };
 
-        let name = SecretName::from_reference(password).ok_or_else(|| {
-            "password must name a secret kept by the core, such as secret://orders-db; \
-             store it with secret.put"
-                .to_owned()
-        })?;
+        let name = SecretName::from_reference(password).ok_or(CoreError::PasswordNotSecret)?;
 
         name.map(Some)
-            .map_err(|reason| format!("password: {reason}"))
+            .map_err(|reason| CoreError::field("password", reason))
     }
 
     pub(crate) fn tls(&self) -> TlsMode {
@@ -78,12 +67,12 @@ impl DatabaseResource {
             .unwrap_or_default()
     }
 
-    pub(crate) fn server(&self, password: Option<Zeroizing<String>>) -> Result<Server, String> {
+    pub(crate) fn server(&self, password: Option<Zeroizing<String>>) -> Result<Server, CoreError> {
         if self.engine == Engine::Sqlite {
             return Ok(Server::file(self.file()?));
         }
 
-        let host = self.host.clone().ok_or("host is missing")?;
+        let host = self.host.clone().ok_or(CoreError::MissingField("host"))?;
 
         Ok(Server::network(self.engine, host, self.port())
             .with_database(self.database.clone())
@@ -92,9 +81,115 @@ impl DatabaseResource {
             .with_tls(self.tls()))
     }
 
-    pub(crate) fn describe(&self) -> String {
+    fn check_file(&self) -> Result<(), CoreError> {
+        let network_fields = [
+            ("host", self.host.is_some()),
+            ("port", self.port.is_some()),
+            ("database", self.database.is_some()),
+            ("user", self.user.is_some()),
+            ("password", self.password.is_some()),
+            ("via", self.via.is_some()),
+            ("tls", self.tls.is_some()),
+        ];
+
+        if let Some((field, _)) = network_fields.iter().find(|(_, set)| *set) {
+            return Err(CoreError::SqliteTakesPath(field));
+        }
+
+        self.file().map(drop)
+    }
+
+    fn check_network(&self) -> Result<(), CoreError> {
+        if self.path.is_some() {
+            return Err(CoreError::NetworkTakesHost(self.engine));
+        }
+
+        let host = self
+            .host
+            .as_deref()
+            .ok_or(CoreError::MissingField("host"))?;
+
+        if !Self::is_plain_word(host) {
+            return Err(CoreError::NotAnAddress {
+                field: "host",
+                value: host.to_owned(),
+            });
+        }
+
+        if self.port == Some(0) {
+            return Err(CoreError::PortZero("port"));
+        }
+
+        if let Some(user) = &self.user
+            && !Self::is_plain_word(user)
+        {
+            return Err(CoreError::NotALogin(user.clone()));
+        }
+
+        if let Some(via) = &self.via {
+            ResourceName::check(via, "via")?;
+        }
+
+        self.check_engine_rules()?;
+        self.password_name().map(drop)
+    }
+
+    fn check_engine_rules(&self) -> Result<(), CoreError> {
+        if self.engine != Engine::Redis {
+            return Ok(());
+        }
+
+        if self.tls == Some(TlsMode::Prefer) {
+            return Err(CoreError::RedisPrefer);
+        }
+
+        match self.database.as_deref().map(str::parse::<u32>) {
+            Some(Err(_)) => Err(CoreError::RedisDatabase),
+            _ => Ok(()),
+        }
+    }
+
+    fn file(&self) -> Result<PathBuf, CoreError> {
+        let path = self
+            .path
+            .as_deref()
+            .ok_or(CoreError::MissingField("path"))?;
+
+        let file = LocalPath::parse(path).map_err(|reason| CoreError::field("path", reason))?;
+
+        Ok(file.into_path())
+    }
+
+    fn is_plain_word(text: &str) -> bool {
+        !text.is_empty()
+            && !text.contains(|character: char| {
+                character.is_whitespace() || character.is_control() || character == '@'
+            })
+    }
+}
+
+impl ResourceSpec for DatabaseResource {
+    fn kind(&self) -> &'static str {
+        "database"
+    }
+
+    fn check(&self) -> Result<(), CoreError> {
         if self.engine == Engine::Sqlite {
-            return format!("sqlite {}", self.path.as_deref().unwrap_or_default());
+            return self.check_file();
+        }
+
+        self.check_network()
+    }
+}
+
+impl fmt::Display for DatabaseResource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.engine == Engine::Sqlite {
+            return write!(
+                formatter,
+                "sqlite {}",
+                self.path.as_deref().unwrap_or_default()
+            );
         }
 
         let user = self
@@ -109,113 +204,21 @@ impl DatabaseResource {
             .map(|database| format!("/{database}"))
             .unwrap_or_default();
 
-        format!(
+        write!(
+            formatter,
             "{} {user}{host}:{}{database} tls={}",
             self.engine,
             self.port(),
             self.tls()
         )
     }
-
-    fn check_file(&self) -> Result<(), String> {
-        let network_fields = [
-            ("host", self.host.is_some()),
-            ("port", self.port.is_some()),
-            ("database", self.database.is_some()),
-            ("user", self.user.is_some()),
-            ("password", self.password.is_some()),
-            ("via", self.via.is_some()),
-            ("tls", self.tls.is_some()),
-        ];
-
-        if let Some((field, _)) = network_fields.iter().find(|(_, set)| *set) {
-            return Err(format!(
-                "a sqlite database is a file: give its path, not {field}"
-            ));
-        }
-
-        self.file().map(|_| ())
-    }
-
-    fn check_network(&self) -> Result<(), String> {
-        if self.path.is_some() {
-            return Err(format!(
-                "a {} database is reached over the network: give host, not path",
-                self.engine
-            ));
-        }
-
-        let host = self.host.as_deref().ok_or("host is missing")?;
-        if !is_plain_word(host) {
-            return Err(format!("host must be a host name or address, got {host:?}"));
-        }
-
-        if self.port == Some(0) {
-            return Err("port must be between 1 and 65535".to_owned());
-        }
-
-        if let Some(user) = &self.user
-            && !is_plain_word(user)
-        {
-            return Err(format!("user must be a login name, got {user:?}"));
-        }
-
-        if let Some(via) = &self.via {
-            check_name(via).map_err(|reason| format!("via: {reason}"))?;
-        }
-
-        self.check_engine_rules()?;
-        self.password_name().map(|_| ())
-    }
-
-    fn check_engine_rules(&self) -> Result<(), String> {
-        if self.engine != Engine::Redis {
-            return Ok(());
-        }
-
-        if self.tls == Some(TlsMode::Prefer) {
-            return Err(
-                "redis does not negotiate tls; choose disable, require or verify-full".to_owned(),
-            );
-        }
-
-        match self.database.as_deref().map(str::parse::<u32>) {
-            Some(Err(_)) => Err("a redis database is a number such as 0".to_owned()),
-            _ => Ok(()),
-        }
-    }
-
-    fn file(&self) -> Result<PathBuf, String> {
-        let path = self.path.as_deref().ok_or("path is missing")?;
-
-        if let Some(rest) = path.strip_prefix(HOME_PREFIX) {
-            let home = synt_platform::home_directory()
-                .map_err(|error| format!("there is no home folder to expand ~ in: {error}"))?;
-            return Ok(home.join(rest));
-        }
-
-        let file = PathBuf::from(path);
-
-        if !file.is_absolute() {
-            return Err(format!("path {path:?} must be absolute or start with ~/"));
-        }
-
-        Ok(file)
-    }
-}
-
-fn is_plain_word(text: &str) -> bool {
-    !text.is_empty()
-        && !text.contains(|character: char| {
-            character.is_whitespace() || character.is_control() || character == '@'
-        })
 }
 
 #[cfg(test)]
 mod tests {
     use synt_db::{Engine, TlsMode};
 
-    use super::DatabaseResource;
+    use super::{DatabaseResource, ResourceSpec};
 
     fn postgres() -> DatabaseResource {
         DatabaseResource {
@@ -249,9 +252,9 @@ mod tests {
     fn a_full_network_database_passes_and_describes_itself() {
         let resource = postgres();
 
-        assert_eq!(resource.check(), Ok(()));
+        assert!(resource.check().is_ok());
         assert_eq!(
-            resource.describe(),
+            resource.to_string(),
             "postgres app@10.0.2.5:5432/orders tls=require"
         );
     }
@@ -263,7 +266,7 @@ mod tests {
             ..postgres()
         };
 
-        let refused = resource.check().unwrap_err();
+        let refused = resource.check().unwrap_err().to_string();
 
         assert!(refused.contains("secret://"), "{refused}");
         assert!(!refused.contains("hunter2"), "{refused}");
@@ -281,14 +284,14 @@ mod tests {
 
     #[test]
     fn sqlite_takes_an_absolute_path_and_nothing_of_the_network() {
-        assert_eq!(sqlite("/var/lib/app.sqlite").check(), Ok(()));
+        assert!(sqlite("/var/lib/app.sqlite").check().is_ok());
         assert!(sqlite("app.sqlite").check().is_err());
 
         let with_host = DatabaseResource {
             host: Some("x".to_owned()),
             ..sqlite("/var/lib/app.sqlite")
         };
-        assert!(with_host.check().unwrap_err().contains("host"));
+        assert!(with_host.check().unwrap_err().to_string().contains("host"));
     }
 
     #[test]

@@ -1,5 +1,47 @@
+mod change;
+mod file;
+mod folder;
+mod id;
+mod info;
+mod local_path;
+mod open;
+mod personal;
+mod place;
+mod problem;
+mod resolved;
+mod resource;
+mod slug;
+mod source;
+mod sync_folders;
+mod table;
+mod target_ref;
+mod text;
+
+pub use change::ProjectChange;
+pub use id::ProjectId;
+pub use info::ProjectInfo;
+pub(crate) use place::ProjectPlace;
+pub use problem::Problem;
+pub(crate) use resolved::{Resolved, ResolvedDatabase, login_label};
+pub use resource::{
+    ClusterResource, DatabaseResource, HostResource, Resource, ResourceEntry, ResourceListing,
+    TunnelResource,
+};
+pub(crate) use resource::{ResourceFolder, ResourceName, check_name, is_namespace};
+pub use slug::ProjectSlug;
+
+use file::ProjectFile;
+use folder::ProjectFolder;
+use local_path::LocalPath;
+use open::OpenProject;
+use personal::Personal;
+use source::ProjectSource;
+use table::ProjectTable;
+use target_ref::TargetRef;
+use text::Text;
+
 use std::collections::BTreeMap;
-use std::fmt;
+use std::fmt::{self, Display};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -7,24 +49,18 @@ use synt_kube::{ClusterSpec, KubeconfigSource};
 use synt_ssh::Target;
 use tokio::sync::broadcast;
 
-use super::personal::PERSONAL;
-use super::project::is_project_id;
-use super::{
-    OpenProject, Personal, Project, ProjectChange, ProjectInfo, ProjectPlace, Resolved,
-    ResolvedDatabase, Resource, ResourceEntry, ResourceListing, TargetRef,
-};
 use crate::CoreError;
 use crate::locked::locked;
 use crate::log::log;
 use crate::state::State;
 
-type Opened = BTreeMap<String, OpenProject>;
+type Opened = BTreeMap<ProjectSlug, OpenProject>;
 
 const CHANGES_KEPT: usize = 256;
 
 #[derive(Clone)]
 pub struct Projects {
-    state: State,
+    table: ProjectTable,
     opened: Arc<Mutex<Opened>>,
     changes: broadcast::Sender<ProjectChange>,
     personal: Personal,
@@ -37,129 +73,85 @@ impl Projects {
 
     pub fn start_with(state: State, kubeconfig: KubeconfigSource) -> Result<Self, CoreError> {
         let projects = Self {
-            state,
+            table: ProjectTable::new(state),
             opened: Arc::default(),
             changes: broadcast::channel(CHANGES_KEPT).0,
             personal: Personal::new(kubeconfig),
         };
 
-        for path in projects.state.open_projects()? {
-            match projects.open(&path) {
-                Ok(info) => log!(
-                    "reopened project {} ({} resources) at {}",
-                    info.slug,
-                    info.resources,
-                    info.path
-                ),
-                Err(error) => log!("cannot reopen the project at {}: {error}", path.display()),
-            }
-        }
+        projects.reopen()?;
 
         Ok(projects)
-    }
-
-    pub(crate) fn open(&self, path: &Path) -> Result<ProjectInfo, CoreError> {
-        let path = folder(path)?;
-        let slug = slug(&path)?;
-        let mut opened = self.lock();
-
-        if let Some(open) = opened.get(&slug) {
-            let project = open.lock();
-
-            if project.path() == path {
-                return Ok(project.info());
-            }
-
-            return Err(CoreError::Project(format!(
-                "a project named {slug} is already open from {}",
-                project.path().display()
-            )));
-        }
-
-        let project = Project::load(&path, slug.clone())?;
-        let info = project.info();
-
-        if let Some((other, _)) = opened.iter().find(|(_, open)| open.lock().id() == info.id) {
-            return Err(CoreError::Project(format!(
-                "project {other} is already open with the same id {}",
-                info.id
-            )));
-        }
-
-        opened.insert(slug, OpenProject::start(project, self.changes.clone())?);
-        self.state.remember_project(&path)?;
-
-        Ok(info)
-    }
-
-    pub(crate) fn close(&self, project: &str) -> Result<ProjectInfo, CoreError> {
-        if is_personal(project) {
-            return Err(CoreError::Project(
-                "the Personal project is built in and cannot be closed".to_owned(),
-            ));
-        }
-
-        let mut opened = self.lock();
-        let slug = find_slug(&opened, project)?;
-
-        let closed = opened.remove(&slug).ok_or_else(|| not_open(project))?;
-        let info = closed.lock().info();
-
-        self.state.forget_project(Path::new(&info.path))?;
-        drop(opened);
-        drop(closed);
-
-        Ok(info)
     }
 
     pub fn changes(&self) -> broadcast::Receiver<ProjectChange> {
         self.changes.subscribe()
     }
 
-    pub(crate) fn folder(&self, project: &str) -> Result<(String, PathBuf), CoreError> {
-        if is_personal(project) {
-            return Err(Personal::read_only());
+    pub(crate) fn open(&self, path: &Path) -> Result<ProjectInfo, CoreError> {
+        let path = Self::folder_path(path)?;
+        let slug = ProjectSlug::of_folder(&path)?;
+        let mut opened = self.lock();
+
+        if let Some(open) = opened.get(&slug) {
+            return Self::already_open(&open.lock(), &path);
         }
 
-        self.with_project(project, |project| {
-            Ok((project.id().to_owned(), project.path().to_owned()))
-        })
+        let folder = ProjectFolder::load(&path, slug.clone())?;
+        let info = folder.info()?;
+
+        if let Some((other, _)) = opened
+            .iter()
+            .find(|(_, open)| open.lock().id() == folder.id())
+        {
+            return Err(CoreError::IdTaken {
+                other: other.to_string(),
+                id: info.id,
+            });
+        }
+
+        opened.insert(slug, OpenProject::start(folder, self.changes.clone())?);
+        self.table.remember(&path)?;
+
+        Ok(info)
+    }
+
+    pub(crate) fn close(&self, project: &str) -> Result<ProjectInfo, CoreError> {
+        if Personal::is_named(project) {
+            return Err(CoreError::PersonalCannotClose);
+        }
+
+        let mut opened = self.lock();
+        let slug = Self::find_slug(&opened, project)?;
+
+        let closed = opened
+            .remove(&slug)
+            .ok_or_else(|| CoreError::ProjectNotOpen(project.to_owned()))?;
+        let info = closed.lock().info()?;
+
+        self.table.forget(Path::new(&info.path))?;
+        drop(opened);
+        drop(closed);
+
+        Ok(info)
     }
 
     pub(crate) fn list(&self) -> Result<Vec<ProjectInfo>, CoreError> {
         let mut infos = vec![self.personal.info()?];
 
-        infos.extend(self.lock().values().map(|open| open.lock().info()));
+        for open in self.lock().values() {
+            infos.push(open.lock().info()?);
+        }
 
         Ok(infos)
     }
 
-    pub(crate) fn location(&self, project: &str) -> Result<(String, PathBuf), CoreError> {
-        if is_personal(project) {
-            return Err(CoreError::Project(
-                "the Personal project is built from ~/.ssh/config and does not sync".to_owned(),
-            ));
-        }
-
-        self.with_project(project, |project| {
-            Ok((project.id().to_owned(), project.path().to_owned()))
-        })
-    }
-
     pub(crate) fn listing(&self, project: &str) -> Result<ResourceListing, CoreError> {
-        if is_personal(project) {
-            return self.personal.listing();
-        }
-
-        self.with_project(project, |project| Ok(project.listing()))
+        self.with_source(project, |source| source.listing())
     }
 
     pub(crate) fn resource(&self, project: &str, name: &str) -> Result<ResourceEntry, CoreError> {
-        if is_personal(project) {
-            return self.personal.resource(name);
-        }
-
-        self.with_project(project, |project| project.resource(name))
+        self.with_source(project, |source| source.resource(name))
     }
 
     pub(crate) fn put(
@@ -168,16 +160,10 @@ impl Projects {
         admitted: Option<&str>,
         resource: Resource,
     ) -> Result<ResourceEntry, CoreError> {
-        let (project, name) = split_target(target)?;
+        let target = TargetRef::require(target)?;
 
-        if is_personal(project) {
-            return Err(Personal::read_only());
-        }
-
-        self.with_project(project, |project| {
-            check_admitted(project, name, admitted)?;
-            project.put(name, resource)?;
-            project.resource(name)
+        self.with_source(target.project(), |source| {
+            source.put(target.resource(), admitted, resource)
         })
     }
 
@@ -186,56 +172,31 @@ impl Projects {
         target: &str,
         admitted: Option<&str>,
     ) -> Result<ResourceEntry, CoreError> {
-        let (project, name) = split_target(target)?;
+        let target = TargetRef::require(target)?;
 
-        if is_personal(project) {
-            return Err(Personal::read_only());
-        }
-
-        self.with_project(project, |project| {
-            check_admitted(project, name, admitted)?;
-            let resource = project.remove(name)?;
-
-            Ok(ResourceEntry {
-                name: name.to_owned(),
-                resource,
-            })
+        self.with_source(target.project(), |source| {
+            source.remove(target.resource(), admitted)
         })
     }
 
     pub(crate) fn place(&self, project: &str) -> Result<ProjectPlace, CoreError> {
-        if is_personal(project) {
-            return Err(CoreError::Project(
-                "the Personal project is ~/.ssh/config and holds no files of its own; \
-                 open a project folder"
-                    .to_owned(),
-            ));
-        }
-
-        self.with_project(project, |project| {
-            Ok(ProjectPlace {
-                id: project.id().to_owned(),
-                slug: project.slug().to_owned(),
-                path: project.path().to_owned(),
-            })
-        })
+        self.with_source(project, |source| source.place())
     }
 
     pub(crate) fn resolve(&self, text: &str) -> Result<Resolved, CoreError> {
-        let Some(reference) = TargetRef::parse(text) else {
-            let target = Target::resolve(text)?;
-            return Ok(Resolved::Host(target));
+        let Some(target) = TargetRef::parse(text) else {
+            return Ok(Resolved::Host(Target::resolve(text)?));
         };
 
-        let reference = reference.map_err(CoreError::Project)?;
+        let target = target?;
 
-        if is_personal(reference.project) {
-            return self.personal.resolve(reference.resource);
+        if Personal::is_named(target.project()) {
+            return self.personal.resolve(target.resource());
         }
 
-        let resolved = self.with_project(reference.project, |project| {
-            project.resolve(reference.resource)
-        })?;
+        let resolved =
+            self.with_source(target.project(), |source| source.resolve(target.resource()))?;
+
         self.check_kubeconfig(&resolved)?;
 
         Ok(resolved)
@@ -248,62 +209,76 @@ impl Projects {
         };
 
         if !matches!(resolved, Resolved::Cluster { .. }) {
-            return Err(CoreError::Project(format!(
-                "{text} is a {}, not a cluster",
-                resolved.kind()
-            )));
+            return Err(CoreError::NotACluster {
+                text: text.to_owned(),
+                kind: resolved.kind(),
+            });
         }
 
         Ok(resolved)
+    }
+
+    pub(crate) fn database(&self, text: &str) -> Result<ResolvedDatabase, CoreError> {
+        let target = TargetRef::parse(text)
+            .ok_or_else(|| CoreError::NotADatabaseTarget(text.to_owned()))??;
+
+        self.with_source(target.project(), |source| {
+            source.database(target.resource())
+        })
     }
 
     pub(crate) fn personal_kubeconfig(&self) -> &KubeconfigSource {
         self.personal.kubeconfig()
     }
 
-    pub(crate) fn database(&self, text: &str) -> Result<ResolvedDatabase, CoreError> {
-        let reference = match TargetRef::parse(text) {
-            Some(parsed) => parsed.map_err(CoreError::Project)?,
-            None => {
-                return Err(CoreError::Project(format!(
-                    "{text:?} is not a database resource; write @<project>/<database>"
-                )));
-            }
-        };
-
-        if is_personal(reference.project) {
-            return Err(CoreError::Project(
-                "the Personal project has no databases; put them in a project".to_owned(),
-            ));
-        }
-
-        self.with_project(reference.project, |project| {
-            project.database(reference.resource)
-        })
-    }
-
-    pub(crate) fn database_destination(&self, text: &str, resolved: &ResolvedDatabase) -> String {
-        format!("{} = {}", self.canonical(text), resolved.describe())
-    }
-
-    pub(crate) fn destination(&self, text: &str, resolved: &Resolved) -> String {
-        format!("{} = {}", self.canonical(text), resolved.describe())
+    pub(crate) fn destination(&self, text: &str, reached: &impl Display) -> String {
+        format!("{} = {reached}", self.canonical(text))
     }
 
     pub(crate) fn canonical(&self, text: &str) -> String {
-        let Some(Ok(reference)) = TargetRef::parse(text) else {
+        let Some(Ok(target)) = TargetRef::parse(text) else {
             return text.to_owned();
         };
 
-        if is_personal(reference.project) {
-            return format!("@{PERSONAL}/{}", reference.resource);
+        let project = self
+            .with_source(target.project(), |source| Ok(source.canonical_name()))
+            .unwrap_or_else(|_| target.project().to_owned());
+
+        format!("@{project}/{}", target.resource())
+    }
+
+    fn reopen(&self) -> Result<(), CoreError> {
+        for path in self.table.open()? {
+            match self.open(&path) {
+                Ok(info) => log!(
+                    "reopened project {} ({} resources) at {}",
+                    info.slug,
+                    info.resources,
+                    info.path
+                ),
+                Err(error) => log!("cannot reopen the project at {}: {error}", path.display()),
+            }
         }
 
-        let id = self
-            .with_project(reference.project, |project| Ok(project.id().to_owned()))
-            .unwrap_or_else(|_| reference.project.to_owned());
+        Ok(())
+    }
 
-        format!("@{id}/{}", reference.resource)
+    fn with_source<T>(
+        &self,
+        project: &str,
+        work: impl FnOnce(&mut dyn ProjectSource) -> Result<T, CoreError>,
+    ) -> Result<T, CoreError> {
+        if Personal::is_named(project) {
+            return work(&mut self.personal.clone());
+        }
+
+        let opened = self.lock();
+        let slug = Self::find_slug(&opened, project)?;
+        let open = opened
+            .get(&slug)
+            .ok_or_else(|| CoreError::ProjectNotOpen(project.to_owned()))?;
+
+        work(&mut *open.lock())
     }
 
     fn check_kubeconfig(&self, resolved: &Resolved) -> Result<(), CoreError> {
@@ -319,35 +294,76 @@ impl Projects {
             return Ok(());
         };
 
-        let settled = settled_path(path);
+        let settled = Self::settled_path(path);
         let roots: Vec<PathBuf> = self
             .lock()
             .values()
             .map(|open| open.lock().path().to_owned())
             .collect();
 
-        let Some(root) = roots.iter().find(|root| settled.starts_with(root)) else {
+        let Some(root) = roots.into_iter().find(|root| settled.starts_with(root)) else {
             return Ok(());
         };
 
-        Err(CoreError::Project(format!(
-            "the kubeconfig {} lies inside the project folder {}; files there can arrive from \
-             other members through sync, so keep kubeconfigs outside every project folder",
-            path.display(),
-            root.display()
-        )))
+        Err(CoreError::KubeconfigInsideProject {
+            kubeconfig: path.clone(),
+            folder: root,
+        })
     }
 
-    fn with_project<T>(
-        &self,
-        project: &str,
-        work: impl FnOnce(&mut Project) -> Result<T, CoreError>,
-    ) -> Result<T, CoreError> {
-        let opened = self.lock();
-        let slug = find_slug(&opened, project)?;
-        let open = opened.get(&slug).ok_or_else(|| not_open(project))?;
+    fn already_open(folder: &ProjectFolder, path: &Path) -> Result<ProjectInfo, CoreError> {
+        if folder.path() == path {
+            return folder.info();
+        }
 
-        work(&mut open.lock())
+        Err(CoreError::SlugTaken {
+            slug: folder.slug().to_string(),
+            path: folder.path().to_owned(),
+        })
+    }
+
+    fn find_slug(opened: &Opened, project: &str) -> Result<ProjectSlug, CoreError> {
+        let not_open = || CoreError::ProjectNotOpen(project.to_owned());
+
+        if let Some((slug, _)) = opened.iter().find(|(slug, _)| slug.as_str() == project) {
+            return Ok(slug.clone());
+        }
+
+        let id = ProjectId::parse(project).ok_or_else(not_open)?;
+
+        opened
+            .iter()
+            .find(|(_, open)| *open.lock().id() == id)
+            .map(|(slug, _)| slug.clone())
+            .ok_or_else(not_open)
+    }
+
+    fn folder_path(path: &Path) -> Result<PathBuf, CoreError> {
+        let path = path
+            .canonicalize()
+            .map_err(|source| CoreError::UnreadableFolder {
+                path: path.to_owned(),
+                source,
+            })?;
+
+        if !path.is_dir() {
+            return Err(CoreError::NotAFolder(path));
+        }
+
+        Ok(path)
+    }
+
+    fn settled_path(path: &Path) -> PathBuf {
+        if let Ok(found) = path.canonicalize() {
+            return found;
+        }
+
+        let parent = path.parent().and_then(|parent| parent.canonicalize().ok());
+
+        match (parent, path.file_name()) {
+            (Some(parent), Some(name)) => parent.join(name),
+            _ => path.to_owned(),
+        }
     }
 
     fn lock(&self) -> MutexGuard<'_, Opened> {
@@ -357,114 +373,11 @@ impl Projects {
 
 impl fmt::Debug for Projects {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let slugs: Vec<String> = self.lock().keys().cloned().collect();
+        let slugs: Vec<ProjectSlug> = self.lock().keys().cloned().collect();
 
         formatter
             .debug_struct("Projects")
             .field("opened", &slugs)
             .finish_non_exhaustive()
     }
-}
-
-fn settled_path(path: &Path) -> PathBuf {
-    if let Ok(found) = path.canonicalize() {
-        return found;
-    }
-
-    let parent = path.parent().and_then(|parent| parent.canonicalize().ok());
-
-    match (parent, path.file_name()) {
-        (Some(parent), Some(name)) => parent.join(name),
-        _ => path.to_owned(),
-    }
-}
-
-fn folder(path: &Path) -> Result<PathBuf, CoreError> {
-    let path = path
-        .canonicalize()
-        .map_err(|error| CoreError::Project(format!("cannot open {}: {error}", path.display())))?;
-
-    if !path.is_dir() {
-        return Err(CoreError::Project(format!(
-            "{} is not a folder",
-            path.display()
-        )));
-    }
-
-    Ok(path)
-}
-
-fn slug(path: &Path) -> Result<String, CoreError> {
-    let slug = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .filter(|name| !name.is_empty() && !name.contains(char::is_control))
-        .ok_or_else(|| {
-            CoreError::Project(format!(
-                "the folder name of {} cannot name a project",
-                path.display()
-            ))
-        })?;
-
-    if is_personal(slug) {
-        return Err(CoreError::Project(format!(
-            "a project folder cannot be called {slug}: the name belongs to the Personal project"
-        )));
-    }
-
-    if is_project_id(slug) {
-        return Err(CoreError::Project(format!(
-            "a project folder cannot be called {slug}: names of that shape are project ids"
-        )));
-    }
-
-    Ok(slug.to_owned())
-}
-
-fn find_slug(opened: &Opened, project: &str) -> Result<String, CoreError> {
-    if opened.contains_key(project) {
-        return Ok(project.to_owned());
-    }
-
-    if !is_project_id(project) {
-        return Err(not_open(project));
-    }
-
-    opened
-        .iter()
-        .find(|(_, open)| open.lock().id() == project)
-        .map(|(slug, _)| slug.clone())
-        .ok_or_else(|| not_open(project))
-}
-
-fn split_target(text: &str) -> Result<(&str, &str), CoreError> {
-    match TargetRef::parse(text) {
-        Some(Ok(reference)) => Ok((reference.project, reference.resource)),
-        Some(Err(reason)) => Err(CoreError::Project(reason)),
-        None => Err(CoreError::Project(format!(
-            "{text:?} is not a project resource; write @<project>/<resource>"
-        ))),
-    }
-}
-
-fn check_admitted(project: &Project, name: &str, admitted: Option<&str>) -> Result<(), CoreError> {
-    let actual = format!("@{}/{name}", project.id());
-
-    if admitted == Some(actual.as_str()) {
-        return Ok(());
-    }
-
-    Err(CoreError::Project(format!(
-        "@{}/{name} is now {actual}, which is not what the call was admitted for; \
-         run it again",
-        project.slug()
-    )))
-}
-
-fn not_open(project: &str) -> CoreError {
-    CoreError::Project(format!("no open project is called {project}"))
-}
-
-fn is_personal(project: &str) -> bool {
-    project.eq_ignore_ascii_case(PERSONAL)
 }
