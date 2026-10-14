@@ -49,7 +49,7 @@ impl Remote {
             )));
         }
 
-        let manifest = listing.manifest();
+        let manifest = listing.manifest()?;
         manifest.check()?;
 
         let wasm = self.fetcher.get(&listing.file, COMPONENT_LIMIT)?;
