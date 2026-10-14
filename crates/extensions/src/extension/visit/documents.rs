@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use super::Visit;
-use crate::documents::{Document, DocumentInfo, DocumentStore, Written};
+use crate::documents::{Document, DocumentInfo, DocumentStore, Merger, Written};
+use crate::extension::Guest;
 use crate::interface::GuestError;
 
 impl Visit {
@@ -20,22 +21,7 @@ impl Visit {
         body: &[u8],
         base: Option<&str>,
     ) -> Result<Written, GuestError> {
-        let guest = Arc::clone(&self.guest);
-        let mut merge = |kind: &str, base: Option<&[u8]>, ours: &[u8], theirs: &[u8]| match guest
-            .merge(kind, (base, ours, theirs))
-        {
-            Ok(Ok(merged)) => Ok(merged),
-            Ok(Err(error)) => Err(GuestError::new(
-                "conflict",
-                format!("the merge failed: {}: {}", error.code, error.message),
-            )),
-            Err(error) => Err(GuestError::new(
-                "conflict",
-                format!("the merge failed: {error}"),
-            )),
-        };
-
-        self.with_store(|store| store.write(project, path, body, base, &mut merge))
+        self.with_store(|store| store.write(project, path, body, base, &self.guest))
     }
 
     pub(super) fn delete_document(&self, project: &str, path: &str) -> Result<(), GuestError> {
@@ -55,6 +41,24 @@ impl Visit {
         })?;
 
         let store = DocumentStore::new(self.manifest(), &services.shelf, folders.as_ref());
+
         work(&store)
+    }
+}
+
+impl Merger for Arc<Guest> {
+    fn merge(
+        &self,
+        kind: &str,
+        sides: (Option<&[u8]>, &[u8], &[u8]),
+    ) -> Result<Vec<u8>, GuestError> {
+        let conflict =
+            |reason: String| GuestError::new("conflict", format!("the merge failed: {reason}"));
+
+        match Guest::merge(self, kind, sides) {
+            Ok(Ok(merged)) => Ok(merged),
+            Ok(Err(error)) => Err(conflict(error.to_string())),
+            Err(error) => Err(conflict(error.to_string())),
+        }
     }
 }
