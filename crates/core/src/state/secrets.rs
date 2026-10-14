@@ -80,9 +80,9 @@ impl State {
 }
 
 fn stored_secret(row: &Row<'_>) -> rusqlite::Result<SecretInfo> {
-    let name: String = row.get(0)?;
-    let bytes: i64 = row.get(1)?;
-    let created_at: i64 = row.get(2)?;
+    let name: String = row.get("name")?;
+    let bytes: i64 = row.get("bytes")?;
+    let created_at: i64 = row.get("created_at")?;
 
     Ok(SecretInfo {
         reference: format!("secret://{name}"),
