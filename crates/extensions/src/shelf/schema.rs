@@ -20,6 +20,30 @@ CREATE TABLE IF NOT EXISTS extension_index (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     serial INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS extension_settings (
+    extension TEXT PRIMARY KEY,
+    vals TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS extension_files (
+    extension TEXT NOT NULL,
+    handle TEXT NOT NULL,
+    path TEXT NOT NULL,
+    access TEXT NOT NULL,
+    picked_at INTEGER NOT NULL,
+    PRIMARY KEY (extension, handle)
+);
+
+CREATE TABLE IF NOT EXISTS extension_revisions (
+    project TEXT NOT NULL,
+    path TEXT NOT NULL,
+    revision TEXT NOT NULL,
+    parents TEXT NOT NULL,
+    body BLOB NOT NULL,
+    seq INTEGER NOT NULL,
+    PRIMARY KEY (project, path, revision)
+);
 ";
 
 pub(super) const MANIFEST_COLUMN: &str =
