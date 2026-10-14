@@ -6,7 +6,7 @@ use crate::manifest::{Capabilities, Manifest};
 use crate::shelf::Installed;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ExtensionInfo {
+pub(crate) struct ExtensionInfo {
     pub id: String,
     pub name: Option<String>,
     pub version: String,

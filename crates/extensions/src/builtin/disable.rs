@@ -6,12 +6,12 @@ use super::{ExtensionInfo, IdParams};
 use crate::Extensions;
 
 #[derive(Clone)]
-pub struct ExtensionDisable {
+pub(crate) struct ExtensionDisable {
     extensions: Extensions,
 }
 
 impl ExtensionDisable {
-    pub fn new(extensions: Extensions) -> Self {
+    pub(crate) fn new(extensions: Extensions) -> Self {
         Self { extensions }
     }
 }

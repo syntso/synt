@@ -8,18 +8,18 @@ use super::blocking::blocking;
 use crate::Extensions;
 
 #[derive(Clone)]
-pub struct ExtensionSearch {
+pub(crate) struct ExtensionSearch {
     extensions: Extensions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, JsonSchema)]
-pub struct SearchParams {
+pub(crate) struct SearchParams {
     #[serde(default)]
     pub query: Option<String>,
 }
 
 impl ExtensionSearch {
-    pub fn new(extensions: Extensions) -> Self {
+    pub(crate) fn new(extensions: Extensions) -> Self {
         Self { extensions }
     }
 }

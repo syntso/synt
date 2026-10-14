@@ -6,12 +6,12 @@ use super::blocking::blocking;
 use crate::Extensions;
 
 #[derive(Clone)]
-pub struct ExtensionList {
+pub(crate) struct ExtensionList {
     extensions: Extensions,
 }
 
 impl ExtensionList {
-    pub fn new(extensions: Extensions) -> Self {
+    pub(crate) fn new(extensions: Extensions) -> Self {
         Self { extensions }
     }
 }

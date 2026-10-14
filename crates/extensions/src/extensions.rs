@@ -163,7 +163,7 @@ impl Extensions {
             manifest_sha256,
             signed: package.signed,
             enabled: true,
-            installed_at: now(),
+            added_at: now(),
         };
         self.shelf.record(&installed, clear_items)?;
 

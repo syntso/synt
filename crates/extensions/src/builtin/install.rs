@@ -10,12 +10,12 @@ use crate::Extensions;
 use crate::extension::Candidate;
 
 #[derive(Clone)]
-pub struct ExtensionInstall {
+pub(crate) struct ExtensionInstall {
     extensions: Extensions,
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct InstallParams {
+pub(crate) struct InstallParams {
     pub id: String,
 
     #[serde(skip)]
@@ -24,7 +24,7 @@ pub struct InstallParams {
 }
 
 impl ExtensionInstall {
-    pub fn new(extensions: Extensions) -> Self {
+    pub(crate) fn new(extensions: Extensions) -> Self {
         Self { extensions }
     }
 }

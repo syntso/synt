@@ -5,7 +5,7 @@ use crate::remote::Listing;
 use crate::shelf::Installed;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct SearchHit {
+pub(crate) struct SearchHit {
     pub id: String,
     pub name: String,
     pub version: String,

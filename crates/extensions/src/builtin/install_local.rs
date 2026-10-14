@@ -12,12 +12,12 @@ use crate::Extensions;
 use crate::extension::Candidate;
 
 #[derive(Clone)]
-pub struct ExtensionInstallLocal {
+pub(crate) struct ExtensionInstallLocal {
     extensions: Extensions,
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct LocalParams {
+pub(crate) struct LocalParams {
     pub path: String,
 
     #[serde(skip)]
@@ -26,7 +26,7 @@ pub struct LocalParams {
 }
 
 impl ExtensionInstallLocal {
-    pub fn new(extensions: Extensions) -> Self {
+    pub(crate) fn new(extensions: Extensions) -> Self {
         Self { extensions }
     }
 }

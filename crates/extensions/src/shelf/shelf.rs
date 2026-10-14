@@ -16,12 +16,12 @@ const INSTALLED_COLUMNS: &str =
     "id, version, sha256, manifest_sha256, signed, enabled, installed_at";
 
 #[derive(Debug, Clone)]
-pub struct Shelf {
+pub(crate) struct Shelf {
     connection: Arc<Mutex<Connection>>,
 }
 
 impl Shelf {
-    pub fn open(path: &Path) -> Result<Self, ExtensionError> {
+    pub(crate) fn open(path: &Path) -> Result<Self, ExtensionError> {
         let connection = Connection::open(path)?;
 
         connection.busy_timeout(BUSY_WAIT)?;
@@ -35,7 +35,7 @@ impl Shelf {
         })
     }
 
-    pub fn installed(&self) -> Result<Vec<Installed>, ExtensionError> {
+    pub(crate) fn installed(&self) -> Result<Vec<Installed>, ExtensionError> {
         let connection = self.lock();
         let mut statement = connection.prepare(&format!(
             "SELECT {INSTALLED_COLUMNS} FROM extensions ORDER BY id"
@@ -48,7 +48,7 @@ impl Shelf {
         Ok(rows)
     }
 
-    pub fn find(&self, id: &str) -> Result<Option<Installed>, ExtensionError> {
+    pub(crate) fn find(&self, id: &str) -> Result<Option<Installed>, ExtensionError> {
         let found = self
             .lock()
             .query_row(
@@ -61,7 +61,11 @@ impl Shelf {
         Ok(found)
     }
 
-    pub fn record(&self, entry: &Installed, clear_items: bool) -> Result<(), ExtensionError> {
+    pub(crate) fn record(
+        &self,
+        entry: &Installed,
+        clear_items: bool,
+    ) -> Result<(), ExtensionError> {
         let mut connection = self.lock();
         let transaction = connection.transaction()?;
 
@@ -84,7 +88,7 @@ impl Shelf {
                 &entry.manifest_sha256,
                 entry.signed,
                 entry.enabled,
-                signed_number(entry.installed_at),
+                signed_number(entry.added_at),
             ),
         )?;
 
@@ -92,7 +96,7 @@ impl Shelf {
         Ok(())
     }
 
-    pub fn accept_index(&self, serial: u64) -> Result<(), ExtensionError> {
+    pub(crate) fn accept_index(&self, serial: u64) -> Result<(), ExtensionError> {
         let mut connection = self.lock();
         let transaction = connection.transaction()?;
 
@@ -120,7 +124,7 @@ impl Shelf {
         Ok(())
     }
 
-    pub fn set_enabled(&self, id: &str, enabled: bool) -> Result<bool, ExtensionError> {
+    pub(crate) fn set_enabled(&self, id: &str, enabled: bool) -> Result<bool, ExtensionError> {
         let changed = self.lock().execute(
             "UPDATE extensions SET enabled = ?2 WHERE id = ?1",
             (id, enabled),
@@ -129,7 +133,7 @@ impl Shelf {
         Ok(changed > 0)
     }
 
-    pub fn forget(&self, id: &str) -> Result<bool, ExtensionError> {
+    pub(crate) fn forget(&self, id: &str) -> Result<bool, ExtensionError> {
         let mut connection = self.lock();
         let transaction = connection.transaction()?;
 
@@ -140,7 +144,11 @@ impl Shelf {
         Ok(removed > 0)
     }
 
-    pub fn item(&self, extension: &str, key: &str) -> Result<Option<Vec<u8>>, ExtensionError> {
+    pub(crate) fn item(
+        &self,
+        extension: &str,
+        key: &str,
+    ) -> Result<Option<Vec<u8>>, ExtensionError> {
         let value = self
             .lock()
             .query_row(
@@ -153,7 +161,12 @@ impl Shelf {
         Ok(value)
     }
 
-    pub fn put_item(&self, extension: &str, key: &str, value: &[u8]) -> Result<(), ExtensionError> {
+    pub(crate) fn put_item(
+        &self,
+        extension: &str,
+        key: &str,
+        value: &[u8],
+    ) -> Result<(), ExtensionError> {
         let mut connection = self.lock();
         let transaction = connection.transaction()?;
 
@@ -211,7 +224,7 @@ fn installed(row: &Row<'_>) -> rusqlite::Result<Installed> {
         manifest_sha256: row.get(3)?,
         signed: row.get(4)?,
         enabled: row.get(5)?,
-        installed_at: unsigned_number(row.get(6)?),
+        added_at: unsigned_number(row.get(6)?),
     })
 }
 
@@ -243,7 +256,7 @@ mod tests {
             manifest_sha256: "11".to_owned(),
             signed: false,
             enabled: true,
-            installed_at: 7,
+            added_at: 7,
         }
     }
 

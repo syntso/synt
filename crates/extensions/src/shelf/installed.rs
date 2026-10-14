@@ -1,12 +1,10 @@
-use serde::Serialize;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Installed {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Installed {
     pub id: String,
     pub version: String,
     pub sha256: String,
     pub manifest_sha256: String,
     pub signed: bool,
     pub enabled: bool,
-    pub installed_at: u64,
+    pub added_at: u64,
 }
