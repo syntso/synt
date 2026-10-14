@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use synt_platform::{read_plain_file, replace_file};
 
 use super::DocumentPath;
-use super::document_path::{DOCUMENTS, PROJECT_FILE, RESOURCES, RUNBOOKS};
+use super::document_path::{EXTENSIONS, MOST_EXTENSION_PARTS, PROJECT_FILE, RESOURCES, RUNBOOKS};
 use super::revision::LARGEST_BODY;
 use crate::SyncError;
 
@@ -33,8 +33,9 @@ impl ProjectFiles {
             found.extend(self.documents_in(folder)?);
         }
 
-        for extension in self.folders_in(DOCUMENTS)? {
-            found.extend(self.documents_in(&format!("{DOCUMENTS}/{extension}"))?);
+        for extension in self.folders_in(EXTENSIONS)? {
+            let folder = format!("{EXTENSIONS}/{extension}");
+            found.extend(self.documents_below(&folder, MOST_EXTENSION_PARTS)?);
         }
 
         Ok(found)
@@ -80,8 +81,25 @@ impl ProjectFiles {
             .collect())
     }
 
+    fn documents_below(&self, folder: &str, depth: usize) -> Result<Vec<DocumentPath>, SyncError> {
+        let mut found = self.documents_in(folder)?;
+
+        if depth > 1 {
+            for inner in self.folders_in(folder)? {
+                found.extend(self.documents_below(&format!("{folder}/{inner}"), depth - 1)?);
+            }
+        }
+
+        Ok(found)
+    }
+
     fn folders_in(&self, folder: &str) -> Result<Vec<String>, SyncError> {
-        self.entries(folder, fs::FileType::is_dir)
+        let folders = self.entries(folder, fs::FileType::is_dir)?;
+
+        Ok(folders
+            .into_iter()
+            .filter(|name| !name.starts_with('.'))
+            .collect())
     }
 
     fn entries(
@@ -191,6 +209,8 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let root = folder.path();
         fs::create_dir_all(root.join("resources")).unwrap();
+        fs::create_dir_all(root.join("extensions/uml/flows")).unwrap();
+        fs::create_dir_all(root.join("extensions/uml/.cache")).unwrap();
         fs::create_dir_all(root.join("documents/uml")).unwrap();
         fs::create_dir_all(root.join(".git")).unwrap();
         fs::write(root.join("synt.toml"), "id = 1").unwrap();
@@ -198,6 +218,9 @@ mod tests {
         fs::write(root.join("resources/api-1.toml"), "a = 1").unwrap();
         fs::write(root.join("resources/.api-1.toml.pending"), "a = 1").unwrap();
         fs::write(root.join("resources/readme.txt"), "text").unwrap();
+        fs::write(root.join("extensions/uml/orders.uml"), "@startuml").unwrap();
+        fs::write(root.join("extensions/uml/flows/billing.uml"), "@startuml").unwrap();
+        fs::write(root.join("extensions/uml/.cache/old.uml"), "@startuml").unwrap();
         fs::write(root.join("documents/uml/orders.uml"), "@startuml").unwrap();
         fs::write(root.join(".git/config"), "x").unwrap();
 
@@ -206,7 +229,8 @@ mod tests {
         assert_eq!(
             names(&files),
             vec![
-                "documents/uml/orders.uml",
+                "extensions/uml/flows/billing.uml",
+                "extensions/uml/orders.uml",
                 "resources/api-1.toml",
                 "synt.toml"
             ]

@@ -5,7 +5,7 @@ pub enum DocumentKind {
     Project,
     Resource,
     Runbook,
-    Extension { extension: String, kind: String },
+    Extension { extension: String, suffix: String },
 }
 
 impl DocumentKind {
@@ -20,7 +20,9 @@ impl fmt::Display for DocumentKind {
             Self::Project => formatter.write_str("core.project"),
             Self::Resource => formatter.write_str("core.resource"),
             Self::Runbook => formatter.write_str("core.runbook"),
-            Self::Extension { extension, kind } => write!(formatter, "ext.{extension}.{kind}"),
+            Self::Extension { extension, suffix } => {
+                write!(formatter, "ext.{extension}.{suffix}")
+            }
         }
     }
 }

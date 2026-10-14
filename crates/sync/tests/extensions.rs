@@ -9,7 +9,7 @@ use common::{PROJECT_SLUG, Team};
 use synt_sync::{DocumentKind, DocumentMerger, DocumentPath};
 use tokio::time;
 
-const DIAGRAM: &str = "documents/uml/orders.uml";
+const DIAGRAM: &str = "extensions/uml/orders.uml";
 
 struct Concatenate;
 

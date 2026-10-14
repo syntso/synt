@@ -87,7 +87,7 @@ mod tests {
     fn uml() -> DocumentKind {
         DocumentKind::Extension {
             extension: "uml".to_owned(),
-            kind: "uml".to_owned(),
+            suffix: "uml".to_owned(),
         }
     }
 
@@ -170,8 +170,8 @@ mod tests {
     #[test]
     fn an_extension_document_goes_to_its_merger() {
         let naming = naming();
-        let older = revision(&naming, "documents/uml/a.uml", Some("left"), 1);
-        let newer = revision(&naming, "documents/uml/a.uml", Some("right"), 2);
+        let older = revision(&naming, "extensions/uml/a.uml", Some("left"), 1);
+        let newer = revision(&naming, "extensions/uml/a.uml", Some("right"), 2);
 
         let merged =
             merge_heads(&uml(), Some(b"base"), &[&older, &newer], Some(&Concatenate)).unwrap();
@@ -182,8 +182,8 @@ mod tests {
     #[test]
     fn an_extension_document_without_a_merger_keeps_both_heads() {
         let naming = naming();
-        let older = revision(&naming, "documents/uml/a.uml", Some("left"), 1);
-        let newer = revision(&naming, "documents/uml/a.uml", Some("right"), 2);
+        let older = revision(&naming, "extensions/uml/a.uml", Some("left"), 1);
+        let newer = revision(&naming, "extensions/uml/a.uml", Some("right"), 2);
 
         assert!(merge_heads(&uml(), Some(b"base"), &[&older, &newer], None).is_none());
     }
@@ -191,8 +191,8 @@ mod tests {
     #[test]
     fn an_extension_document_changed_on_one_side_needs_no_merger() {
         let naming = naming();
-        let older = revision(&naming, "documents/uml/a.uml", Some("base"), 1);
-        let newer = revision(&naming, "documents/uml/a.uml", Some("right"), 2);
+        let older = revision(&naming, "extensions/uml/a.uml", Some("base"), 1);
+        let newer = revision(&naming, "extensions/uml/a.uml", Some("right"), 2);
 
         let merged = merge_heads(&uml(), Some(b"base"), &[&older, &newer], None).unwrap();
 
