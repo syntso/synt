@@ -6,42 +6,22 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
-use synt_actions::Registry;
-use synt_core::Files;
-use synt_core::{AlwaysGrants, GrantList, GrantRevoke, Projects};
+use synt_actions::{ActionError, Registry};
 use synt_core::{
-    Broker, Core, JournalPage, JournalVerify, Ping, Server, SshConnections, SshExec, SshWarm,
-    Storage, VERSION,
+    AlwaysGrants, Broker, Core, CoreCaller, Files, GrantList, GrantRevoke, IdleWatch, JournalPage,
+    JournalVerify, KeyGenerate, KeyImport, KeyList, KeyRemove, LocalSessionOpen, LoginCommand,
+    Ping, ProjectClose, ProjectList, ProjectOpen, Projects, ResourceGet, ResourceList, ResourcePut,
+    ResourceRemove, Server, SessionAttach, SessionBlocks, SessionClose, SessionIntegration,
+    SessionList, SessionResize, SshConnections, SshExec, SshKeys, SshSessionOpen, SshWarm, Storage,
+    Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
 };
-use synt_core::{CoreCaller, IdleWatch, LoginCommand};
-use synt_core::{KeyGenerate, KeyImport, KeyList, KeyRemove, SshKeys};
-use synt_core::{LocalSessionOpen, SessionBlocks, SessionIntegration};
-use synt_core::{
-    ProjectClose, ProjectList, ProjectOpen, ResourceGet, ResourceList, ResourcePut, ResourceRemove,
-};
-use synt_core::{
-    SessionAttach, SessionClose, SessionList, SessionResize, SshSessionOpen, Terminals,
-};
-use synt_core::{TunnelClose, TunnelList, TunnelOpen};
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Journal, JournalWriter};
 use synt_platform::{
     AppCheck, Endpoint, WEAK_VAULT_FLAG, WeakVault, data_directory, open_vault, shutdown_signal,
 };
-use synt_ssh::Pool;
-use synt_ssh::Tunnels;
+use synt_ssh::{Pool, Tunnels};
 use tokio::task;
-
-#[tokio::main]
-async fn main() -> ExitCode {
-    match run().await {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("synt-core: {error}");
-            ExitCode::FAILURE
-        }
-    }
-}
 
 const ENDPOINT_FLAG: &str = "--endpoint";
 const DATA_FLAG: &str = "--data";
@@ -56,18 +36,27 @@ struct Arguments {
     idle: Option<Duration>,
 }
 
+#[tokio::main]
+async fn main() -> ExitCode {
+    match run().await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("synt-core: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 async fn run() -> Result<(), Box<dyn Error>> {
     if let Some(command) = login_command()? {
         return login(command).await;
     }
 
     let arguments = arguments()?;
-
     let endpoint = match arguments.endpoint {
         Some(endpoint) => endpoint,
         None => Endpoint::for_user()?,
     };
-
     let data = match arguments.data {
         Some(data) => path::absolute(data)?,
         None => data_directory()?,
@@ -76,60 +65,26 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let (journal, storage) = journal(&data, arguments.weak_vault)?;
     let journal = JournalWriter::spawn(journal)?;
     let state = storage.state()?;
-    let state_path = storage.state_path();
-    let seal = storage.grant_seal()?;
     let keys = SshKeys::new(storage.vault(), state.clone());
-
     let projects = Projects::start(state.clone())?;
-    let always = AlwaysGrants::load(state, seal)?;
+    let always = AlwaysGrants::load(state, storage.grant_seal()?)?;
 
     let pool = Pool::builder().key_vault(Arc::new(keys.clone())).build();
+    let tunnels = Tunnels::new(pool.clone());
+    let terminals = Terminals::new(journal.clone());
 
     let mut registry = Registry::new();
-    registry.register(Ping)?;
-    registry.register(SshExec::new(pool.clone(), projects.clone()))?;
+    register_hosts(&mut registry, &pool, &projects, &tunnels)?;
+    register_sessions(&mut registry, &pool, &projects, &terminals)?;
+    register_records(&mut registry, &journal, &projects, &always)?;
+    register_keys(&mut registry, &keys, &pool)?;
 
-    let tunnels = Tunnels::new(pool.clone());
-    registry.register(TunnelOpen::new(tunnels.clone(), projects.clone()))?;
-    registry.register(TunnelList::new(tunnels.clone()))?;
-    registry.register(TunnelClose::new(tunnels.clone()))?;
-
-    Files::new(pool.clone(), projects.clone()).register(&mut registry)?;
-
-    let terminals = Terminals::new(journal.clone());
-    registry.register(SshSessionOpen::new(
-        pool.clone(),
-        terminals.clone(),
-        projects.clone(),
-    ))?;
-    registry.register(SessionAttach::new(terminals.clone()))?;
-    registry.register(SessionResize::new(terminals.clone()))?;
-    registry.register(SessionClose::new(terminals.clone()))?;
-    registry.register(SessionList::new(terminals.clone()))?;
-    registry.register(LocalSessionOpen::new(terminals.clone()))?;
-    registry.register(SessionBlocks::new(terminals.clone()))?;
-    registry.register(SessionIntegration)?;
-
-    registry.register(SshWarm::new(pool.clone(), projects.clone()))?;
-    registry.register(SshConnections::new(pool.clone()))?;
-    registry.register(JournalPage::new(journal.clone()))?;
-    registry.register(JournalVerify::new(journal.clone()))?;
-
-    registry.register(ProjectOpen::new(projects.clone()))?;
-    registry.register(ProjectClose::new(projects.clone()))?;
-    registry.register(ProjectList::new(projects.clone()))?;
-    registry.register(ResourceList::new(projects.clone()))?;
-    registry.register(ResourceGet::new(projects.clone()))?;
-    registry.register(ResourcePut::new(projects.clone()))?;
-    registry.register(ResourceRemove::new(projects))?;
-    registry.register(GrantList::new(always.clone()))?;
-    registry.register(GrantRevoke::new(always.clone(), journal.clone()))?;
-    registry.register(KeyImport::new(keys.clone()))?;
-    registry.register(KeyGenerate::new(keys.clone()))?;
-    registry.register(KeyList::new(keys.clone()))?;
-    registry.register(KeyRemove::new(keys, pool))?;
-
-    let extensions = Extensions::open(&data, &state_path, Runtime::new()?, Remote::official()?)?;
+    let extensions = Extensions::open(
+        &data,
+        &storage.state_path(),
+        Runtime::new()?,
+        Remote::official()?,
+    )?;
     extensions.register(&mut registry)?;
     load_extensions(&extensions).await?;
 
@@ -142,7 +97,79 @@ async fn run() -> Result<(), Box<dyn Error>> {
         endpoint.address().to_string_lossy()
     );
 
-    let idle = IdleWatch::new(arguments.idle)
+    serve(server, arguments.idle, terminals, tunnels).await;
+
+    Ok(())
+}
+
+fn register_hosts(
+    registry: &mut Registry,
+    pool: &Pool,
+    projects: &Projects,
+    tunnels: &Tunnels,
+) -> Result<(), ActionError> {
+    registry.register(Ping)?;
+    registry.register(SshExec::new(pool.clone(), projects.clone()))?;
+    registry.register(SshWarm::new(pool.clone(), projects.clone()))?;
+    registry.register(SshConnections::new(pool.clone()))?;
+
+    registry.register(TunnelOpen::new(tunnels.clone(), projects.clone()))?;
+    registry.register(TunnelList::new(tunnels.clone()))?;
+    registry.register(TunnelClose::new(tunnels.clone()))?;
+
+    Files::new(pool.clone(), projects.clone()).register(registry)
+}
+
+fn register_sessions(
+    registry: &mut Registry,
+    pool: &Pool,
+    projects: &Projects,
+    terminals: &Terminals,
+) -> Result<(), ActionError> {
+    registry.register(SshSessionOpen::new(
+        pool.clone(),
+        terminals.clone(),
+        projects.clone(),
+    ))?;
+    registry.register(LocalSessionOpen::new(terminals.clone()))?;
+    registry.register(SessionAttach::new(terminals.clone()))?;
+    registry.register(SessionResize::new(terminals.clone()))?;
+    registry.register(SessionClose::new(terminals.clone()))?;
+    registry.register(SessionList::new(terminals.clone()))?;
+    registry.register(SessionBlocks::new(terminals.clone()))?;
+    registry.register(SessionIntegration)
+}
+
+fn register_records(
+    registry: &mut Registry,
+    journal: &JournalWriter,
+    projects: &Projects,
+    always: &AlwaysGrants,
+) -> Result<(), ActionError> {
+    registry.register(JournalPage::new(journal.clone()))?;
+    registry.register(JournalVerify::new(journal.clone()))?;
+
+    registry.register(ProjectOpen::new(projects.clone()))?;
+    registry.register(ProjectClose::new(projects.clone()))?;
+    registry.register(ProjectList::new(projects.clone()))?;
+    registry.register(ResourceList::new(projects.clone()))?;
+    registry.register(ResourceGet::new(projects.clone()))?;
+    registry.register(ResourcePut::new(projects.clone()))?;
+    registry.register(ResourceRemove::new(projects.clone()))?;
+
+    registry.register(GrantList::new(always.clone()))?;
+    registry.register(GrantRevoke::new(always.clone(), journal.clone()))
+}
+
+fn register_keys(registry: &mut Registry, keys: &SshKeys, pool: &Pool) -> Result<(), ActionError> {
+    registry.register(KeyImport::new(keys.clone()))?;
+    registry.register(KeyGenerate::new(keys.clone()))?;
+    registry.register(KeyList::new(keys.clone()))?;
+    registry.register(KeyRemove::new(keys.clone(), pool.clone()))
+}
+
+async fn serve(server: Server, idle: Option<Duration>, terminals: Terminals, tunnels: Tunnels) {
+    let idle = IdleWatch::new(idle)
         .watch(server.activity())
         .watch(terminals.clone())
         .watch(tunnels);
@@ -154,9 +181,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
         }
         terminals.close_all().await;
     };
-    server.run(stopping).await;
 
-    Ok(())
+    server.run(stopping).await;
 }
 
 async fn load_extensions(extensions: &Extensions) -> Result<(), Box<dyn Error>> {
