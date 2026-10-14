@@ -6,7 +6,7 @@ use super::DraftStep;
 use super::literal::Literal;
 use crate::runbooks::document::{OnFailure, Runbook, Step};
 use crate::runbooks::param::{ParamKind, ParamSpec};
-use crate::runbooks::template::{Template, escape_json};
+use crate::runbooks::template::{JsonTemplate, TextTemplate};
 
 const TARGET_HINT: &str = "host";
 
@@ -153,7 +153,7 @@ fn templated(step: &DraftStep, names: &BTreeMap<String, String>) -> Step {
     let target = step
         .target
         .as_deref()
-        .map(|target| lifted(target).unwrap_or_else(|| Template::escape(target)));
+        .map(|target| lifted(target).unwrap_or_else(|| TextTemplate::escape(target)));
 
     let params: Map<String, Value> = step
         .params
@@ -161,7 +161,7 @@ fn templated(step: &DraftStep, names: &BTreeMap<String, String>) -> Step {
         .map(|(key, value)| {
             let value = match value.as_str().and_then(lifted) {
                 Some(placeholder) => Value::String(placeholder),
-                None => escape_json(value),
+                None => value.escaped(),
             };
 
             (key.clone(), value)
@@ -169,7 +169,7 @@ fn templated(step: &DraftStep, names: &BTreeMap<String, String>) -> Step {
         .collect();
 
     Step {
-        title: Template::escape(&step.title),
+        title: TextTemplate::escape(&step.title),
         action: step.action.clone(),
         target,
         params,
@@ -185,7 +185,7 @@ mod tests {
 
     use super::{Draft, DraftStep};
     use crate::runbooks::param::{ParamKind, Values};
-    use crate::runbooks::template::render_fields;
+    use crate::runbooks::template::JsonTemplate;
 
     fn step(target: Option<&str>, params: &Value) -> DraftStep {
         let params: Map<String, Value> = params.as_object().cloned().unwrap();
@@ -296,7 +296,7 @@ mod tests {
             &json!({ "command": "awk '{print $1}' f" }),
         )]);
 
-        let rendered = render_fields(&runbook.steps[0].params, &Values::default()).unwrap();
+        let rendered = runbook.steps[0].params.render(&Values::default()).unwrap();
 
         assert_eq!(rendered["command"], json!("awk '{print $1}' f"));
         assert_eq!(runbook.steps[0].title, "awk '{{print $1}}' f");

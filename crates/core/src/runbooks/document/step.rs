@@ -4,7 +4,7 @@ use serde_json::{Map, Value};
 use synt_journal::ActionId;
 
 use super::{Expect, OnFailure, Retry};
-use crate::runbooks::template::params_in;
+use crate::runbooks::template::JsonTemplate;
 
 const LONGEST_TITLE: usize = 200;
 const RUNBOOK_ACTIONS: &str = "runbook.";
@@ -67,10 +67,10 @@ impl Step {
         let mut used: Vec<String> = texts
             .into_iter()
             .flatten()
-            .flat_map(|text| params_in(&Value::from(text)))
+            .flat_map(|text| Value::from(text).placeholders())
             .collect();
 
-        used.extend(params_in(&Value::Object(self.params.clone())));
+        used.extend(self.params.placeholders());
         used
     }
 

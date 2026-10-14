@@ -1,4 +1,4 @@
-use crate::runbooks::template::{Piece, Template};
+use crate::runbooks::template::{Piece, TextTemplate};
 
 pub(crate) fn quoted(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\\''"))
@@ -18,7 +18,7 @@ pub(crate) fn double_quoted(text: &str) -> String {
 }
 
 pub(crate) fn shell_word(template: &str) -> String {
-    let parsed = Template::parse(template);
+    let parsed = TextTemplate::parse(template);
 
     if parsed.pieces().is_empty() {
         return quoted("");
@@ -35,7 +35,7 @@ pub(crate) fn shell_word(template: &str) -> String {
 }
 
 pub(crate) fn comment(template: &str) -> String {
-    let parsed = Template::parse(template);
+    let parsed = TextTemplate::parse(template);
 
     let text: String = parsed
         .pieces()

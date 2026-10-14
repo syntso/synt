@@ -5,7 +5,7 @@ use synt_journal::{ActionId, ResourceRef};
 
 use crate::runbooks::document::{Expect, OnFailure, Retry, Step};
 use crate::runbooks::param::{ParamKind, Values};
-use crate::runbooks::template::{Template, render_fields};
+use crate::runbooks::template::{JsonTemplate, TextTemplate};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(crate) struct PlannedStep {
@@ -43,14 +43,14 @@ impl PlannedStep {
             .as_deref()
             .map(|target| rendered_target(target, values))
             .transpose()?;
-        let params = Value::Object(render_fields(&step.params, values)?);
+        let params = Value::Object(step.params.render(values)?);
 
         let handle = lookup(&action).ok_or_else(|| format!("there is no action {action}"))?;
         let (risk, destination) = judge(&handle, target.as_ref(), &params)?;
 
         Ok(Self {
             number,
-            title: Template::parse(&step.title).render_text(values)?,
+            title: TextTemplate::parse(&step.title).render_text(values)?,
             action,
             target,
             params,
@@ -70,7 +70,7 @@ impl PlannedStep {
 }
 
 fn rendered_target(target: &str, values: &Values) -> Result<ResourceRef, String> {
-    let text = Template::parse(target).render_text(values)?;
+    let text = TextTemplate::parse(target).render_text(values)?;
     let checked = ParamKind::Target.accept(&Value::from(text.as_str()))?;
 
     ResourceRef::new(checked.as_str().unwrap_or_default()).map_err(|error| error.to_string())
@@ -84,7 +84,7 @@ fn rendered_expect(expect: Option<&Expect>, values: &Values) -> Result<Expect, S
     let contains = expect
         .contains
         .as_deref()
-        .map(|text| Template::parse(text).render_text(values))
+        .map(|text| TextTemplate::parse(text).render_text(values))
         .transpose()?;
 
     Ok(Expect {
