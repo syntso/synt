@@ -17,7 +17,7 @@ pub struct Block {
 impl Block {
     pub(crate) fn notice(&self, session: SessionId, stream: StreamId) -> SessionBlock {
         SessionBlock {
-            session: session.value(),
+            session: session.get(),
             stream,
             block: self.number,
             command: self.command.clone(),

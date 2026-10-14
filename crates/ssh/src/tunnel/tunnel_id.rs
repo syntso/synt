@@ -4,7 +4,7 @@ use std::fmt::{self, Display, Formatter};
 pub struct TunnelId(u64);
 
 impl TunnelId {
-    pub fn value(self) -> u64 {
+    pub fn get(self) -> u64 {
         self.0
     }
 }

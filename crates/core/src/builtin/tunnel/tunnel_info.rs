@@ -32,7 +32,7 @@ impl TunnelInfo {
 impl From<TunnelStatus> for TunnelInfo {
     fn from(status: TunnelStatus) -> Self {
         Self {
-            id: status.id.value(),
+            id: status.id.get(),
             target: status.target,
             local_port: status.local_port,
             remote_host: status.destination.host().to_owned(),

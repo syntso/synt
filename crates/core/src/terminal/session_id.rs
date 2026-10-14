@@ -11,7 +11,7 @@ use synt_journal::Seq;
 pub struct SessionId(u64);
 
 impl SessionId {
-    pub fn value(self) -> u64 {
+    pub fn get(self) -> u64 {
         self.0
     }
 }
