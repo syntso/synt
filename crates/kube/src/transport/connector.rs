@@ -10,20 +10,17 @@ use kube::client::ConfigExt;
 use kube::{Client, Config};
 use tower::{BoxError, Service, ServiceBuilder};
 
-use super::{DialedStream, Dialer};
+use super::{Address, Dialer, Socket};
 use crate::KubeError;
 
-const HTTPS_PORT: u16 = 443;
-const HTTP_PORT: u16 = 80;
-
-type Connecting = Pin<Box<dyn Future<Output = io::Result<DialedStream>> + Send>>;
+type Connecting = Pin<Box<dyn Future<Output = io::Result<Socket>> + Send>>;
 
 #[derive(Clone)]
-pub(crate) struct DialedConnector {
+pub(crate) struct Connector {
     dialer: Arc<dyn Dialer>,
 }
 
-impl DialedConnector {
+impl Connector {
     pub(crate) fn new(dialer: Arc<dyn Dialer>) -> Self {
         Self { dialer }
     }
@@ -44,8 +41,8 @@ impl DialedConnector {
     }
 }
 
-impl Service<Uri> for DialedConnector {
-    type Response = DialedStream;
+impl Service<Uri> for Connector {
+    type Response = Socket;
     type Error = io::Error;
     type Future = Connecting;
 
@@ -57,57 +54,10 @@ impl Service<Uri> for DialedConnector {
         let dialer = Arc::clone(&self.dialer);
 
         Box::pin(async move {
-            let (host, port) = address(&uri)?;
-            let stream = dialer.dial(&host, port).await?;
+            let address = Address::try_from(&uri)?;
+            let stream = dialer.dial(&address.host, address.port).await?;
 
-            Ok(DialedStream::new(stream))
+            Ok(Socket::new(stream))
         })
-    }
-}
-
-fn address(uri: &Uri) -> io::Result<(String, u16)> {
-    let host = uri
-        .host()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("{uri} has no host")))?;
-    let host = host
-        .trim_start_matches('[')
-        .trim_end_matches(']')
-        .to_owned();
-
-    let default_port = if uri.scheme_str() == Some("http") {
-        HTTP_PORT
-    } else {
-        HTTPS_PORT
-    };
-
-    Ok((host, uri.port_u16().unwrap_or(default_port)))
-}
-
-#[cfg(test)]
-mod tests {
-    use http::Uri;
-
-    use super::address;
-
-    fn parts(text: &str) -> (String, u16) {
-        address(&text.parse::<Uri>().expect("a uri")).expect("an address")
-    }
-
-    #[test]
-    fn the_port_comes_from_the_url_or_its_scheme() {
-        assert_eq!(parts("https://k3s:6443"), ("k3s".to_owned(), 6443));
-        assert_eq!(
-            parts("https://api.example.com"),
-            ("api.example.com".to_owned(), 443)
-        );
-        assert_eq!(parts("http://localhost"), ("localhost".to_owned(), 80));
-    }
-
-    #[test]
-    fn an_ipv6_host_loses_its_brackets() {
-        assert_eq!(
-            parts("https://[fd00::1]:6443"),
-            ("fd00::1".to_owned(), 6443)
-        );
     }
 }

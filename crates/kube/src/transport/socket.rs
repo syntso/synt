@@ -8,11 +8,11 @@ use hyper_util::rt::TokioIo;
 
 use super::Duplex;
 
-pub(crate) struct DialedStream {
+pub(crate) struct Socket {
     inner: TokioIo<Box<dyn Duplex>>,
 }
 
-impl DialedStream {
+impl Socket {
     pub(crate) fn new(stream: Box<dyn Duplex>) -> Self {
         Self {
             inner: TokioIo::new(stream),
@@ -20,13 +20,13 @@ impl DialedStream {
     }
 }
 
-impl Connection for DialedStream {
+impl Connection for Socket {
     fn connected(&self) -> Connected {
         Connected::new()
     }
 }
 
-impl Read for DialedStream {
+impl Read for Socket {
     fn poll_read(
         mut self: Pin<&mut Self>,
         context: &mut Context<'_>,
@@ -36,7 +36,7 @@ impl Read for DialedStream {
     }
 }
 
-impl Write for DialedStream {
+impl Write for Socket {
     fn poll_write(
         mut self: Pin<&mut Self>,
         context: &mut Context<'_>,

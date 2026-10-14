@@ -1,7 +1,9 @@
+mod address;
 mod connector;
 mod dialer;
-mod stream;
+mod socket;
 
-pub(crate) use connector::DialedConnector;
+use address::Address;
+pub(crate) use connector::Connector;
 pub use dialer::{Dialer, Dialing, Duplex};
-use stream::DialedStream;
+use socket::Socket;

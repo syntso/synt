@@ -8,7 +8,7 @@ use kube::{Client, Config};
 use tokio::sync::OnceCell;
 use tokio::task;
 
-use crate::transport::DialedConnector;
+use crate::transport::Connector;
 use crate::{ClusterPlace, ClusterSpec, Dialer, Kind, Kinds, KubeError, Namespaces};
 
 pub struct Cluster {
@@ -25,7 +25,7 @@ impl Cluster {
         let (config, place) = Self::configure(spec.clone()).await?;
 
         let client = match dialer {
-            Some(dialer) => DialedConnector::new(dialer).client(&config)?,
+            Some(dialer) => Connector::new(dialer).client(&config)?,
             None => Client::try_from(config)?,
         };
 
