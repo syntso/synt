@@ -1,4 +1,4 @@
-use sqlparser::ast::{ObjectName, SetExpr, Statement, Visit};
+use sqlparser::ast::{CopySource, CopyTarget, ObjectName, SetExpr, Statement, Visit};
 use sqlparser::parser::Parser;
 
 use super::Classification;
@@ -73,7 +73,12 @@ fn own_effect(statement: &Statement) -> Effect {
         | Statement::Update(_)
         | Statement::Delete(_)
         | Statement::Merge(_)
-        | Statement::Copy { to: false, .. } => Effect::Write,
+        | Statement::Copy {
+            to: false,
+            source: CopySource::Table { .. },
+            target: CopyTarget::Stdin,
+            ..
+        } => Effect::Write,
         _ => Effect::Privileged,
     }
 }
@@ -168,6 +173,18 @@ mod tests {
              WHEN MATCHED THEN UPDATE SET total = i.total",
         ] {
             assert_eq!(effect(Engine::Postgres, text), Effect::Write, "{text}");
+        }
+    }
+
+    #[test]
+    fn copy_from_a_program_or_a_server_file_is_privileged() {
+        for text in [
+            "COPY orders FROM PROGRAM 'id'",
+            "COPY orders FROM '/etc/passwd'",
+            "COPY orders TO PROGRAM 'id'",
+            "COPY orders TO '/tmp/orders.csv'",
+        ] {
+            assert_eq!(effect(Engine::Postgres, text), Effect::Privileged, "{text}");
         }
     }
 
