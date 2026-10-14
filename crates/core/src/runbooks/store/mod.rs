@@ -1,9 +1,9 @@
-mod runbook_entry;
-mod runbook_listing;
+mod entry;
+mod listing;
 mod runbook_store;
-mod runbook_summary;
+mod summary;
 
-pub use runbook_entry::RunbookEntry;
-pub use runbook_listing::RunbookListing;
+pub use entry::RunbookEntry;
+pub use listing::RunbookListing;
 pub(crate) use runbook_store::RunbookStore;
-pub use runbook_summary::RunbookSummary;
+pub use summary::RunbookSummary;
