@@ -8,9 +8,10 @@ use std::path::{Path, PathBuf};
 
 use common::{Grounds, Harness, rejection};
 use serde_json::json;
+use synt_actions::ActionGroup;
 use synt_client::Client;
 use synt_core::{
-    Broker, Core, Databases, ProjectOpen, Projects, ResourceList, ResourcePut, SecretList,
+    Broker, Core, DbActions, ProjectOpen, Projects, ResourceList, ResourcePut, SecretList,
     SecretPut, SecretRemove, Secrets,
 };
 use synt_journal::EventKind;
@@ -40,7 +41,7 @@ fn start() -> Harness {
     registry
         .register(SecretRemove::new(secrets.clone()))
         .unwrap();
-    Databases::new(Pool::new(), projects, secrets)
+    DbActions::new(Pool::new(), projects, secrets)
         .register(&mut registry)
         .unwrap();
 

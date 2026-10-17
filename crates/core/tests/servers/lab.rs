@@ -4,12 +4,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use synt_actions::Registry;
+use synt_actions::{ActionGroup, Registry};
 use synt_client::{Autostart, Client, ClientError};
 use synt_core::{
-    Broker, Core, DatabaseResource, Databases, Files, HostResource, ProjectOpen, Projects,
-    Resource, RunbookActions, Runbooks, SecretPut, Secrets, SessionBlocks, SessionClose,
-    SessionList, SshConnections, SshExec, SshKeys, SshSessionOpen, State, Terminals, TunnelClose,
+    Broker, Core, DatabaseResource, DbActions, HostResource, ProjectOpen, Projects, Resource,
+    RunbookActions, Runbooks, SecretPut, Secrets, SessionBlocks, SessionClose, SessionList,
+    SftpActions, SshConnections, SshExec, SshKeys, SshSessionOpen, State, Terminals, TunnelClose,
     TunnelOpen, TunnelResource,
 };
 use synt_db::{Engine, TlsMode};
@@ -243,11 +243,11 @@ fn registry(
     registry
         .register(SessionList::new(terminals.clone()))
         .unwrap();
-    Files::new(pool.clone(), projects.clone())
+    SftpActions::new(pool.clone(), projects.clone())
         .register(&mut registry)
         .unwrap();
     registry.register(SecretPut::new(secrets.clone())).unwrap();
-    Databases::new(pool.clone(), projects.clone(), secrets.clone())
+    DbActions::new(pool.clone(), projects.clone(), secrets.clone())
         .register(&mut registry)
         .unwrap();
 

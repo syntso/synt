@@ -7,7 +7,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_db::{Classification, Effect, Engine, StatementKind};
 use synt_journal::ResourceRef;
 
-use super::Databases;
+use super::DbActions;
 use super::error::DbActionError;
 use super::recorded::recorded_statement;
 use crate::clock::milliseconds;
@@ -17,7 +17,7 @@ const EXPLAIN: &str = "explain";
 
 #[derive(Debug, Clone)]
 pub(crate) struct DbExplain {
-    databases: Databases,
+    databases: DbActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
@@ -37,7 +37,7 @@ pub(crate) struct ExplainResult {
 }
 
 impl DbExplain {
-    pub(super) fn new(databases: Databases) -> Self {
+    pub(super) fn new(databases: DbActions) -> Self {
         Self { databases }
     }
 }

@@ -11,7 +11,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
-use synt_actions::{ActionError, Context, Registry, Risk};
+use synt_actions::{ActionError, ActionGroup, Context, Registry, Risk};
 use synt_db::{Database, DbError, Effect, Engine, Server};
 use synt_journal::ResourceRef;
 use synt_ssh::{Destination, Pool, Target, Tunnels};
@@ -35,14 +35,14 @@ use crate::secrets::Secrets;
 const CONCURRENT_CALLS: usize = 8;
 
 #[derive(Debug, Clone)]
-pub struct Databases {
+pub struct DbActions {
     projects: Projects,
     secrets: Secrets,
     tunnels: Tunnels,
     calls: Arc<Semaphore>,
 }
 
-impl Databases {
+impl DbActions {
     pub fn new(pool: Pool, projects: Projects, secrets: Secrets) -> Self {
         Self {
             projects,
@@ -50,14 +50,6 @@ impl Databases {
             tunnels: Tunnels::new(pool),
             calls: Arc::new(Semaphore::new(CONCURRENT_CALLS)),
         }
-    }
-
-    pub fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
-        registry.register(DbQuery::new(self.clone()))?;
-        registry.register(DbExplain::new(self.clone()))?;
-        registry.register(DbSchema::new(self.clone()))?;
-        registry.register(DbTables::new(self.clone()))?;
-        registry.register(DbPing::new(self.clone()))
     }
 
     fn check_target(&self, target: Option<&ResourceRef>) -> Result<Engine, DbActionError> {
@@ -210,5 +202,15 @@ impl Databases {
 
     fn resolve(&self, target: Option<&ResourceRef>) -> Option<ResolvedDatabase> {
         self.projects.database(target?.as_str()).ok()
+    }
+}
+
+impl ActionGroup for DbActions {
+    fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
+        registry.register(DbQuery::new(self.clone()))?;
+        registry.register(DbExplain::new(self.clone()))?;
+        registry.register(DbSchema::new(self.clone()))?;
+        registry.register(DbTables::new(self.clone()))?;
+        registry.register(DbPing::new(self.clone()))
     }
 }

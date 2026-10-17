@@ -30,12 +30,12 @@ mod vault;
 pub use arguments::Arguments;
 pub use broker::Broker;
 pub use builtin::{
-    Databases, Files, GrantActions, GrantList, GrantRevoke, JournalActions, JournalPage,
-    JournalVerify, KeyActions, KeyGenerate, KeyImport, KeyList, KeyRemove, Kube, LocalSessionOpen,
-    Ping, Pong, ProjectActions, ProjectClose, ProjectList, ProjectOpen, ResourceActions,
-    ResourceGet, ResourceList, ResourcePut, ResourceRemove, RunbookActions, SecretActions,
-    SecretList, SecretPut, SecretRemove, SessionActions, SessionAttach, SessionBlocks,
-    SessionClose, SessionIntegration, SessionList, SessionResize, SshActions, SshConnections,
+    DbActions, GrantActions, GrantList, GrantRevoke, JournalActions, JournalPage, JournalVerify,
+    K8sActions, KeyActions, KeyGenerate, KeyImport, KeyList, KeyRemove, LocalSessionOpen, Ping,
+    Pong, ProjectActions, ProjectClose, ProjectList, ProjectOpen, ResourceActions, ResourceGet,
+    ResourceList, ResourcePut, ResourceRemove, RunbookActions, SecretActions, SecretList,
+    SecretPut, SecretRemove, SessionActions, SessionAttach, SessionBlocks, SessionClose,
+    SessionIntegration, SessionList, SessionResize, SftpActions, SshActions, SshConnections,
     SshExec, SshSessionOpen, SshWarm, SyncActions, TunnelActions, TunnelClose, TunnelList,
     TunnelOpen,
 };

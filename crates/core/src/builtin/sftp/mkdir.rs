@@ -3,11 +3,11 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::{Files, PathParams};
+use super::{PathParams, SftpActions};
 
 #[derive(Debug, Clone)]
 pub(crate) struct SftpMkdir {
-    files: Files,
+    sftp: SftpActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -16,8 +16,8 @@ pub(crate) struct Made {
 }
 
 impl SftpMkdir {
-    pub(super) fn new(files: Files) -> Self {
-        Self { files }
+    pub(super) fn new(sftp: SftpActions) -> Self {
+        Self { sftp }
     }
 }
 
@@ -31,11 +31,11 @@ impl Action for SftpMkdir {
     type Output = Made;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &PathParams) -> Risk {
-        self.files.per_call_risk(target, Self::RISK)
+        self.sftp.per_call_risk(target, Self::RISK)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, _params: &PathParams) -> Option<String> {
-        self.files.destination(target)
+        self.sftp.destination(target)
     }
 
     fn summary(&self, output: &Made) -> Value {
@@ -45,7 +45,7 @@ impl Action for SftpMkdir {
     async fn run(&self, context: &Context, params: PathParams) -> Result<Made, ActionError> {
         let path = params.path.as_str();
 
-        self.files
+        self.sftp
             .run(context, move |sftp| async move { sftp.mkdir(path).await })
             .await?;
 

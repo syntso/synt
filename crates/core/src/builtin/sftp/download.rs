@@ -8,14 +8,14 @@ use synt_journal::ResourceRef;
 use synt_proto::StreamId;
 use synt_ssh::Download;
 
-use super::files::failed;
-use super::{Files, RemotePath};
+use super::failed;
+use super::{RemotePath, SftpActions};
 use crate::link::Link;
 use crate::link::Outbound;
 
 #[derive(Debug, Clone)]
 pub(crate) struct SftpDownload {
-    files: Files,
+    sftp: SftpActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -46,8 +46,8 @@ struct Sent {
 }
 
 impl SftpDownload {
-    pub(super) fn new(files: Files) -> Self {
-        Self { files }
+    pub(super) fn new(sftp: SftpActions) -> Self {
+        Self { sftp }
     }
 
     async fn open(
@@ -57,7 +57,7 @@ impl SftpDownload {
     ) -> Result<Download, ActionError> {
         let (path, offset, length) = (params.path.as_str(), params.offset, params.length);
 
-        self.files
+        self.sftp
             .run(context, move |sftp| async move {
                 sftp.download(path, offset, length).await
             })
@@ -98,7 +98,7 @@ impl Action for SftpDownload {
     type Output = Downloaded;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &DownloadParams) -> Risk {
-        self.files.per_call_risk(target, Self::RISK)
+        self.sftp.per_call_risk(target, Self::RISK)
     }
 
     fn destination(
@@ -106,7 +106,7 @@ impl Action for SftpDownload {
         target: Option<&ResourceRef>,
         _params: &DownloadParams,
     ) -> Option<String> {
-        self.files.destination(target)
+        self.sftp.destination(target)
     }
 
     fn summary(&self, output: &Downloaded) -> Value {
@@ -130,7 +130,7 @@ impl Action for SftpDownload {
             ));
         }
 
-        let _slot = self.files.transfer_slot().await?;
+        let _slot = self.sftp.transfer_slot().await?;
         let link = Link::of_call(context, "the file")?;
 
         let mut outbound = Outbound::open(&link, params.stream)?;

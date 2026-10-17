@@ -9,7 +9,7 @@ use crate::CoreError;
 #[derive(Debug, Error)]
 pub(crate) enum K8sError {
     #[error(transparent)]
-    Kube(#[from] KubeError),
+    K8sActions(#[from] KubeError),
 
     #[error(transparent)]
     Action(#[from] ActionError),
@@ -75,8 +75,8 @@ pub(crate) enum K8sError {
 impl From<K8sError> for ActionError {
     fn from(error: K8sError) -> Self {
         match error {
-            K8sError::Kube(KubeError::Invalid(reason)) => Self::InvalidParams(reason),
-            K8sError::Kube(error @ KubeError::UnknownKind(_)) => {
+            K8sError::K8sActions(KubeError::Invalid(reason)) => Self::InvalidParams(reason),
+            K8sError::K8sActions(error @ KubeError::UnknownKind(_)) => {
                 Self::InvalidParams(error.to_string())
             }
             K8sError::Action(error) => error,

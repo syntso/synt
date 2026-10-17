@@ -23,7 +23,7 @@ pub use open::SshSessionOpen;
 pub use resize::SessionResize;
 pub(crate) use size::SessionSize;
 
-use synt_actions::{ActionError, Registry};
+use synt_actions::{ActionError, ActionGroup, Registry};
 use synt_ssh::Pool;
 
 use crate::projects::Projects;
@@ -44,8 +44,10 @@ impl SessionActions {
             terminals,
         }
     }
+}
 
-    pub fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
+impl ActionGroup for SessionActions {
+    fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
         let terminals = &self.terminals;
 
         registry.register(SshSessionOpen::new(

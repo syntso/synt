@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde_json::{Value, json};
+use synt_actions::ActionGroup;
 use synt_client::{Client, ClientError};
 use synt_core::{
     Broker, Core, CoreCaller, CoreScreen, EventFeed, ExtensionMerger, ProjectList, ProjectOpen,

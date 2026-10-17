@@ -2,13 +2,21 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use synt_actions::{ActionDescription, ActionError, Catalog, RegisteredAction, Registry, Risk};
+use synt_actions::{
+    ActionDescription, ActionError, ActionGroup, Catalog, RegisteredAction, Registry, Risk,
+};
 use synt_journal::{ActionId, SystemClock};
 use synt_sync::OpenProjects;
 
 use crate::ExtensionError;
 use crate::background::ExtensionEvent;
-use crate::builtin::{ExtensionInfo, Registration, SearchHit};
+use crate::builtin::{
+    ExtensionContributions, ExtensionDisable, ExtensionDocuments, ExtensionEnable,
+    ExtensionFileForget, ExtensionFileList, ExtensionFilePick, ExtensionHttp, ExtensionInfo,
+    ExtensionInstall, ExtensionInstallLocal, ExtensionList, ExtensionPanelAsset,
+    ExtensionPanelMessage, ExtensionPanelOpen, ExtensionRemove, ExtensionSearch,
+    ExtensionSettingsGet, ExtensionSettingsSet, ExtensionViewRender, SearchHit,
+};
 use crate::call::Caller;
 use crate::documents::MergeSides;
 use crate::extension::{ActionSpec, Candidate, CoreLink, Guest, Loaded, Roster, Services};
@@ -69,15 +77,6 @@ impl Extensions {
     pub fn connect(&self, caller: Arc<dyn Caller>, screen: Arc<dyn Screen>) {
         self.services.connect(CoreLink::new(caller, screen));
         self.roster.wake_up();
-    }
-
-    pub fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
-        Registration::register(self, registry)?;
-
-        self.admission.learn(registry);
-        registry.attach(Arc::new(self.clone()));
-
-        Ok(())
     }
 
     pub fn load_enabled(&self) -> Result<usize, ExtensionError> {
@@ -327,6 +326,47 @@ impl Extensions {
 
     fn begin_change(&self) -> MutexGuard<'_, ()> {
         self.changing.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn register_lifecycle(&self, registry: &mut Registry) -> Result<(), ActionError> {
+        registry.register(ExtensionSearch::new(self.clone()))?;
+        registry.register(ExtensionInstall::new(self.clone()))?;
+        registry.register(ExtensionInstallLocal::new(self.clone()))?;
+        registry.register(ExtensionList::new(self.clone()))?;
+        registry.register(ExtensionEnable::new(self.clone()))?;
+        registry.register(ExtensionDisable::new(self.clone()))?;
+        registry.register(ExtensionRemove::new(self.clone()))
+    }
+
+    fn register_surfaces(&self, registry: &mut Registry) -> Result<(), ActionError> {
+        registry.register(ExtensionContributions::new(self.clone()))?;
+        registry.register(ExtensionViewRender::new(self.clone()))?;
+        registry.register(ExtensionPanelOpen::new(self.clone()))?;
+        registry.register(ExtensionPanelAsset::new(self.clone()))?;
+        registry.register(ExtensionPanelMessage::new(self.clone()))?;
+        registry.register(ExtensionSettingsGet::new(self.clone()))?;
+        registry.register(ExtensionSettingsSet::new(self.clone()))
+    }
+
+    fn register_reach(&self, registry: &mut Registry) -> Result<(), ActionError> {
+        registry.register(ExtensionHttp::new(self.clone()))?;
+        registry.register(ExtensionDocuments::new(self.clone()))?;
+        registry.register(ExtensionFilePick::new(self.clone()))?;
+        registry.register(ExtensionFileForget::new(self.clone()))?;
+        registry.register(ExtensionFileList::new(self.clone()))
+    }
+}
+
+impl ActionGroup for Extensions {
+    fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
+        self.register_lifecycle(registry)?;
+        self.register_surfaces(registry)?;
+        self.register_reach(registry)?;
+
+        self.admission.learn(registry);
+        registry.attach(Arc::new(self.clone()));
+
+        Ok(())
     }
 }
 

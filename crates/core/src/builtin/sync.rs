@@ -15,7 +15,7 @@ use share::SyncShare;
 use status::SyncStatus;
 use unshare::SyncUnshare;
 
-use synt_actions::{ActionError, Registry};
+use synt_actions::{ActionError, ActionGroup, Registry};
 use synt_sync::Syncer;
 
 #[derive(Clone)]
@@ -27,8 +27,10 @@ impl SyncActions {
     pub fn new(syncer: Syncer) -> Self {
         Self { syncer }
     }
+}
 
-    pub fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
+impl ActionGroup for SyncActions {
+    fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
         registry.register(SyncEnable::new(self.syncer.clone()))?;
         registry.register(SyncDisable::new(self.syncer.clone()))?;
         registry.register(SyncStatus::new(self.syncer.clone()))?;

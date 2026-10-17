@@ -3,15 +3,15 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::{EventLine, EventQuery};
 
-use super::{K8sError, Kube};
+use super::{K8sActions, K8sError};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sEvents {
-    kube: Kube,
+    kube: K8sActions,
 }
 
 impl K8sEvents {
-    pub(super) fn new(kube: Kube) -> Self {
+    pub(super) fn new(kube: K8sActions) -> Self {
         Self { kube }
     }
 

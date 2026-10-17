@@ -2,16 +2,16 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::{FileInfo, Files, PathParams};
+use super::{FileInfo, PathParams, SftpActions};
 
 #[derive(Debug, Clone)]
 pub(crate) struct SftpStat {
-    files: Files,
+    sftp: SftpActions,
 }
 
 impl SftpStat {
-    pub(super) fn new(files: Files) -> Self {
-        Self { files }
+    pub(super) fn new(sftp: SftpActions) -> Self {
+        Self { sftp }
     }
 }
 
@@ -25,11 +25,11 @@ impl Action for SftpStat {
     type Output = FileInfo;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &PathParams) -> Risk {
-        self.files.per_call_risk(target, Self::RISK)
+        self.sftp.per_call_risk(target, Self::RISK)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, _params: &PathParams) -> Option<String> {
-        self.files.destination(target)
+        self.sftp.destination(target)
     }
 
     fn summary(&self, output: &FileInfo) -> Value {
@@ -40,7 +40,7 @@ impl Action for SftpStat {
         let path = params.path.as_str();
 
         let entry = self
-            .files
+            .sftp
             .run(context, move |sftp| async move { sftp.stat(path).await })
             .await?;
 

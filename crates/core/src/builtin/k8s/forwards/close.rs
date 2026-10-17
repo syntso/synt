@@ -5,11 +5,11 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
 use super::{ForwardId, ForwardInfo};
-use crate::builtin::k8s::{K8sError, Kube};
+use crate::builtin::k8s::{K8sActions, K8sError};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sPortForwardClose {
-    kube: Kube,
+    kube: K8sActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -18,7 +18,7 @@ pub(crate) struct ForwardCloseParams {
 }
 
 impl K8sPortForwardClose {
-    pub(crate) fn new(kube: Kube) -> Self {
+    pub(crate) fn new(kube: K8sActions) -> Self {
         Self { kube }
     }
 }

@@ -5,12 +5,12 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::{ExecLimits, ExecOutput, ExecRequest};
 
-use super::{K8sError, Kube};
+use super::{K8sActions, K8sError};
 use crate::builtin::ssh::escalates;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sExec {
-    kube: Kube,
+    kube: K8sActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -23,7 +23,7 @@ pub(crate) struct ExecParams {
 }
 
 impl K8sExec {
-    pub(super) fn new(kube: Kube) -> Self {
+    pub(super) fn new(kube: K8sActions) -> Self {
         Self { kube }
     }
 

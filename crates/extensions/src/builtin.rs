@@ -6,11 +6,18 @@ mod file;
 mod http;
 mod lifecycle;
 mod panel;
-mod registration;
 mod settings;
 mod view;
 
 pub(crate) use calling_actor::CallingActor;
+pub(crate) use contributions::ExtensionContributions;
+pub(crate) use document::ExtensionDocuments;
+pub(crate) use file::{ExtensionFileForget, ExtensionFileList, ExtensionFilePick};
 pub(crate) use http::ExtensionHttp;
-pub(crate) use lifecycle::{ExtensionInfo, SearchHit};
-pub(crate) use registration::Registration;
+pub(crate) use lifecycle::{
+    ExtensionDisable, ExtensionEnable, ExtensionInfo, ExtensionInstall, ExtensionInstallLocal,
+    ExtensionList, ExtensionRemove, ExtensionSearch, SearchHit,
+};
+pub(crate) use panel::{ExtensionPanelAsset, ExtensionPanelMessage, ExtensionPanelOpen};
+pub(crate) use settings::{ExtensionSettingsGet, ExtensionSettingsSet};
+pub(crate) use view::ExtensionViewRender;

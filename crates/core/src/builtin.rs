@@ -15,10 +15,10 @@ mod ssh;
 mod sync;
 mod tunnel;
 
-pub use db::Databases;
+pub use db::DbActions;
 pub use grant::{GrantActions, GrantList, GrantRevoke};
 pub use journal::{JournalActions, JournalPage, JournalVerify};
-pub use k8s::Kube;
+pub use k8s::K8sActions;
 pub use key::{KeyActions, KeyGenerate, KeyImport, KeyList, KeyRemove};
 pub use ping::{Ping, Pong};
 pub use project::{ProjectActions, ProjectClose, ProjectList, ProjectOpen};
@@ -29,7 +29,7 @@ pub use session::{
     LocalSessionOpen, SessionActions, SessionAttach, SessionBlocks, SessionClose,
     SessionIntegration, SessionList, SessionResize, SshSessionOpen,
 };
-pub use sftp::Files;
+pub use sftp::SftpActions;
 pub use ssh::{SshActions, SshConnections, SshExec, SshWarm};
 pub use sync::SyncActions;
 pub use tunnel::{TunnelActions, TunnelClose, TunnelList, TunnelOpen};

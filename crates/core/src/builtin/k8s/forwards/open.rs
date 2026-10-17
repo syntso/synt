@@ -5,15 +5,15 @@ use synt_kube::ForwardRequest;
 
 use super::{ForwardEntry, ForwardInfo};
 use crate::builtin::hold::keep_hold_while_open;
-use crate::builtin::k8s::{K8sError, Kube};
+use crate::builtin::k8s::{K8sActions, K8sError};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sPortForward {
-    kube: Kube,
+    kube: K8sActions,
 }
 
 impl K8sPortForward {
-    pub(crate) fn new(kube: Kube) -> Self {
+    pub(crate) fn new(kube: K8sActions) -> Self {
         Self { kube }
     }
 

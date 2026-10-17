@@ -8,9 +8,10 @@ use std::path::{Path, PathBuf};
 use common::{Approver, Grounds, Harness, rejection};
 use rusqlite::Connection;
 use serde_json::{Value, json};
+use synt_actions::ActionGroup;
 use synt_client::Client;
 use synt_core::{
-    Broker, Core, Databases, ProjectOpen, Projects, SecretList, SecretPut, SecretRemove, Secrets,
+    Broker, Core, DbActions, ProjectOpen, Projects, SecretList, SecretPut, SecretRemove, Secrets,
 };
 use synt_journal::EventKind;
 use synt_proto::{ActionCall, ActionOutcome, ApprovalDecision, ErrorCode, Risk};
@@ -97,7 +98,7 @@ fn core(grounds: &Grounds) -> Core {
     registry
         .register(SecretRemove::new(secrets.clone()))
         .unwrap();
-    Databases::new(Pool::new(), projects, secrets)
+    DbActions::new(Pool::new(), projects, secrets)
         .register(&mut registry)
         .unwrap();
 

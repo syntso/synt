@@ -7,7 +7,8 @@ use std::path::PathBuf;
 
 use common::{Grounds, Harness, kinds, rejection};
 use serde_json::{Value, json};
-use synt_core::{Broker, Core, Kube, ProjectOpen, Projects, ResourceList};
+use synt_actions::ActionGroup;
+use synt_core::{Broker, Core, K8sActions, ProjectOpen, Projects, ResourceList};
 use synt_journal::EventKind;
 use synt_kube::KubeconfigSource;
 use synt_proto::{ActionCall, ActionDescription, ErrorCode, Risk};
@@ -61,7 +62,7 @@ fn harness(text: &str) -> Harness {
     registry
         .register(ProjectOpen::new(projects.clone()))
         .unwrap();
-    Kube::new(Pool::builder().build(), projects, grounds.journal())
+    K8sActions::new(Pool::builder().build(), projects, grounds.journal())
         .register(&mut registry)
         .unwrap();
 

@@ -7,11 +7,11 @@ use synt_kube::{KindName, WatchRequest};
 use synt_proto::StreamId;
 
 use super::streams::{Pump, StreamStarted};
-use super::{K8sError, KindFacts, Kube};
+use super::{K8sActions, K8sError, KindFacts};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sWatch {
-    kube: Kube,
+    kube: K8sActions,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -30,7 +30,7 @@ pub(crate) struct WatchParams {
 }
 
 impl K8sWatch {
-    pub(super) fn new(kube: Kube) -> Self {
+    pub(super) fn new(kube: K8sActions) -> Self {
         Self { kube }
     }
 

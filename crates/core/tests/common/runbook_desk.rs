@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde_json::{Value, json};
+use synt_actions::ActionGroup;
 use synt_client::{Client, ClientError};
 use synt_core::{
     Broker, Core, LocalSessionOpen, ProjectOpen, Projects, RunbookActions, Runbooks, SessionClose,

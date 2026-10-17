@@ -9,9 +9,10 @@ use std::sync::Arc;
 use common::{Grounds, Harness};
 use rusqlite::Connection;
 use serde_json::{Value, json};
+use synt_actions::ActionGroup;
 use synt_client::Client;
 use synt_core::{
-    Broker, Core, Databases, ProjectOpen, Projects, RunbookActions, Runbooks, Secrets, Terminals,
+    Broker, Core, DbActions, ProjectOpen, Projects, RunbookActions, Runbooks, Secrets, Terminals,
 };
 use synt_journal::{Actor, Event, EventKind, Name};
 use synt_proto::{ActionCall, ActionOutcome};
@@ -121,7 +122,7 @@ fn core(grounds: &Grounds) -> Arc<Core> {
     registry
         .register(ProjectOpen::new(projects.clone()))
         .unwrap();
-    Databases::new(Pool::new(), projects, secrets)
+    DbActions::new(Pool::new(), projects, secrets)
         .register(&mut registry)
         .unwrap();
     RunbookActions::new(runbooks.clone())

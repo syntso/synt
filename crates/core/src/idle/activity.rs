@@ -1,7 +1,7 @@
 use synt_ssh::Tunnels;
 use tokio_util::task::TaskTracker;
 
-use crate::builtin::Kube;
+use crate::builtin::K8sActions;
 use crate::runbooks::Runs;
 use crate::terminals::Terminals;
 
@@ -33,7 +33,7 @@ impl Activity for Runs {
     }
 }
 
-impl Activity for Kube {
+impl Activity for K8sActions {
     fn is_active(&self) -> bool {
         self.is_busy()
     }

@@ -6,12 +6,12 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
-use synt_actions::{ActionError, Registry};
+use synt_actions::{ActionError, ActionGroup, Registry};
 use synt_core::{
-    AlwaysGrants, Arguments, Broker, Core, CoreCaller, CoreScreen, Databases, EventFeed,
-    ExtensionMerger, Files, GrantActions, IdleWatch, JournalActions, KeyActions, Kube,
-    LoginCommand, Ping, ProjectActions, Projects, ResourceActions, RunbookActions, RunbookError,
-    Runbooks, SecretActions, Secrets, Server, SessionActions, SshActions, SshKeys, Storage,
+    AlwaysGrants, Arguments, Broker, Core, CoreCaller, CoreScreen, DbActions, EventFeed,
+    ExtensionMerger, GrantActions, IdleWatch, JournalActions, K8sActions, KeyActions, LoginCommand,
+    Ping, ProjectActions, Projects, ResourceActions, RunbookActions, RunbookError, Runbooks,
+    SecretActions, Secrets, Server, SessionActions, SftpActions, SshActions, SshKeys, Storage,
     SyncActions, Terminals, TunnelActions, VERSION,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
@@ -33,7 +33,7 @@ struct Builtins {
     tunnels: Tunnels,
     terminals: Terminals,
     runbooks: Runbooks,
-    kube: Kube,
+    kube: K8sActions,
 }
 
 #[tokio::main]
@@ -99,7 +99,7 @@ fn builtins(storage: &Storage, journal: JournalWriter) -> Result<Builtins, Box<d
     let tunnels = Tunnels::new(pool.clone());
     let terminals = Terminals::new(journal.clone());
     let runbooks = Runbooks::new(projects.clone(), journal.clone(), terminals.clone());
-    let kube = Kube::new(pool.clone(), projects.clone(), journal.clone());
+    let kube = K8sActions::new(pool.clone(), projects.clone(), journal.clone());
 
     Ok(Builtins {
         journal,
@@ -132,7 +132,7 @@ fn register(registry: &mut Registry, builtins: &Builtins) -> Result<(), ActionEr
     registry.register(Ping)?;
     SshActions::new(pool.clone(), projects.clone()).register(registry)?;
     TunnelActions::new(tunnels.clone(), projects.clone()).register(registry)?;
-    Files::new(pool.clone(), projects.clone()).register(registry)?;
+    SftpActions::new(pool.clone(), projects.clone()).register(registry)?;
     kube.register(registry)?;
     SessionActions::new(pool.clone(), projects.clone(), terminals.clone()).register(registry)?;
     JournalActions::new(journal.clone()).register(registry)?;
@@ -141,7 +141,7 @@ fn register(registry: &mut Registry, builtins: &Builtins) -> Result<(), ActionEr
     GrantActions::new(always.clone(), journal.clone()).register(registry)?;
     KeyActions::new(keys.clone(), pool.clone()).register(registry)?;
     SecretActions::new(secrets.clone()).register(registry)?;
-    Databases::new(pool.clone(), projects.clone(), secrets.clone()).register(registry)?;
+    DbActions::new(pool.clone(), projects.clone(), secrets.clone()).register(registry)?;
     RunbookActions::new(runbooks.clone()).register(registry)
 }
 

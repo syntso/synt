@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, ActionGroup, Context, Registry, Risk};
 use synt_proto::RequestSeq;
 
 use crate::VERSION;
@@ -26,5 +26,11 @@ impl Action for Ping {
             core: VERSION.to_owned(),
             request: RequestSeq::new(context.request().get()),
         })
+    }
+}
+
+impl ActionGroup for Ping {
+    fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
+        registry.register(*self)
     }
 }

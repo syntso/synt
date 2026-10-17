@@ -2,15 +2,15 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::ForwardInfo;
-use crate::builtin::k8s::Kube;
+use crate::builtin::k8s::K8sActions;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sPortForwardList {
-    kube: Kube,
+    kube: K8sActions,
 }
 
 impl K8sPortForwardList {
-    pub(crate) fn new(kube: Kube) -> Self {
+    pub(crate) fn new(kube: K8sActions) -> Self {
         Self { kube }
     }
 }

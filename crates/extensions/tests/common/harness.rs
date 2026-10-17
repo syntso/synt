@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::Value;
-use synt_actions::{ActionError, Context, Prepared, RegisteredAction, Registry};
+use synt_actions::{ActionError, ActionGroup, Context, Prepared, RegisteredAction, Registry};
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{ActionId, Actor, ResourceRef, Seq};
 use tempfile::TempDir;

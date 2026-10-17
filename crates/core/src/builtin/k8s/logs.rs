@@ -9,11 +9,11 @@ use synt_kube::{Cluster, LogRequest, LogText, Namespace};
 use synt_proto::StreamId;
 
 use super::streams::{Pump, StreamStarted};
-use super::{K8sError, Kube};
+use super::{K8sActions, K8sError};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sLogs {
-    kube: Kube,
+    kube: K8sActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -47,7 +47,7 @@ impl LogsParams {
 }
 
 impl K8sLogs {
-    pub(super) fn new(kube: Kube) -> Self {
+    pub(super) fn new(kube: K8sActions) -> Self {
         Self { kube }
     }
 

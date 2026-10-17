@@ -5,10 +5,10 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
-use synt_actions::Registry;
+use synt_actions::{ActionGroup, Registry};
 use synt_client::{Autostart, Client, ClientError};
 use synt_core::{
-    Broker, ClusterResource, Core, HostResource, Kube, ProjectOpen, Projects, Resource,
+    Broker, ClusterResource, Core, HostResource, K8sActions, ProjectOpen, Projects, Resource,
     ResourceList, State,
 };
 use synt_journal::{Event, EventKind, Filter, Journal, JournalWriter, MemoryKeyStore, Seq};
@@ -62,7 +62,7 @@ impl Lab {
         registry
             .register(ResourceList::new(projects.clone()))
             .unwrap();
-        Kube::new(pool, projects, journal.clone())
+        K8sActions::new(pool, projects, journal.clone())
             .register(&mut registry)
             .unwrap();
 

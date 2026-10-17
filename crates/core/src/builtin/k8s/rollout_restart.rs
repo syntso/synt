@@ -3,15 +3,15 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::Restarted;
 
-use super::{K8sError, Kube, ObjectParams};
+use super::{K8sActions, K8sError, ObjectParams};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sRolloutRestart {
-    kube: Kube,
+    kube: K8sActions,
 }
 
 impl K8sRolloutRestart {
-    pub(super) fn new(kube: Kube) -> Self {
+    pub(super) fn new(kube: K8sActions) -> Self {
         Self { kube }
     }
 

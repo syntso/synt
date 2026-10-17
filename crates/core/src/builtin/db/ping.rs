@@ -6,14 +6,14 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_db::{Effect, Engine};
 use synt_journal::ResourceRef;
 
-use super::Databases;
+use super::DbActions;
 use crate::clock::milliseconds;
 
 const LIMIT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone)]
 pub(crate) struct DbPing {
-    databases: Databases,
+    databases: DbActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -24,7 +24,7 @@ pub(crate) struct PingResult {
 }
 
 impl DbPing {
-    pub(super) fn new(databases: Databases) -> Self {
+    pub(super) fn new(databases: DbActions) -> Self {
         Self { databases }
     }
 }

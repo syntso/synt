@@ -12,7 +12,7 @@ use synt_journal::ResourceRef;
 
 use self::fields::QueryFields;
 use self::statement::Statement;
-use super::Databases;
+use super::DbActions;
 use super::error::DbActionError;
 use super::recorded::recorded_statement;
 use crate::clock::milliseconds;
@@ -27,7 +27,7 @@ const JUDGED: &str = "judged";
 
 #[derive(Debug, Clone)]
 pub(crate) struct DbQuery {
-    databases: Databases,
+    databases: DbActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
@@ -52,7 +52,7 @@ pub(crate) struct QueryResult {
 }
 
 impl DbQuery {
-    pub(super) fn new(databases: Databases) -> Self {
+    pub(super) fn new(databases: DbActions) -> Self {
         Self { databases }
     }
 }

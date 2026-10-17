@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use synt_actions::{Action, Registry};
+use synt_actions::{Action, ActionGroup, Registry};
 use synt_core::{Broker, Core, ProjectOpen, Projects, ResourceGet, ResourcePut, SyncActions};
 use synt_proto::ActionCall;
 use synt_sync::{SyncLoop, Syncer};

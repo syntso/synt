@@ -6,7 +6,7 @@ pub use close::ProjectClose;
 pub use list::ProjectList;
 pub use open::ProjectOpen;
 
-use synt_actions::{ActionError, Registry};
+use synt_actions::{ActionError, ActionGroup, Registry};
 
 use crate::projects::Projects;
 
@@ -19,8 +19,10 @@ impl ProjectActions {
     pub fn new(projects: Projects) -> Self {
         Self { projects }
     }
+}
 
-    pub fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
+impl ActionGroup for ProjectActions {
+    fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
         registry.register(ProjectOpen::new(self.projects.clone()))?;
         registry.register(ProjectClose::new(self.projects.clone()))?;
         registry.register(ProjectList::new(self.projects.clone()))
