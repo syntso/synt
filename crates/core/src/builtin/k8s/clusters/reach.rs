@@ -5,7 +5,6 @@ use synt_ssh::Target;
 
 use super::ClusterKey;
 use crate::builtin::k8s::K8sError;
-use crate::builtin::ssh::is_root;
 use crate::projects::{Projects, Resolved};
 
 #[derive(Debug, Clone)]
@@ -49,7 +48,7 @@ impl Reach {
     }
 
     pub(crate) fn logs_in_as_root(&self) -> bool {
-        self.via.as_ref().is_some_and(|via| is_root(via.user()))
+        self.via.as_ref().is_some_and(Target::logs_in_as_root)
     }
 
     pub(crate) fn check_admitted(&self, context: &Context) -> Result<(), K8sError> {

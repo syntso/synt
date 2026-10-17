@@ -72,11 +72,11 @@ impl Tunnels {
             .collect()
     }
 
-    pub fn login_user(&self, id: TunnelId) -> Option<String> {
+    pub fn logs_in_as_root(&self, id: TunnelId) -> bool {
         self.open
             .locked()
             .get(&id)
-            .map(|forward| forward.login_user().to_owned())
+            .is_some_and(PortForward::logs_in_as_root)
     }
 
     pub async fn close(&self, id: TunnelId) -> Option<TunnelStatus> {

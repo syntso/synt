@@ -4,9 +4,9 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::{ExecLimits, ExecOutput, ExecRequest};
+use synt_ssh::RemoteCommand;
 
 use super::{K8sActions, K8sError};
-use crate::builtin::ssh::escalates;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sExec {
@@ -51,7 +51,7 @@ impl Action for K8sExec {
     }
 
     fn risk(&self, target: Option<&ResourceRef>, params: &ExecParams) -> Risk {
-        if escalates(&params.request.command.line()) {
+        if RemoteCommand::new(params.request.command.line()).escalates() {
             return Risk::Privileged;
         }
 

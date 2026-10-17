@@ -28,7 +28,6 @@ use self::query::DbQuery;
 use self::schema::DbSchema;
 use self::tables::DbTables;
 use crate::blocking::blocking;
-use crate::builtin::ssh::is_root;
 use crate::projects::{Projects, ResolvedDatabase};
 use crate::secrets::Secrets;
 
@@ -78,7 +77,7 @@ impl DbActions {
             return Risk::Privileged;
         };
 
-        if resolved.via.as_ref().is_some_and(|via| is_root(via.user())) {
+        if resolved.via.as_ref().is_some_and(Target::logs_in_as_root) {
             return Risk::Privileged;
         }
 
@@ -144,7 +143,7 @@ impl DbActions {
         let text = target.as_str().to_owned();
         let resolved = blocking::<_, DbActionError>(move || projects.database(&text)).await?;
 
-        if resolved.via.as_ref().is_some_and(|via| is_root(via.user()))
+        if resolved.via.as_ref().is_some_and(Target::logs_in_as_root)
             && context.risk() != Risk::Privileged
         {
             return Err(DbActionError::RootLogin {

@@ -6,10 +6,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
-use synt_ssh::{ExecLimits, ExecOutput, Pool};
+use synt_ssh::{ExecLimits, ExecOutput, Pool, RemoteCommand};
 use tokio::sync::Semaphore;
 
-use super::privilege::escalates;
 use crate::CoreError;
 use crate::projects::Projects;
 
@@ -25,7 +24,8 @@ pub struct SshExec {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct ExecParams {
-    pub command: String,
+    #[schemars(with = "String")]
+    pub command: RemoteCommand,
 
     #[serde(default)]
     pub timeout_seconds: Option<u64>,
@@ -63,7 +63,7 @@ impl Action for SshExec {
     type Output = ExecResult;
 
     fn risk(&self, target: Option<&ResourceRef>, params: &ExecParams) -> Risk {
-        if escalates(&params.command) {
+        if params.command.escalates() {
             return Risk::Privileged;
         }
 
@@ -88,7 +88,7 @@ impl Action for SshExec {
     }
 
     async fn run(&self, context: &Context, params: ExecParams) -> Result<ExecResult, ActionError> {
-        if params.command.trim().is_empty() {
+        if params.command.as_str().trim().is_empty() {
             return Err(ActionError::InvalidParams(
                 "the command is empty".to_owned(),
             ));
@@ -106,7 +106,7 @@ impl Action for SshExec {
         let stop = context.stop().cancelled();
         let output = self
             .pool
-            .exec(&target, &params.command, limits, stop)
+            .exec(&target, params.command.as_str(), limits, stop)
             .await
             .map_err(CoreError::from)?;
 

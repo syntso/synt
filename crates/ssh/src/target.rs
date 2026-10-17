@@ -69,6 +69,10 @@ impl Target {
         &self.user
     }
 
+    pub fn logs_in_as_root(&self) -> bool {
+        self.user == "root"
+    }
+
     pub fn identity_files(&self) -> &[PathBuf] {
         &self.identity_files
     }
