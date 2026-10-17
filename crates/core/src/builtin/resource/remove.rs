@@ -1,9 +1,8 @@
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 use synt_journal::ResourceRef;
 
-use crate::blocking::blocking;
-use crate::projects::{Projects, ResourceEntry};
+use crate::projects::{Projects, ResourceEntry, TargetRef};
 
 #[derive(Debug, Clone)]
 pub struct ResourceRemove {
@@ -38,8 +37,11 @@ impl Action for ResourceRemove {
         let admitted = context.destination().map(str::to_owned);
         let projects = self.projects.clone();
 
-        blocking(move || projects.remove(target.as_str(), admitted.as_deref()))
-            .await
-            .map_err(|error| ActionError::Failed(error.to_string()))
+        blocking(move || {
+            let target = TargetRef::require(target.as_str())?;
+
+            projects.remove(&target, admitted.as_deref())
+        })
+        .await
     }
 }

@@ -1,0 +1,84 @@
+name: synt-db-tests
+
+x-password: &password synt-test-password
+
+services:
+  postgres:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    environment:
+      POSTGRES_USER: synt
+      POSTGRES_PASSWORD: *password
+      POSTGRES_DB: synt
+    volumes:
+      - ./run/tls:/run/tls:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        install -o postgres -m 600 /run/tls/server.key /var/lib/postgresql/server.key &&
+        install -o postgres -m 644 /run/tls/server.crt /var/lib/postgresql/server.crt &&
+        exec docker-entrypoint.sh postgres -c ssl=on
+        -c ssl_cert_file=/var/lib/postgresql/server.crt
+        -c ssl_key_file=/var/lib/postgresql/server.key
+    ports:
+      - "127.0.0.1::5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "synt", "-d", "synt"]
+      interval: 1s
+      retries: 60
+
+  mysql:
+    image: mysql:8.4@sha256:24989179f58856db763f418010c1169fecc944e3ec1ea7e921572d83eb070f70
+    environment:
+      MYSQL_ROOT_PASSWORD: *password
+      MYSQL_USER: synt
+      MYSQL_PASSWORD: *password
+      MYSQL_DATABASE: synt
+    command: ["--log-bin-trust-function-creators=1"]
+    ports:
+      - "127.0.0.1::3306"
+    healthcheck:
+      test: ["CMD", "mysql", "-usynt", "-psynt-test-password", "-h127.0.0.1", "-e", "SELECT 1"]
+      interval: 1s
+      retries: 120
+
+  mariadb:
+    image: mariadb:11.8@sha256:6422478cb8e159f080fb1d8ccf65101e26fe51385787fde7d16c3b165a331f15
+    environment:
+      MARIADB_ROOT_PASSWORD: *password
+      MARIADB_USER: synt
+      MARIADB_PASSWORD: *password
+      MARIADB_DATABASE: synt
+    command: ["--log-bin-trust-function-creators=1"]
+    ports:
+      - "127.0.0.1::3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 1s
+      retries: 120
+
+  redis:
+    image: redis:8-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
+    volumes:
+      - ./run/tls:/run/tls:ro
+    command:
+      - redis-server
+      - --requirepass
+      - *password
+      - --tls-port
+      - "6380"
+      - --tls-cert-file
+      - /run/tls/server.crt
+      - --tls-key-file
+      - /run/tls/server.key
+      - --tls-ca-cert-file
+      - /run/tls/server.crt
+      - --tls-auth-clients
+      - "no"
+    ports:
+      - "127.0.0.1::6379"
+      - "127.0.0.1::6380"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "synt-test-password", "--no-auth-warning", "ping"]
+      interval: 1s
+      retries: 60

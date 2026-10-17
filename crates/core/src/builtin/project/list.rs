@@ -1,7 +1,6 @@
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
-use crate::blocking::blocking;
 use crate::projects::{ProjectInfo, Projects};
 
 #[derive(Debug, Clone)]
@@ -30,8 +29,6 @@ impl Action for ProjectList {
     async fn run(&self, _context: &Context, (): ()) -> Result<Vec<ProjectInfo>, ActionError> {
         let projects = self.projects.clone();
 
-        blocking(move || projects.list())
-            .await
-            .map_err(|error| ActionError::Failed(error.to_string()))
+        blocking(move || projects.list()).await
     }
 }

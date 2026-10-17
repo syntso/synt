@@ -1,19 +1,35 @@
 mod action;
+mod actor;
 mod approval;
+mod error;
+mod exec;
+mod extension;
 mod handshake;
 mod method;
+mod millis;
+mod name;
+mod one_line;
+mod resource_ref;
 mod rpc;
+mod runbook;
 mod session;
 mod wire;
 
-pub use action::{ActionCall, ActionDescription, ActionOutcome, RequestSeq};
-pub use approval::{
-    ApprovalAnswer, ApprovalDecision, ApprovalId, ApprovalRequest, Requester, RiskLevel,
-};
+pub use action::{ActionCall, ActionDescription, ActionId, ActionOutcome, RequestSeq, Risk};
+pub use actor::Actor;
+pub use approval::{ApprovalAnswer, ApprovalDecision, ApprovalId, ApprovalRequest};
+pub use error::ProtoError;
+pub use exec::{CappedText, ExecLimits, ExecOutput};
+pub use extension::{PanelPosted, ViewPatched};
 pub use handshake::{ClientKind, Hello, ProtocolVersion, Welcome};
 pub use method::Method;
-pub use rpc::{ErrorCode, Message, Notification, Outcome, Request, RequestId, Response, RpcError};
-pub use session::{EndReason, SessionEnded};
-pub use wire::{
-    Credit, Frame, FrameCodec, FrameError, FrameReader, FrameWriter, StreamId, split_framed,
+pub use millis::Millis;
+pub use name::Name;
+pub use one_line::OneLine;
+pub use resource_ref::ResourceRef;
+pub use rpc::{
+    ErrorCode, Message, Notice, Notification, Outcome, Request, RequestId, Response, RpcError,
 };
+pub use runbook::{RunPhase, RunbookStep, StepState};
+pub use session::{EndReason, SessionBlock, SessionEnded, SessionId};
+pub use wire::{Credit, Frame, FrameCodec, FrameReader, FrameWriter, StreamId};

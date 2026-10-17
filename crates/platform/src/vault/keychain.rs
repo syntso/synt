@@ -5,22 +5,20 @@ use security_framework::passwords::{
 };
 use zeroize::Zeroizing;
 
-use super::place::KeyPlace;
-use super::vault::Vault;
-use super::weak_vault::{WEAK_VAULT_FLAG, WeakVault};
+use super::{KeyPlace, Vault, WEAK_VAULT_FLAG, WeakVault};
 use crate::PlatformError;
 
 const PROBE: &str = "probe";
 const ITEM_NOT_FOUND: i32 = -25300;
 const MISSING_ENTITLEMENT: i32 = -34018;
 
-pub(crate) struct Keychain {
+pub(super) struct Keychain {
     service: String,
     protected: bool,
 }
 
 impl Keychain {
-    pub(crate) fn open(service: String, weak: WeakVault) -> Result<Self, PlatformError> {
+    pub(super) fn open(service: String, weak: WeakVault) -> Result<Self, PlatformError> {
         let protected = Self {
             service,
             protected: true,
@@ -79,5 +77,13 @@ impl Vault for Keychain {
 
     fn write(&self, name: &str, bytes: &[u8]) -> Result<(), PlatformError> {
         Ok(set_generic_password_options(bytes, self.options(name))?)
+    }
+
+    fn remove(&self, name: &str) -> Result<(), PlatformError> {
+        match delete_generic_password_options(self.options(name)) {
+            Ok(()) => Ok(()),
+            Err(error) if error.code() == ITEM_NOT_FOUND => Ok(()),
+            Err(error) => Err(error.into()),
+        }
     }
 }

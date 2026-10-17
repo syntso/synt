@@ -1,0 +1,63 @@
+[package]
+name = "synt-sync"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+publish.workspace = true
+autotests = false
+
+[lints]
+workspace = true
+
+[dependencies]
+chacha20poly1305.workspace = true
+data-encoding.workspace = true
+getrandom.workspace = true
+hkdf.workspace = true
+hmac.workspace = true
+rusqlite.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+synt-actions.workspace = true
+synt-journal.workspace = true
+synt-platform.workspace = true
+synt-proto.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+toml.workspace = true
+toml_edit.workspace = true
+x25519-dalek.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+synt-testkit = { workspace = true, features = ["sync"] }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[[test]]
+name = "editing"
+path = "tests/editing.rs"
+
+[[test]]
+name = "extensions"
+path = "tests/extensions.rs"
+
+[[test]]
+name = "folder_provider"
+path = "tests/folder_provider.rs"
+
+[[test]]
+name = "missing_folder"
+path = "tests/missing_folder.rs"
+
+[[test]]
+name = "sealing"
+path = "tests/sealing.rs"
+
+[[test]]
+name = "sharing"
+path = "tests/sharing.rs"

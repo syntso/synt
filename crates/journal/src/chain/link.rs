@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::{Serialize, Serializer};
 
-use crate::hex;
+use crate::hex::Hex;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Link([u8; 32]);
@@ -25,7 +25,7 @@ impl Link {
 
 impl fmt::Display for Link {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        hex::write(&self.0, f)
+        Hex(&self.0).fmt(f)
     }
 }
 

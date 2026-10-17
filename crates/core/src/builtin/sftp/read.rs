@@ -5,16 +5,16 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::files::LARGEST_READ;
-use super::{Files, RemotePath};
+use super::LARGEST_READ;
+use super::{RemotePath, SftpActions};
 
 #[derive(Debug, Clone)]
-pub struct SftpRead {
-    files: Files,
+pub(crate) struct SftpRead {
+    sftp: SftpActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
-pub struct ReadParams {
+pub(crate) struct ReadParams {
     pub path: RemotePath,
 
     #[serde(default)]
@@ -25,7 +25,7 @@ pub struct ReadParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ReadResult {
+pub(crate) struct ReadResult {
     pub path: String,
     pub offset: u64,
     pub bytes: u64,
@@ -34,8 +34,8 @@ pub struct ReadResult {
 }
 
 impl SftpRead {
-    pub(super) fn new(files: Files) -> Self {
-        Self { files }
+    pub(super) fn new(sftp: SftpActions) -> Self {
+        Self { sftp }
     }
 }
 
@@ -49,11 +49,11 @@ impl Action for SftpRead {
     type Output = ReadResult;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &ReadParams) -> Risk {
-        self.files.per_call_risk(target, Self::RISK)
+        self.sftp.per_call_risk(target, Self::RISK)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, _params: &ReadParams) -> Option<String> {
-        self.files.destination(target)
+        self.sftp.destination(target)
     }
 
     fn summary(&self, output: &ReadResult) -> Value {
@@ -71,7 +71,7 @@ impl Action for SftpRead {
         let (path, offset) = (params.path.as_str(), params.offset);
 
         let data = self
-            .files
+            .sftp
             .run(context, move |sftp| async move {
                 sftp.read(path, offset, length).await
             })

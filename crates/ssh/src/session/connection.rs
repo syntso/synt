@@ -7,7 +7,7 @@ use russh::{Channel, Disconnect};
 use tokio::time;
 
 use super::{Algorithms, ClientHandler, Spare};
-use crate::{SshError, Target};
+use crate::{Destination, SshError, Target};
 
 const CLOSE_LIMIT: Duration = Duration::from_secs(5);
 const ORIGINATOR_ADDRESS: &str = "127.0.0.1";
@@ -22,7 +22,7 @@ pub(crate) struct Connection {
 }
 
 impl Connection {
-    pub(crate) fn new(
+    pub(super) fn new(
         handle: Handle<ClientHandler>,
         negotiated: Arc<OnceLock<Algorithms>>,
     ) -> Self {
@@ -53,27 +53,27 @@ impl Connection {
             return Ok(channel);
         }
 
-        self.handle
-            .channel_open_session()
-            .await
-            .map_err(|error| SshError::Channel(error.to_string()))
+        let channel = self.handle.channel_open_session().await?;
+
+        Ok(channel)
     }
 
     pub(crate) async fn open_direct(
         &self,
-        host: &str,
-        port: u16,
+        destination: &Destination,
         originator: SocketAddr,
     ) -> Result<Channel<Msg>, SshError> {
-        self.handle
+        let channel = self
+            .handle
             .channel_open_direct_tcpip(
-                host,
-                u32::from(port),
+                destination.host(),
+                u32::from(destination.port()),
                 originator.ip().to_string(),
                 u32::from(originator.port()),
             )
-            .await
-            .map_err(|error| SshError::Channel(error.to_string()))
+            .await?;
+
+        Ok(channel)
     }
 
     pub(crate) async fn open_hop(&self, hop: &Target) -> Result<Channel<Msg>, russh::Error> {

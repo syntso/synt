@@ -1,0 +1,167 @@
+mod entry;
+mod listing;
+mod summary;
+
+pub use entry::RunbookEntry;
+pub use listing::RunbookListing;
+pub use summary::RunbookSummary;
+
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+
+use synt_platform::{Found, read_plain_file, replace_file};
+use synt_sync::ProjectFolder;
+
+use super::RunbookName;
+use super::document::RunbookDocument;
+use crate::CoreError;
+use crate::projects::{Problem, ProjectSlug};
+
+const FOLDER: &str = "runbooks";
+const EXTENSION: &str = "toml";
+const LARGEST_FILE: u64 = 256 * 1024;
+
+#[derive(Debug, Clone)]
+pub(crate) struct RunbookFolder {
+    place: ProjectFolder,
+    slug: ProjectSlug,
+}
+
+impl RunbookFolder {
+    pub(crate) fn new(place: ProjectFolder, slug: ProjectSlug) -> Self {
+        Self { place, slug }
+    }
+
+    pub(crate) fn reference(&self, name: &RunbookName) -> String {
+        format!("@{}/{name}", self.place.id())
+    }
+
+    pub(crate) fn listing(&self) -> Result<RunbookListing, CoreError> {
+        let mut listing = RunbookListing::new(self.slug.as_str());
+
+        for name in self.names()? {
+            match Self::read_file(&self.path(&name)) {
+                Ok(document) => listing.found(RunbookSummary::of(name, &document)),
+                Err(error) => listing.unreadable(Problem {
+                    file: Self::file_name(&name),
+                    error: error.to_string(),
+                }),
+            }
+        }
+
+        Ok(listing)
+    }
+
+    pub(crate) fn read(&self, name: &RunbookName) -> Result<RunbookDocument, CoreError> {
+        Self::read_file(&self.path(name))
+            .map_err(|error| error.in_project(name, self.slug.as_str()))
+    }
+
+    pub(crate) fn put(
+        &self,
+        name: RunbookName,
+        document: RunbookDocument,
+        admitted: Option<&str>,
+    ) -> Result<RunbookEntry, CoreError> {
+        document.check()?;
+        self.admit(&name, admitted)?;
+
+        let text = document.to_toml().map_err(|source| CoreError::Unwritable {
+            name: name.clone(),
+            source,
+        })?;
+
+        self.write(&name, &text)
+            .map_err(|source| CoreError::NotSaved {
+                name: name.clone(),
+                source,
+            })?;
+
+        Ok(RunbookEntry::new(name, document))
+    }
+
+    fn admit(&self, name: &RunbookName, admitted: Option<&str>) -> Result<(), CoreError> {
+        let actual = self.reference(name);
+
+        if admitted == Some(actual.as_str()) {
+            return Ok(());
+        }
+
+        Err(CoreError::Moved {
+            name: name.clone(),
+            project: self.slug.to_string(),
+            actual,
+        })
+    }
+
+    fn write(&self, name: &RunbookName, text: &str) -> io::Result<()> {
+        self.prepare()?;
+
+        replace_file(&self.path(name), text.as_bytes())
+    }
+
+    fn path(&self, name: &RunbookName) -> PathBuf {
+        self.place.root().join(Self::file_name(name))
+    }
+
+    fn names(&self) -> Result<Vec<RunbookName>, CoreError> {
+        let folder = self.place.root().join(FOLDER);
+
+        let Some(entries) = fs::read_dir(&folder).found()? else {
+            return Ok(Vec::new());
+        };
+
+        let mut names = Vec::new();
+
+        for entry in entries {
+            names.extend(Self::runbook_name(&entry?.path()));
+        }
+
+        names.sort();
+        Ok(names)
+    }
+
+    fn prepare(&self) -> io::Result<()> {
+        let folder = self.place.root().join(FOLDER);
+
+        match fs::create_dir(&folder) {
+            Err(error) if error.kind() != io::ErrorKind::AlreadyExists => return Err(error),
+            _ => {}
+        }
+
+        if fs::symlink_metadata(&folder)?.is_dir() {
+            return Ok(());
+        }
+
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{} must be a plain folder, not a link", folder.display()),
+        ))
+    }
+
+    fn file_name(name: &RunbookName) -> String {
+        format!("{FOLDER}/{name}.{EXTENSION}")
+    }
+
+    fn runbook_name(path: &Path) -> Option<RunbookName> {
+        if path.extension()? != EXTENSION {
+            return None;
+        }
+
+        let stem = path.file_stem()?.to_str()?;
+
+        RunbookName::new(stem).ok()
+    }
+
+    fn read_file(path: &Path) -> Result<RunbookDocument, CoreError> {
+        let bytes = read_plain_file(path, LARGEST_FILE)
+            .found()
+            .map_err(CoreError::UnreadableRunbook)?
+            .ok_or(CoreError::NoSuchRunbook)?;
+
+        let text = String::from_utf8(bytes).map_err(|_| CoreError::NotUtf8)?;
+
+        RunbookDocument::from_toml(&text)
+    }
+}

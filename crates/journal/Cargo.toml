@@ -6,6 +6,7 @@ rust-version.workspace = true
 license-file.workspace = true
 repository.workspace = true
 publish.workspace = true
+autotests = false
 
 [lints]
 workspace = true
@@ -18,11 +19,49 @@ rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+synt-proto.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["sync"] }
 zeroize.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+synt-testkit = { workspace = true, features = ["journal"] }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
+
+[[test]]
+name = "concurrency"
+path = "tests/concurrency.rs"
+
+[[test]]
+name = "crash"
+path = "tests/crash.rs"
+
+[[test]]
+name = "golden"
+path = "tests/golden.rs"
+
+[[test]]
+name = "properties"
+path = "tests/properties.rs"
+
+[[test]]
+name = "prune"
+path = "tests/prune.rs"
+
+[[test]]
+name = "recovery"
+path = "tests/recovery.rs"
+
+[[test]]
+name = "round_trip"
+path = "tests/round_trip.rs"
+
+[[test]]
+name = "tamper"
+path = "tests/tamper.rs"
+
+[[test]]
+name = "watch"
+path = "tests/watch.rs"

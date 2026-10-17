@@ -1,0 +1,34 @@
+name: synt-kube-tests
+
+services:
+  cluster:
+    image: rancher/k3s:v1.36.5-k3s1@sha256:057cfd5a9d51b89f1f0ee139c28d5d5fdd5aa7ddeac2742a0ba90c6dbc0329bb
+    command:
+      - server
+      - --disable=traefik,metrics-server,servicelb
+      - --tls-san=cluster
+      - --tls-san=127.0.0.1
+      - --write-kubeconfig=/output/k3s.yaml
+      - --write-kubeconfig-mode=644
+    privileged: true
+    tmpfs:
+      - /run
+      - /var/run
+    volumes:
+      - ./run/cluster:/output
+    ports:
+      - "127.0.0.1::6443"
+    networks:
+      - cluster
+
+  bastion:
+    build: ../ssh
+    volumes:
+      - ./run/bastion:/run/synt:ro
+    ports:
+      - "127.0.0.1::22"
+    networks:
+      - cluster
+
+networks:
+  cluster: {}

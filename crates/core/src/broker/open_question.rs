@@ -3,7 +3,7 @@ use std::sync::Arc;
 use synt_proto::{ApprovalDecision, ApprovalId};
 use tokio::sync::oneshot;
 
-use super::waiting::Waiting;
+use super::Waiting;
 
 pub(super) struct OpenQuestion {
     id: ApprovalId,

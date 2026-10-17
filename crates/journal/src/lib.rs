@@ -1,31 +1,29 @@
-mod anchor;
-mod builder;
+mod anchors;
 mod chain;
+mod clock;
 mod codec;
 mod error;
-mod export;
+mod event;
 mod filter;
+#[cfg(fuzzing)]
+pub mod fuzzing;
 mod hex;
 mod journal;
-mod lock;
-mod model;
-mod payload;
-mod reader;
+mod key_store;
+mod seq;
 mod store;
+mod timestamp;
 mod verify;
-mod writer;
 
-pub use anchor::{Anchors, KeyStore, KeyStoreError, Mark, MemoryKeyStore};
-pub use builder::JournalBuilder;
-pub use chain::{DeviceKey, JournalId, Link};
+pub use anchors::{Anchors, Mark};
+pub use chain::{DeviceKey, Link};
+pub use clock::{Clock, SystemClock};
 pub use error::JournalError;
+pub use event::{Appended, Details, Event, EventKind, NewEvent};
 pub use filter::Filter;
-pub use journal::{Journal, Pruned};
-pub use model::{
-    ActionId, Actor, Clock, Event, EventKind, Name, NameError, NewEvent, ResourceRef, Seq,
-    SystemClock, Timestamp,
-};
-pub use payload::{Details, DetailsError};
-pub use reader::JournalReader;
+pub use journal::{Journal, JournalBuilder, JournalId, JournalReader, JournalWriter, Pruned};
+pub use key_store::{KeyStore, MemoryKeyStore};
+pub use seq::Seq;
+pub use synt_proto::{ActionId, Actor, Name, ResourceRef};
+pub use timestamp::Timestamp;
 pub use verify::{Damage, Verification};
-pub use writer::JournalWriter;

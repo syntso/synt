@@ -1,5 +1,4 @@
-wasmtime::component::bindgen!({
-    path: "wit",
-    world: "extension",
-    imports: { default: trappable },
-});
+mod types;
+
+pub(crate) mod v1;
+pub(crate) mod v2;

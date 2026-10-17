@@ -3,7 +3,7 @@ use std::fmt;
 use serde::Serialize;
 
 use super::Damage;
-use crate::model::Seq;
+use crate::seq::Seq;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]

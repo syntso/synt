@@ -6,7 +6,6 @@ use synt_journal::ResourceRef;
 use synt_ssh::{TunnelId, Tunnels};
 
 use super::TunnelInfo;
-use crate::builtin::ssh::is_root;
 
 #[derive(Debug, Clone)]
 pub struct TunnelClose {
@@ -33,9 +32,7 @@ impl Action for TunnelClose {
     type Output = TunnelInfo;
 
     fn risk(&self, _target: Option<&ResourceRef>, params: &CloseParams) -> Risk {
-        let user = self.tunnels.login_user(TunnelId::from(params.id));
-
-        if user.as_deref().is_some_and(is_root) {
+        if self.tunnels.logs_in_as_root(TunnelId::from(params.id)) {
             return Risk::Privileged;
         }
 

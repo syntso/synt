@@ -1,0 +1,100 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - name: The tag matches the workspace version
+        shell: bash
+        run: |
+          version="$(cargo metadata --no-deps --format-version 1 --locked | jq -r '.packages[] | select(.name == "synt-core") | .version')"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match synt-core $version"
+            exit 1
+          fi
+
+  core:
+    needs: version
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+            name: synt-core-macos-arm64
+          - os: macos-15
+            target: x86_64-apple-darwin
+            name: synt-core-macos-x64
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+            name: synt-core-windows-x64
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            name: synt-core-linux-x64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            name: synt-core-linux-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - run: rustup target add ${{ matrix.target }}
+      - run: cargo build --locked --release -p synt-core --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p dist
+          cd "target/${{ matrix.target }}/release"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            7z a "../../../dist/${{ matrix.name }}.zip" synt-core.exe
+          else
+            tar -czf "../../../dist/${{ matrix.name }}.tar.gz" synt-core
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: core
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum -- * > SHA256SUMS
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

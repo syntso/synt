@@ -16,12 +16,15 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
       - run: rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: cargo-deny
+      - run: sh .github/scripts/file-names.sh
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo deny check
@@ -33,17 +36,136 @@ jobs:
         os: [macos-15, windows-2025, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
       - run: rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: cargo-nextest
-      - run: cargo nextest run --workspace --no-tests=pass
+      - run: cargo nextest run --workspace --no-tests=pass --no-fail-fast
+
+  ssh-integration:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-nextest
+      - run: cargo nextest run -p synt-ssh -p synt-core --test servers --no-run
+      - run: tests/ssh/up.sh
+      - run: cargo nextest run -p synt-ssh -p synt-core --test servers --run-ignored only
+        env:
+          SYNT_SSH_TESTS: "1"
+          SSH_AUTH_SOCK: ""
+      - if: failure()
+        run: docker compose --file tests/ssh/compose.yaml logs
+      - if: always()
+        run: tests/ssh/down.sh
+
+  extension-fixture:
+    runs-on: ubuntu-24.04
+    env:
+      FIXTURE: tests/extension/everything/Cargo.toml
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - run: rustup target add wasm32-wasip2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            .
+            tests/extension/everything
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-nextest
+      - run: cargo fmt --manifest-path "$FIXTURE" --check
+      - run: cargo clippy --manifest-path "$FIXTURE" --target wasm32-wasip2 --locked -- -D warnings
+      - run: cargo build --manifest-path "$FIXTURE" --target wasm32-wasip2 --release --locked
+      - run: cargo nextest run -p synt-extensions -p synt-core --test api --test install --test everything
+        env:
+          SYNT_EVERYTHING_WASM: ${{ github.workspace }}/tests/extension/everything/target/wasm32-wasip2/release/everything.wasm
+
+  kube-integration:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-nextest
+      - run: cargo nextest run -p synt-kube --test cluster -p synt-core --test clusters --no-run
+      - run: tests/kube/up.sh
+      - run: cargo nextest run -p synt-kube --test cluster -p synt-core --test clusters --run-ignored only
+        env:
+          SYNT_KUBE_TESTS: "1"
+          SSH_AUTH_SOCK: ""
+      - if: failure()
+        run: docker compose --file tests/kube/compose.yaml logs
+      - if: always()
+        run: tests/kube/down.sh
+
+  db-integration:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-nextest
+      - run: cargo nextest run -p synt-db -p synt-core --test servers --test databases --no-run
+      - run: tests/ssh/up.sh
+      - run: tests/db/up.sh
+      - run: cargo nextest run -p synt-db -p synt-core --test servers --test databases --run-ignored only -E 'package(synt-db) or binary(databases) or test(database)'
+        env:
+          SYNT_SSH_TESTS: "1"
+          SYNT_DB_TESTS: "1"
+          SSH_AUTH_SOCK: ""
+      - if: failure()
+        run: docker compose --file tests/db/compose.yaml logs
+      - if: always()
+        run: tests/db/down.sh
+      - if: always()
+        run: tests/ssh/down.sh
+
+  fuzz:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install nightly --profile minimal
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: fuzz
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-fuzz
+      - run: cargo +nightly fuzz build --target x86_64-unknown-linux-gnu
 
   rust:
     if: always()
-    needs: [lint, test]
+    needs: [lint, test, ssh-integration, extension-fixture, kube-integration, db-integration, fuzz]
     runs-on: ubuntu-24.04
     steps:
-      - run: test "${{ needs.lint.result }}" = success && test "${{ needs.test.result }}" = success
+      - run: >-
+          test "${{ needs.lint.result }}" = success &&
+          test "${{ needs.test.result }}" = success &&
+          test "${{ needs.ssh-integration.result }}" = success &&
+          test "${{ needs.extension-fixture.result }}" = success &&
+          test "${{ needs.kube-integration.result }}" = success &&
+          test "${{ needs.db-integration.result }}" = success &&
+          test "${{ needs.fuzz.result }}" = success

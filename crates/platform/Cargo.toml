@@ -12,9 +12,12 @@ workspace = true
 
 [dependencies]
 directories.workspace = true
+portable-pty.workspace = true
+schemars.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 zeroize.workspace = true
-tokio = { workspace = true, features = ["macros", "net", "rt", "signal", "time"] }
+tokio = { workspace = true, features = ["macros", "net", "rt", "signal", "sync", "time"] }
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
@@ -27,8 +30,12 @@ security-framework.workspace = true
 interprocess.workspace = true
 keyring-core.workspace = true
 sysinfo.workspace = true
+tokio-util.workspace = true
 windows-native-keyring-store.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread"] }
+
+[target.'cfg(unix)'.dev-dependencies]
+nix = { workspace = true, features = ["fs"] }

@@ -8,17 +8,18 @@ use synt_journal::ResourceRef;
 use synt_proto::StreamId;
 use synt_ssh::Download;
 
-use super::files::{failed, link};
-use super::{Files, RemotePath};
+use super::{RemotePath, SftpActions};
+use crate::CoreError;
+use crate::link::Link;
 use crate::link::Outbound;
 
 #[derive(Debug, Clone)]
-pub struct SftpDownload {
-    files: Files,
+pub(crate) struct SftpDownload {
+    sftp: SftpActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
-pub struct DownloadParams {
+pub(crate) struct DownloadParams {
     pub path: RemotePath,
     #[schemars(with = "u32")]
     pub stream: StreamId,
@@ -31,7 +32,7 @@ pub struct DownloadParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Downloaded {
+pub(crate) struct Downloaded {
     pub path: String,
     pub offset: u64,
     pub bytes: u64,
@@ -45,8 +46,8 @@ struct Sent {
 }
 
 impl SftpDownload {
-    pub(super) fn new(files: Files) -> Self {
-        Self { files }
+    pub(super) fn new(sftp: SftpActions) -> Self {
+        Self { sftp }
     }
 
     async fn open(
@@ -56,7 +57,7 @@ impl SftpDownload {
     ) -> Result<Download, ActionError> {
         let (path, offset, length) = (params.path.as_str(), params.offset, params.length);
 
-        self.files
+        self.sftp
             .run(context, move |sftp| async move {
                 sftp.download(path, offset, length).await
             })
@@ -73,7 +74,7 @@ impl SftpDownload {
         let mut hasher = Sha256::new();
         let mut bytes = 0;
 
-        while let Some(data) = download.next().await.map_err(|error| failed(&error))? {
+        while let Some(data) = download.next().await.map_err(CoreError::from)? {
             hasher.update(&data);
             bytes += u64::try_from(data.len()).unwrap_or(u64::MAX);
 
@@ -97,7 +98,7 @@ impl Action for SftpDownload {
     type Output = Downloaded;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &DownloadParams) -> Risk {
-        self.files.per_call_risk(target, Self::RISK)
+        self.sftp.per_call_risk(target, Self::RISK)
     }
 
     fn destination(
@@ -105,7 +106,7 @@ impl Action for SftpDownload {
         target: Option<&ResourceRef>,
         _params: &DownloadParams,
     ) -> Option<String> {
-        self.files.destination(target)
+        self.sftp.destination(target)
     }
 
     fn summary(&self, output: &Downloaded) -> Value {
@@ -129,8 +130,8 @@ impl Action for SftpDownload {
             ));
         }
 
-        let _slot = self.files.transfer_slot().await?;
-        let link = link(context)?;
+        let _slot = self.sftp.transfer_slot().await?;
+        let link = Link::of_call(context, "the file")?;
 
         let mut outbound = Outbound::open(&link, params.stream)?;
         let sent = self.transfer(context, &params, &mut outbound).await;

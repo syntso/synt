@@ -1,10 +1,9 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
-use crate::blocking::blocking;
-use crate::projects::{Projects, ResourceListing};
+use crate::projects::{ProjectSlug, Projects, ResourceListing};
 
 #[derive(Debug, Clone)]
 pub struct ResourceList {
@@ -13,7 +12,7 @@ pub struct ResourceList {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct ResourceListParams {
-    pub project: String,
+    pub(crate) project: ProjectSlug,
 }
 
 impl ResourceList {
@@ -45,8 +44,6 @@ impl Action for ResourceList {
     ) -> Result<ResourceListing, ActionError> {
         let projects = self.projects.clone();
 
-        blocking(move || projects.listing(&params.project))
-            .await
-            .map_err(|error| ActionError::Failed(error.to_string()))
+        blocking(move || projects.listing(&params.project)).await
     }
 }

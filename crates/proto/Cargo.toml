@@ -12,8 +12,13 @@ workspace = true
 
 [dependencies]
 bytes.workspace = true
+schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util"] }
 tokio-util.workspace = true
+
+[dev-dependencies]
+synt-testkit.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }

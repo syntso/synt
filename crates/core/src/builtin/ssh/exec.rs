@@ -1,19 +1,17 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
-use synt_ssh::{ExecLimits, ExecOutput, Pool};
+use synt_proto::{ExecLimits, ExecOutput};
+use synt_ssh::{ExecOutcome, Pool, RemoteCommand};
 use tokio::sync::Semaphore;
 
-use super::privilege::escalates;
-use super::{destination, failure, logs_in_as_root, reach_host};
+use crate::CoreError;
 use crate::projects::Projects;
 
-const LONGEST_TIMEOUT: Duration = Duration::from_hours(24);
 const CONCURRENT_RUNS: usize = 8;
 
 #[derive(Debug, Clone)]
@@ -25,20 +23,21 @@ pub struct SshExec {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct ExecParams {
-    pub command: String,
+    #[schemars(with = "String")]
+    pub command: RemoteCommand,
 
-    #[serde(default)]
-    pub timeout_seconds: Option<u64>,
+    #[serde(default, rename = "timeout_seconds")]
+    pub limits: ExecLimits,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ExecResult {
     pub exit: Option<u32>,
     pub signal: Option<String>,
-    pub stdout: String,
-    pub stderr: String,
-    pub truncated: bool,
-    pub duration_ms: u64,
+
+    #[serde(flatten)]
+    pub output: ExecOutput,
+
     pub kex: Option<String>,
     pub cipher: Option<String>,
 }
@@ -63,39 +62,40 @@ impl Action for SshExec {
     type Output = ExecResult;
 
     fn risk(&self, target: Option<&ResourceRef>, params: &ExecParams) -> Risk {
-        if escalates(&params.command) || logs_in_as_root(&self.projects, target) {
+        if params.command.escalates() {
             return Risk::Privileged;
         }
 
-        Risk::Write
+        self.projects.login_risk(target, Self::RISK)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, _params: &ExecParams) -> Option<String> {
-        destination(&self.projects, target)
+        self.projects.host_destination(target)
     }
 
-    fn summary(&self, output: &ExecResult) -> Value {
+    fn summary(&self, result: &ExecResult) -> Value {
+        let output = &result.output;
+
         json!({
-            "exit": output.exit,
-            "signal": output.signal,
+            "exit": result.exit,
+            "signal": result.signal,
             "duration_ms": output.duration_ms,
             "stdout_bytes": output.stdout.len(),
             "stderr_bytes": output.stderr.len(),
             "truncated": output.truncated,
-            "kex": output.kex,
-            "cipher": output.cipher,
+            "kex": result.kex,
+            "cipher": result.cipher,
         })
     }
 
     async fn run(&self, context: &Context, params: ExecParams) -> Result<ExecResult, ActionError> {
-        if params.command.trim().is_empty() {
+        if params.command.as_str().trim().is_empty() {
             return Err(ActionError::InvalidParams(
                 "the command is empty".to_owned(),
             ));
         }
 
-        let limits = limits(params.timeout_seconds)?;
-        let target = reach_host(&self.projects, context).await?;
+        let target = self.projects.reach_host(context).await?;
 
         let _slot = self
             .runs
@@ -104,52 +104,29 @@ impl Action for SshExec {
             .map_err(|_| ActionError::failed("ssh.exec is shutting down"))?;
 
         let stop = context.stop().cancelled();
-        let output = synt_ssh::exec(&self.pool, &target, &params.command, limits, stop)
+        let output = self
+            .pool
+            .exec(&target, params.command.as_str(), params.limits, stop)
             .await
-            .map_err(|error| failure(&error))?;
+            .map_err(CoreError::from)?;
 
         Ok(ExecResult::from(output))
     }
 }
 
-impl From<ExecOutput> for ExecResult {
-    fn from(output: ExecOutput) -> Self {
-        let (kex, cipher) = output
+impl From<ExecOutcome> for ExecResult {
+    fn from(outcome: ExecOutcome) -> Self {
+        let (kex, cipher) = outcome
             .algorithms
             .map(|algorithms| (algorithms.kex, algorithms.cipher))
             .unzip();
 
         Self {
-            exit: output.exit,
-            signal: output.signal,
-            stdout: output.stdout,
-            stderr: output.stderr,
-            truncated: output.truncated,
-            duration_ms: output.duration_ms,
+            exit: outcome.exit,
+            signal: outcome.signal,
+            output: outcome.output,
             kex,
             cipher,
         }
     }
-}
-
-fn limits(timeout_seconds: Option<u64>) -> Result<ExecLimits, ActionError> {
-    let defaults = ExecLimits::default();
-
-    let Some(seconds) = timeout_seconds else {
-        return Ok(defaults);
-    };
-
-    let timeout = Duration::from_secs(seconds);
-
-    if timeout.is_zero() || timeout > LONGEST_TIMEOUT {
-        return Err(ActionError::InvalidParams(format!(
-            "timeout_seconds must be between 1 and {}, got {seconds}",
-            LONGEST_TIMEOUT.as_secs()
-        )));
-    }
-
-    Ok(ExecLimits {
-        timeout,
-        ..defaults
-    })
 }

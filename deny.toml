@@ -1,3 +1,6 @@
+[graph]
+all-features = true
+
 [licenses]
 allow = [
     "0BSD",
@@ -17,6 +20,18 @@ unused-allowed-license = "allow"
 [[licenses.exceptions]]
 crate = "option-ext"
 allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "webpki-root-certs"
+allow = ["CDLA-Permissive-2.0"]
+
+[[licenses.exceptions]]
+crate = "webpki-roots"
+allow = ["CDLA-Permissive-2.0"]
+
+[[licenses.exceptions]]
+crate = "xxhash-rust"
+allow = ["BSL-1.0"]
 
 [licenses.private]
 ignore = true

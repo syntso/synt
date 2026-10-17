@@ -1,16 +1,17 @@
 use std::fmt::{self, Debug, Formatter};
 use std::future::Future;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::pin::Pin;
 use std::sync::Arc;
 
 use russh::Channel;
 use russh::client::Msg;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::runtime;
 
 use super::{ConnectionState, Slot};
 use crate::session::Connection;
-use crate::{Algorithms, SshError, Target};
+use crate::{Algorithms, Destination, SshError, Target};
 
 type Connecting<'a> = Pin<Box<dyn Future<Output = Result<Connection, SshError>> + Send + 'a>>;
 
@@ -37,6 +38,16 @@ impl Lease {
         self.slot.algorithms()
     }
 
+    pub async fn open_stream(
+        &self,
+        destination: &Destination,
+    ) -> Result<impl AsyncRead + AsyncWrite + Send + Unpin + 'static, SshError> {
+        let originator = SocketAddr::from((Ipv4Addr::LOCALHOST, 0));
+        let channel = self.open_direct(destination, originator).await?;
+
+        Ok(channel.into_stream())
+    }
+
     pub(crate) fn connection(&self) -> Connecting<'_> {
         Box::pin(self.slot.connection())
     }
@@ -48,30 +59,31 @@ impl Lease {
     }
 
     pub(crate) async fn open_session(&self) -> Result<Channel<Msg>, SshError> {
-        let connection = self.connection().await?;
-
-        match connection.open_session().await {
-            Ok(channel) => Ok(channel),
-            Err(_) if connection.is_closed() => self.connection().await?.open_session().await,
-            Err(error) => Err(error),
-        }
+        self.on_live_connection(|connection| async move { connection.open_session().await })
+            .await
     }
 
     pub(crate) async fn open_direct(
         &self,
-        host: &str,
-        port: u16,
+        destination: &Destination,
         originator: SocketAddr,
     ) -> Result<Channel<Msg>, SshError> {
+        self.on_live_connection(|connection| async move {
+            connection.open_direct(destination, originator).await
+        })
+        .await
+    }
+
+    async fn on_live_connection<T, Open, Opening>(&self, open: Open) -> Result<T, SshError>
+    where
+        Open: Fn(Connection) -> Opening,
+        Opening: Future<Output = Result<T, SshError>>,
+    {
         let connection = self.connection().await?;
 
-        match connection.open_direct(host, port, originator).await {
-            Ok(channel) => Ok(channel),
-            Err(_) if connection.is_closed() => {
-                let renewed = self.connection().await?;
-                renewed.open_direct(host, port, originator).await
-            }
-            Err(error) => Err(error),
+        match open(connection.clone()).await {
+            Err(_) if connection.is_closed() => open(self.connection().await?).await,
+            opened => opened,
         }
     }
 }

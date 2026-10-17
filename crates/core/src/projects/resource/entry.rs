@@ -9,3 +9,12 @@ pub struct ResourceEntry {
     #[serde(flatten)]
     pub resource: Resource,
 }
+
+impl ResourceEntry {
+    pub(crate) fn new(name: &str, resource: Resource) -> Self {
+        Self {
+            name: name.to_owned(),
+            resource,
+        }
+    }
+}

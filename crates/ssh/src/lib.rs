@@ -1,24 +1,28 @@
-mod auth;
+mod authenticator;
 mod config;
 mod dial;
+mod directory;
 mod error;
 mod exec;
-mod home;
+#[cfg(fuzzing)]
+pub mod fuzzing;
 mod known_hosts;
 mod pool;
 mod session;
 mod sftp;
 mod shell;
+mod signal_name;
+mod stored_key;
 mod target;
-mod tunnel;
+mod tunnels;
 
-pub use config::config_aliases;
+pub use config::UserConfig;
 pub use error::SshError;
-pub use exec::{ExecLimits, ExecOutput, exec};
-pub use home::local_user;
-pub use pool::{ConnectionState, ConnectionStatus, Lease, Pool};
+pub use exec::{ExecOutcome, RemoteCommand};
+pub use pool::{ConnectionState, ConnectionStatus, Lease, Pool, PoolBuilder};
 pub use session::Algorithms;
 pub use sftp::{Directory, Download, FileEntry, FileKind, FileSessions, Sftp, Upload, WriteMode};
 pub use shell::{Shell, ShellEnd, ShellOutput, TerminalSize};
-pub use target::Target;
-pub use tunnel::{Destination, TunnelId, TunnelStatus, Tunnels};
+pub use stored_key::{KeySummary, KeyVault, StoredKey};
+pub use target::{Target, TargetProblem};
+pub use tunnels::{Destination, TunnelId, TunnelStatus, Tunnels};

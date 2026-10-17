@@ -1,23 +1,21 @@
+mod in_flight;
+
+use in_flight::InFlight;
+
 use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use bytes::Bytes;
 use futures_util::StreamExt;
-use serde_json::{Value, json};
 use synt_journal::Actor;
 use synt_platform::{AppCheck, LocalStream, Peer};
-use synt_proto::{
-    ActionCall, ApprovalAnswer, ErrorCode, Frame, FrameReader, Message, Method, Request, Response,
-    RpcError, split_framed,
-};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
+use synt_proto::{Frame, FrameCodec, FrameReader, Message, Response};
+use tokio::sync::{Semaphore, mpsc};
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use super::greeting;
-use super::outgoing;
+use super::{Greeting, Outgoing, Responder};
 use crate::broker::Registration;
 use crate::core::Core;
 use crate::link::Link;
@@ -51,10 +49,10 @@ impl Session {
     ) {
         let peer = stream.peer().await;
 
-        let (mut incoming, outgoing) = split_framed(stream, REQUEST_FRAME_LIMIT);
+        let (mut incoming, outgoing) = FrameCodec::split(stream, REQUEST_FRAME_LIMIT);
         let (replies, queue) = mpsc::channel(OUTGOING_BACKLOG);
         let (frames, streams) = mpsc::channel(STREAM_BACKLOG);
-        let writer = tokio::spawn(outgoing::write_all(outgoing, queue, streams));
+        let writer = tokio::spawn(Outgoing::new(outgoing).write_all(queue, streams));
         let link = Arc::new(Link::new(frames));
 
         let session = Self {
@@ -82,8 +80,8 @@ impl Session {
         let _registration = self.attend(&actor);
         let actor = Arc::new(actor);
 
-        while let Some((permit, body)) = self.next_message(incoming).await {
-            self.handle(&body, &actor, permit).await;
+        while let Some(message) = self.next_message(incoming).await {
+            self.handle(message, &actor).await;
         }
     }
 
@@ -96,13 +94,16 @@ impl Session {
             return None;
         };
 
-        let (id, greeted) = greeting::answer_first(&body, peer, &self.apps).await;
-        let (actor, reply) = match greeted {
-            Ok((actor, welcome)) => (Some(actor), Ok(welcome)),
+        let greeting = Greeting::answer(&body, peer, &self.apps).await;
+        let (actor, reply) = match greeting.outcome {
+            Ok(greeted) => (Some(greeted.actor), Ok(greeted.welcome)),
             Err(error) => (None, Err(error)),
         };
 
-        let _ = self.replies.send(Response::new(id, reply).into()).await;
+        let _ = self
+            .replies
+            .send(Response::new(greeting.id, reply).into())
+            .await;
         actor
     }
 
@@ -115,16 +116,18 @@ impl Session {
         Some(registration)
     }
 
-    async fn next_message(&self, incoming: &mut Incoming) -> Option<(OwnedSemaphorePermit, Bytes)> {
+    async fn next_message(&self, incoming: &mut Incoming) -> Option<InFlight> {
         tokio::select! {
             () = self.stop.cancelled() => None,
             () = self.replies.closed() => None,
-            next = read_message(incoming, &self.in_flight, &self.link) => next,
+            next = self.read_message(incoming) => next,
         }
     }
 
-    async fn handle(&self, body: &[u8], actor: &Arc<Actor>, permit: OwnedSemaphorePermit) {
-        let request = match Message::decode(body) {
+    async fn handle(&self, message: InFlight, actor: &Arc<Actor>) {
+        let InFlight { body, permit } = message;
+
+        let request = match Message::decode(&body) {
             Ok(Message::Request(request)) => request,
             Ok(Message::Response(_) | Message::Notification(_)) => return,
             Err(error) => {
@@ -136,73 +139,32 @@ impl Session {
             }
         };
 
-        let core = Arc::clone(&self.core);
-        let actor = Arc::clone(actor);
+        let responder = Responder {
+            core: Arc::clone(&self.core),
+            actor: Arc::clone(actor),
+            departed: self.departed.clone(),
+            link: Arc::clone(&self.link),
+        };
         let replies = self.replies.clone();
-        let departed = self.departed.clone();
-        let link = Arc::clone(&self.link);
 
         self.tasks.spawn(async move {
             let id = request.id;
-            let outcome = answer(&core, &actor, request, &departed, &link).await;
+            let outcome = responder.answer(request).await;
 
             let _ = replies.send(Response::new(Some(id), outcome).into()).await;
             drop(permit);
         });
     }
-}
 
-async fn read_message(
-    incoming: &mut Incoming,
-    in_flight: &Arc<Semaphore>,
-    link: &Link,
-) -> Option<(OwnedSemaphorePermit, Bytes)> {
-    loop {
-        match incoming.next().await?.ok()? {
-            Frame::Message(body) => {
-                let permit = Arc::clone(in_flight).acquire_owned().await.ok()?;
-                return Some((permit, body));
+    async fn read_message(&self, incoming: &mut Incoming) -> Option<InFlight> {
+        loop {
+            match incoming.next().await?.ok()? {
+                Frame::Message(body) => {
+                    let permit = Arc::clone(&self.in_flight).acquire_owned().await.ok()?;
+                    return Some(InFlight { body, permit });
+                }
+                Frame::Stream { stream, data } => self.link.deliver(stream, data),
             }
-            Frame::Stream { stream, data } => link.deliver(stream, data),
         }
-    }
-}
-
-async fn answer(
-    core: &Core,
-    actor: &Actor,
-    request: Request,
-    departed: &CancellationToken,
-    link: &Arc<Link>,
-) -> Result<Value, RpcError> {
-    match request.method() {
-        Some(Method::ActionCall) => {
-            let call: ActionCall = request.into_params()?;
-            let outcome = core.dispatch(actor, call, departed, link).await?;
-
-            serde_json::to_value(outcome).map_err(|error| {
-                eprintln!("synt-core: outcome: {error}");
-                RpcError::internal("the outcome cannot be encoded")
-            })
-        }
-        Some(Method::ActionsDescribe) => {
-            let descriptions = core.describe(actor);
-
-            serde_json::to_value(descriptions).map_err(|error| {
-                eprintln!("synt-core: descriptions: {error}");
-                RpcError::internal("the action descriptions cannot be encoded")
-            })
-        }
-        Some(Method::ApprovalRespond) => {
-            let answer: ApprovalAnswer = request.into_params()?;
-            core.respond(actor, answer)?;
-
-            Ok(json!({}))
-        }
-        Some(Method::Hello) => Err(RpcError::invalid_request("hello was already received")),
-        None => Err(RpcError::new(
-            ErrorCode::METHOD_NOT_FOUND,
-            format!("no method named {}", request.method),
-        )),
     }
 }

@@ -9,7 +9,7 @@ const DEFAULT_LIMIT: u32 = 50;
 const MAX_LIMIT: u32 = 500;
 
 #[derive(Clone)]
-pub struct JournalPage {
+pub(crate) struct JournalPage {
     journal: JournalWriter,
 }
 

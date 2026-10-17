@@ -3,15 +3,15 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use crate::native;
+use super::{Found, NativeFiles, Os};
 
 const PENDING_SUFFIX: &str = ".pending";
 
 pub fn replace_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let pending = pending(path)?;
-    remove_stale(&pending)?;
+    fs::remove_file(&pending).found()?;
 
-    let mut file = native::create_new_file(&pending)?;
+    let mut file = Os::create_new_file(&pending)?;
     file.write_all(bytes)?;
     file.sync_all()?;
     drop(file);
@@ -32,11 +32,4 @@ fn pending(path: &Path) -> io::Result<PathBuf> {
     pending.push(PENDING_SUFFIX);
 
     Ok(folder.join(pending))
-}
-
-fn remove_stale(pending: &Path) -> io::Result<()> {
-    match fs::remove_file(pending) {
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        other => other,
-    }
 }

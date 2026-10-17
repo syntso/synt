@@ -1,30 +1,32 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use crate::CoreError;
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(try_from = "String")]
-pub struct RemotePath(String);
+pub(crate) struct RemotePath(String);
 
 impl RemotePath {
-    pub fn as_str(&self) -> &str {
+    pub(crate) fn as_str(&self) -> &str {
         &self.0
     }
 
-    pub fn into_string(self) -> String {
+    pub(crate) fn into_string(self) -> String {
         self.0
     }
 }
 
 impl TryFrom<String> for RemotePath {
-    type Error = String;
+    type Error = CoreError;
 
-    fn try_from(path: String) -> Result<Self, String> {
+    fn try_from(path: String) -> Result<Self, CoreError> {
         if path.is_empty() {
-            return Err("the path is empty".to_owned());
+            return Err(CoreError::EmptyPath);
         }
 
         if path.contains('\0') {
-            return Err("the path contains a NUL character".to_owned());
+            return Err(CoreError::NulInPath);
         }
 
         Ok(Self(path))

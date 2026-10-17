@@ -1,6 +1,10 @@
 use std::time::{Duration, Instant};
 
 use tokio_util::sync::CancellationToken;
+use wasmtime::Trap;
+
+use crate::ExtensionError;
+use crate::interface::GuestError;
 
 pub(crate) struct Budget {
     started: Instant,
@@ -19,10 +23,6 @@ impl Budget {
         }
     }
 
-    pub(crate) fn limit(&self) -> Duration {
-        self.limit
-    }
-
     pub(crate) fn stopped(&self) -> bool {
         self.stop.is_cancelled()
     }
@@ -31,6 +31,23 @@ impl Budget {
         let inside = self.started.elapsed().saturating_sub(self.outside);
 
         inside > self.limit
+    }
+
+    pub(crate) fn blame(&self, error: &wasmtime::Error) -> ExtensionError {
+        if let Some(failure) = error.downcast_ref::<GuestError>() {
+            return ExtensionError::Guest(failure.clone());
+        }
+
+        if let Some(ExtensionError::OverQuota(spend)) = error.downcast_ref::<ExtensionError>() {
+            return ExtensionError::OverQuota(*spend);
+        }
+
+        match error.downcast_ref::<Trap>() {
+            Some(Trap::OutOfFuel) => ExtensionError::OutOfFuel,
+            Some(Trap::Interrupt) if self.stopped() => ExtensionError::Stopped,
+            Some(Trap::Interrupt) => ExtensionError::TimedOut(self.limit),
+            _ => ExtensionError::Trapped(format!("{error:#}")),
+        }
     }
 
     pub(crate) fn outside<T>(&mut self, work: impl FnOnce() -> T) -> T {

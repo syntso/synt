@@ -1,3 +1,11 @@
+mod database;
+
+pub(crate) use database::ResolvedDatabase;
+
+use std::fmt;
+use std::num::NonZeroU16;
+
+use synt_kube::ClusterSpec;
 use synt_ssh::{Destination, Target};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -6,35 +14,47 @@ pub(crate) enum Resolved {
     Tunnel {
         host: Target,
         remote: Destination,
-        local: Option<u16>,
+        local: Option<NonZeroU16>,
+    },
+    Cluster {
+        spec: ClusterSpec,
+        via: Option<Target>,
     },
 }
 
 impl Resolved {
-    pub(crate) fn host(&self) -> &Target {
+    pub(crate) fn host(&self) -> Option<&Target> {
         match self {
-            Self::Host(host) | Self::Tunnel { host, .. } => host,
+            Self::Host(host) | Self::Tunnel { host, .. } => Some(host),
+            Self::Cluster { via, .. } => via.as_ref(),
         }
     }
 
-    pub(crate) fn describe(&self) -> String {
+    pub(crate) fn kind(&self) -> &'static str {
         match self {
-            Self::Host(host) => login(host),
-            Self::Tunnel { host, remote, .. } => {
-                format!("{} forwarding to {}", login(host), remote)
-            }
+            Self::Host(_) => "host",
+            Self::Tunnel { .. } => "tunnel",
+            Self::Cluster { .. } => "cluster",
         }
     }
 }
 
-fn login(target: &Target) -> String {
-    let place = format!("{}@{}:{}", target.user(), target.host(), target.port());
+impl fmt::Display for Resolved {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Host(host) => write!(formatter, "{}", host.route()),
+            Self::Tunnel { host, remote, .. } => {
+                write!(formatter, "{} forwarding to {remote}", host.route())
+            }
+            Self::Cluster { spec, via } => {
+                let context = spec.context.as_deref().unwrap_or("the current context");
+                write!(formatter, "{context} in {}", spec.kubeconfig)?;
 
-    if target.jumps().is_empty() {
-        return place;
+                match via {
+                    Some(via) => write!(formatter, " via {}", via.route()),
+                    None => Ok(()),
+                }
+            }
+        }
     }
-
-    let jumps: Vec<String> = target.jumps().iter().map(login).collect();
-
-    format!("{place} via [{}]", jumps.join(", "))
 }

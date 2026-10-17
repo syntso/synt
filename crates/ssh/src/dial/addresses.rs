@@ -2,30 +2,27 @@ use std::collections::HashMap;
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
 
+use synt_platform::Lock;
 use tokio::net;
 
-use crate::pool::locked;
-
-const REMEMBERED_FOR: Duration = Duration::from_secs(60);
-
-type Endpoint = (String, u16);
+use super::Resolved;
+use crate::Destination;
 
 #[derive(Default)]
 pub(crate) struct Addresses {
-    resolved: Mutex<HashMap<Endpoint, (Instant, Vec<SocketAddr>)>>,
+    resolved: Mutex<HashMap<Destination, Resolved>>,
 }
 
 impl Addresses {
-    pub(crate) async fn lookup(&self, host: &str, port: u16) -> io::Result<Vec<SocketAddr>> {
-        let endpoint = (host.to_owned(), port);
-
-        if let Some(fresh) = self.remembered(&endpoint) {
+    pub(crate) async fn lookup(&self, destination: &Destination) -> io::Result<Vec<SocketAddr>> {
+        if let Some(fresh) = self.remembered(destination) {
             return Ok(fresh);
         }
 
-        let found: Vec<SocketAddr> = net::lookup_host((host, port)).await?.collect();
+        let found: Vec<SocketAddr> = net::lookup_host((destination.host(), destination.port()))
+            .await?
+            .collect();
 
         if found.is_empty() {
             return Err(io::Error::new(
@@ -34,29 +31,30 @@ impl Addresses {
             ));
         }
 
-        locked(&self.resolved).insert(endpoint, (Instant::now(), found.clone()));
+        self.resolved
+            .locked()
+            .insert(destination.clone(), Resolved::now(found.clone()));
 
         Ok(found)
     }
 
-    pub(crate) fn is_remembered(&self, host: &str, port: u16) -> bool {
-        self.remembered(&(host.to_owned(), port)).is_some()
+    pub(crate) fn is_remembered(&self, destination: &Destination) -> bool {
+        self.remembered(destination).is_some()
     }
 
-    pub(crate) fn forget(&self, host: &str, port: u16) {
-        locked(&self.resolved).remove(&(host.to_owned(), port));
+    pub(crate) fn forget(&self, destination: &Destination) {
+        self.resolved.locked().remove(destination);
     }
 
-    fn remembered(&self, endpoint: &Endpoint) -> Option<Vec<SocketAddr>> {
-        let mut resolved = locked(&self.resolved);
+    fn remembered(&self, destination: &Destination) -> Option<Vec<SocketAddr>> {
+        let mut resolved = self.resolved.locked();
 
-        let (at, addresses) = resolved.get(endpoint)?;
+        let fresh = resolved.get(destination)?.fresh();
 
-        if at.elapsed() < REMEMBERED_FOR {
-            return Some(addresses.clone());
+        if fresh.is_none() {
+            resolved.remove(destination);
         }
 
-        resolved.remove(endpoint);
-        None
+        fresh
     }
 }

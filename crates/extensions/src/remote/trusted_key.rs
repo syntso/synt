@@ -1,10 +1,12 @@
 use minisign_verify::{PublicKey, Signature};
+use synt_journal::Timestamp;
 
-use super::sealed::Sealed;
-use super::{IndexSeal, Listing};
+use super::Listing;
+use super::seal::{IndexSeal, ListingSeal};
 use crate::ExtensionError;
-use crate::package::sha256;
-use crate::shelf::now;
+use crate::sha256::Sha256;
+
+const MILLIS_PER_SECOND: i64 = 1000;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TrustedKey {
@@ -13,15 +15,13 @@ pub(crate) struct TrustedKey {
 
 impl TrustedKey {
     pub(crate) fn from_base64(key: &str) -> Result<Self, ExtensionError> {
-        let key = PublicKey::from_base64(key)
-            .map_err(|error| ExtensionError::Signature(format!("the public key: {error}")))?;
+        let key = PublicKey::from_base64(key).map_err(ExtensionError::PublicKey)?;
 
         Ok(Self { key })
     }
 
     pub(crate) fn decode(text: &str) -> Result<Self, ExtensionError> {
-        let key = PublicKey::decode(text)
-            .map_err(|error| ExtensionError::Signature(format!("the public key: {error}")))?;
+        let key = PublicKey::decode(text).map_err(ExtensionError::PublicKey)?;
 
         Ok(Self { key })
     }
@@ -30,55 +30,45 @@ impl TrustedKey {
         &self,
         index: &[u8],
         signature: &[u8],
+        now: Timestamp,
     ) -> Result<IndexSeal, ExtensionError> {
         let signature = self.verify(index, signature)?;
-        let seal: IndexSeal =
-            serde_json::from_str(signature.trusted_comment()).map_err(|error| {
-                ExtensionError::Signature(format!("the trusted comment of the index: {error}"))
-            })?;
+        let seal: IndexSeal = serde_json::from_str(signature.trusted_comment())
+            .map_err(ExtensionError::IndexComment)?;
 
-        if seal.expires <= now() / 1000 {
-            return Err(ExtensionError::Signature(
-                "the registry index has expired; the registry has not been signed lately"
-                    .to_owned(),
-            ));
+        let now_seconds = u64::try_from(now.as_millis() / MILLIS_PER_SECOND).unwrap_or_default();
+
+        if seal.expired_at(now_seconds) {
+            return Err(ExtensionError::IndexExpired);
         }
 
         Ok(seal)
     }
 
     pub(crate) fn check(&self, wasm: &[u8], listing: &Listing) -> Result<(), ExtensionError> {
-        let found = sha256(wasm);
-        if found != listing.sha256 {
-            return Err(ExtensionError::Signature(format!(
-                "the download has sha256 {found}, the index says {}",
-                listing.sha256
-            )));
+        let found = Sha256::of(wasm);
+        if found != *listing.sha256() {
+            return Err(ExtensionError::DownloadDigest {
+                found,
+                listed: listing.sha256().clone(),
+            });
         }
 
-        let signature = self.verify(wasm, listing.signature.as_bytes())?;
-        let sealed: Sealed = serde_json::from_str(signature.trusted_comment())
-            .map_err(|error| ExtensionError::Signature(format!("the trusted comment: {error}")))?;
+        let signature = self.verify(wasm, listing.signature().as_bytes())?;
+        let sealed: ListingSeal = serde_json::from_str(signature.trusted_comment())
+            .map_err(ExtensionError::ListingComment)?;
         if !sealed.covers(listing) {
-            return Err(ExtensionError::Signature(
-                "the signed id, name, version, description, repository, sha256 or capabilities \
-                 differ from the index"
-                    .to_owned(),
-            ));
+            return Err(ExtensionError::ListingDiffers);
         }
 
         Ok(())
     }
 
     fn verify(&self, data: &[u8], signature: &[u8]) -> Result<Signature, ExtensionError> {
-        let text = std::str::from_utf8(signature)
-            .map_err(|error| ExtensionError::Signature(error.to_string()))?;
-        let signature = Signature::decode(text)
-            .map_err(|error| ExtensionError::Signature(error.to_string()))?;
+        let text = std::str::from_utf8(signature).map_err(ExtensionError::SignatureText)?;
+        let signature = Signature::decode(text)?;
 
-        self.key
-            .verify(data, &signature, false)
-            .map_err(|error| ExtensionError::Signature(error.to_string()))?;
+        self.key.verify(data, &signature, false)?;
 
         Ok(signature)
     }

@@ -2,39 +2,53 @@ use std::any::TypeId;
 
 use schemars::JsonSchema;
 use schemars::generate::SchemaSettings;
+use serde::de::DeserializeOwned;
 use serde_json::{Map, Value, json};
 
-pub(crate) fn schema<P: JsonSchema + 'static>() -> Value {
-    if takes_none::<P>() {
-        return json!({ "type": "object", "properties": {} });
+use crate::ActionError;
+
+pub(crate) trait Params: DeserializeOwned + JsonSchema + Sized + 'static {
+    fn schema() -> Value {
+        if Self::takes_none() {
+            return json!({ "type": "object", "properties": {} });
+        }
+
+        let generator = SchemaSettings::draft2020_12()
+            .with(|settings| {
+                settings.inline_subschemas = true;
+                settings.meta_schema = None;
+            })
+            .into_generator();
+
+        let mut schema = generator.into_root_schema_for::<Self>().to_value();
+
+        if let Some(root) = schema.as_object_mut() {
+            root.remove("title");
+        }
+
+        schema
     }
 
-    let generator = SchemaSettings::draft2020_12()
-        .with(|settings| {
-            settings.inline_subschemas = true;
-            settings.meta_schema = None;
-        })
-        .into_generator();
+    fn parse(params: Value) -> Result<Self, ActionError> {
+        let params = Self::normalized(params);
 
-    let mut schema = generator.into_root_schema_for::<P>().to_value();
-
-    if let Some(root) = schema.as_object_mut() {
-        root.remove("title");
+        serde_json::from_value(params)
+            .map_err(|error| ActionError::InvalidParams(error.to_string()))
     }
 
-    schema
-}
+    fn normalized(params: Value) -> Value {
+        let takes_none = Self::takes_none();
 
-pub(crate) fn normalized<P: 'static>(params: Value) -> Value {
-    let takes_none = takes_none::<P>();
+        match params {
+            Value::Object(fields) if takes_none && fields.is_empty() => Value::Null,
+            Value::Null if !takes_none => Value::Object(Map::new()),
+            params => params,
+        }
+    }
 
-    match params {
-        Value::Object(fields) if takes_none && fields.is_empty() => Value::Null,
-        Value::Null if !takes_none => Value::Object(Map::new()),
-        params => params,
+    fn takes_none() -> bool {
+        TypeId::of::<Self>() == TypeId::of::<()>()
     }
 }
 
-fn takes_none<P: 'static>() -> bool {
-    TypeId::of::<P>() == TypeId::of::<()>()
-}
+impl<P: DeserializeOwned + JsonSchema + 'static> Params for P {}

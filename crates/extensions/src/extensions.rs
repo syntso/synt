@@ -1,40 +1,60 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, RwLock, RwLockReadGuard};
+mod action;
+mod candidate;
+mod guest;
+mod loaded;
+mod outside;
+mod roster;
+mod services;
+mod visit;
 
-use semver::Version;
-use synt_actions::{ActionError, Catalog, Description, Handle, Registry, Risk};
-use synt_journal::ActionId;
+use std::collections::BTreeMap;
+use std::path::Path;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+
+use synt_actions::{
+    ActionDescription, ActionError, ActionGroup, Catalog, RegisteredAction, Registry, Risk,
+};
+use synt_journal::{ActionId, SystemClock};
+use synt_sync::OpenProjects;
 
 use crate::ExtensionError;
+use crate::background::ExtensionEvent;
 use crate::builtin::{
-    ExtensionDisable, ExtensionEnable, ExtensionInfo, ExtensionInstall, ExtensionInstallLocal,
-    ExtensionList, ExtensionRemove, ExtensionSearch, SearchHit,
+    ExtensionContributions, ExtensionDisable, ExtensionDocuments, ExtensionEnable,
+    ExtensionFileForget, ExtensionFileList, ExtensionFilePick, ExtensionHttp, ExtensionInfo,
+    ExtensionInstall, ExtensionInstallLocal, ExtensionList, ExtensionPanelAsset,
+    ExtensionPanelMessage, ExtensionPanelOpen, ExtensionRemove, ExtensionSearch,
+    ExtensionSettingsGet, ExtensionSettingsSet, ExtensionViewRender, SearchHit,
 };
-use crate::caller::Caller;
-use crate::extension::{CallerCell, Candidate, Guest, Loaded};
-use crate::install_folder::InstallFolder;
-use crate::local_build::LocalBuild;
+use crate::call::Caller;
+use crate::documents::MergeSides;
+use crate::http::SecretSource;
+use crate::install::{Admission, InstallFolder, InstalledFiles, LocalBuild, Package};
 use crate::manifest::Manifest;
-use crate::package::{Package, sha256};
 use crate::remote::{Index, Remote};
 use crate::runtime::Runtime;
-use crate::shelf::{Installed, Shelf, now};
+use crate::shelf::{Installed, Inventory, Shelf};
+use crate::ui::Screen;
+
+pub(crate) use action::{ActionSpec, ExtensionAction};
+pub(crate) use candidate::Candidate;
+pub(crate) use guest::Guest;
+pub(crate) use loaded::Loaded;
+pub(crate) use outside::Outside;
+pub(crate) use roster::Roster;
+pub(crate) use services::{CoreLink, Services};
+pub(crate) use visit::Visit;
 
 const FOLDER: &str = "extensions";
-const RESERVED: [&str; 2] = ["core", "extension"];
 
 #[derive(Clone)]
 pub struct Extensions {
     runtime: Runtime,
-    shelf: Shelf,
+    services: Arc<Services>,
     folder: InstallFolder,
     remote: Remote,
-    reserved: Arc<OnceLock<BTreeSet<String>>>,
-    core_risks: Arc<OnceLock<BTreeMap<String, Risk>>>,
-    caller: CallerCell,
-    loaded: Arc<RwLock<BTreeMap<String, Arc<Loaded>>>>,
-    problems: Arc<RwLock<BTreeMap<String, String>>>,
+    admission: Arc<Admission>,
+    roster: Arc<Roster>,
     changing: Arc<Mutex<()>>,
 }
 
@@ -45,75 +65,111 @@ impl Extensions {
         runtime: Runtime,
         remote: Remote,
     ) -> Result<Self, ExtensionError> {
+        let shelf = Shelf::open(state)?;
+        let folder = InstallFolder::open(data.join(FOLDER))?;
+
         Ok(Self {
             runtime,
-            shelf: Shelf::open(state)?,
-            folder: InstallFolder::open(data.join(FOLDER))?,
+            services: Arc::new(Services::new(shelf, Arc::new(SystemClock))),
+            folder,
             remote,
-            reserved: Arc::new(OnceLock::new()),
-            core_risks: Arc::new(OnceLock::new()),
-            caller: Arc::new(OnceLock::new()),
-            loaded: Arc::default(),
-            problems: Arc::default(),
+            admission: Arc::default(),
+            roster: Arc::default(),
             changing: Arc::default(),
         })
     }
 
-    pub fn connect(&self, caller: Arc<dyn Caller>) {
-        let _ = self.caller.set(caller);
+    #[must_use]
+    pub fn with_secrets(self, secrets: Arc<dyn SecretSource>) -> Self {
+        self.services.give_secrets(secrets);
+        self
     }
 
-    pub fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
-        registry.register(ExtensionSearch::new(self.clone()))?;
-        registry.register(ExtensionInstall::new(self.clone()))?;
-        registry.register(ExtensionInstallLocal::new(self.clone()))?;
-        registry.register(ExtensionList::new(self.clone()))?;
-        registry.register(ExtensionEnable::new(self.clone()))?;
-        registry.register(ExtensionDisable::new(self.clone()))?;
-        registry.register(ExtensionRemove::new(self.clone()))?;
+    #[must_use]
+    pub fn with_projects(self, folders: Arc<dyn OpenProjects>) -> Self {
+        self.services.give_folders(folders);
+        self
+    }
 
-        let _ = self.reserved.set(namespaces(registry));
-        let _ = self.core_risks.set(callable(registry));
-        registry.attach(Arc::new(self.clone()));
-
-        Ok(())
+    pub fn connect(&self, caller: Arc<dyn Caller>, screen: Arc<dyn Screen>) {
+        self.services.connect(CoreLink::new(caller, screen));
+        self.roster.wake_up();
     }
 
     pub fn load_enabled(&self) -> Result<usize, ExtensionError> {
         let _changing = self.begin_change();
         let enabled = self
-            .shelf
-            .installed()?
+            .inventory()
+            .all()?
             .into_iter()
-            .filter(|entry| entry.enabled);
+            .filter(Installed::enabled);
 
         let mut loaded = 0;
+
         for entry in enabled {
-            let id = entry.id.clone();
+            let id = entry.id().clone();
 
             match self.activate(entry) {
                 Ok(()) => loaded += 1,
-                Err(error) => self.note_problem(&id, &error),
+                Err(error) => self.roster.note_problem(id.as_str(), &error),
             }
         }
 
         Ok(loaded)
     }
 
+    pub fn publish(&self, event: &ExtensionEvent) -> usize {
+        self.roster.publish(event)
+    }
+
+    pub fn merge_document(
+        &self,
+        extension: &str,
+        suffix: &str,
+        sides: MergeSides<'_>,
+    ) -> Result<Vec<u8>, ExtensionError> {
+        let guest = Arc::clone(self.loaded(extension)?.guest());
+        let kind = guest.manifest().document_kind(suffix).ok_or_else(|| {
+            ExtensionError::NoDocumentType {
+                extension: extension.to_owned(),
+                suffix: suffix.to_owned(),
+            }
+        })?;
+
+        guest.merge(&kind, sides)
+    }
+
+    pub(crate) fn loaded(&self, id: &str) -> Result<Arc<Loaded>, ExtensionError> {
+        self.roster
+            .get(id)
+            .ok_or_else(|| ExtensionError::NotInstalled(id.to_owned()))
+    }
+
+    pub(crate) fn all_loaded(&self) -> Vec<Arc<Loaded>> {
+        self.roster.all()
+    }
+
+    pub(crate) fn services(&self) -> &Services {
+        &self.services
+    }
+
     pub(crate) fn search(&self, query: Option<&str>) -> Result<Vec<SearchHit>, ExtensionError> {
         let index = self.fresh_index()?;
         let installed: BTreeMap<String, Installed> = self
-            .shelf
-            .installed()?
+            .inventory()
+            .all()?
             .into_iter()
-            .map(|entry| (entry.id.clone(), entry))
+            .map(|entry| (entry.id().to_string(), entry))
             .collect();
 
         let hits = index
-            .extensions
+            .listings()
             .iter()
             .filter(|listing| query.is_none_or(|query| listing.matches(query)))
-            .map(|listing| SearchHit::new(listing, installed.get(&listing.id)))
+            .map(|listing| {
+                let id = listing.manifest().id().as_str();
+                SearchHit::new(listing, installed.get(id))
+            })
             .collect();
 
         Ok(hits)
@@ -125,7 +181,10 @@ impl Extensions {
             .find(id)
             .ok_or_else(|| ExtensionError::NotListed(id.to_owned()))?;
 
-        check_not_older(&listing.version, self.shelf.find(id)?.as_ref())?;
+        if let Some(current) = self.inventory().find(id)? {
+            current.check_not_newer_than(listing.manifest().version())?;
+        }
+
         let package = self.remote.download(listing)?;
 
         self.examine(package)
@@ -139,295 +198,201 @@ impl Extensions {
 
     pub(crate) fn install(&self, candidate: Candidate) -> Result<ExtensionInfo, ExtensionError> {
         let _changing = self.begin_change();
-        let Candidate {
-            package,
-            guest,
-            specs,
-            ..
-        } = candidate;
+        let package = candidate.package();
+        let current = self.inventory().find(package.manifest().id().as_str())?;
 
-        let current = self.shelf.find(&package.manifest.id)?;
-        if package.signed {
-            check_not_older(&package.manifest.version, current.as_ref())?;
+        if package.signed()
+            && let Some(current) = &current
+        {
+            current.check_not_newer_than(package.manifest().version())?;
         }
-        let clear_items = current.is_some_and(|current| current.signed != package.signed);
 
-        let manifest_sha256 = self.folder.store(&package)?;
+        let clear_items = current.is_some_and(|current| current.signed() != package.signed());
+        let manifest_sha256 = self.folder.store(package)?;
+        let installed = Installed::new(package, manifest_sha256, self.services.now());
 
-        let installed = Installed {
-            id: package.manifest.id.clone(),
-            version: package.manifest.version.clone(),
-            sha256: package.sha256.clone(),
-            manifest_sha256,
-            signed: package.signed,
-            enabled: true,
-            installed_at: now(),
-        };
-        self.shelf.record(&installed, clear_items)?;
+        self.inventory().record(&installed, clear_items)?;
 
-        let loaded = Arc::new(Loaded::new(guest, specs, installed));
+        let loaded = Arc::new(candidate.into_loaded(installed));
         let info = ExtensionInfo::loaded(&loaded);
-        self.put_loaded(loaded);
+
+        self.roster.put(loaded);
 
         Ok(info)
     }
 
     pub(crate) fn list(&self) -> Result<Vec<ExtensionInfo>, ExtensionError> {
-        let installed = self.shelf.installed()?;
+        let installed = self.inventory().all()?;
 
-        Ok(installed
-            .into_iter()
-            .map(|entry| self.info(entry))
-            .collect())
+        Ok(installed.iter().map(|entry| self.info(entry)).collect())
     }
 
     pub(crate) fn enable(&self, id: &str) -> Result<ExtensionInfo, ExtensionError> {
         let _changing = self.begin_change();
-        let mut entry = self.installed(id)?;
+        let entry = self.installed(id)?.enabled_as(true);
 
-        entry.enabled = true;
-        self.shelf.set_enabled(id, true)?;
+        self.inventory().set_enabled(id, true)?;
 
         if let Err(error) = self.activate(entry.clone()) {
-            self.note_problem(id, &error);
+            self.roster.note_problem(id, &error);
         }
 
-        Ok(self.info(entry))
+        Ok(self.info(&entry))
     }
 
     pub(crate) fn disable(&self, id: &str) -> Result<ExtensionInfo, ExtensionError> {
         let _changing = self.begin_change();
-        let mut entry = self.installed(id)?;
+        let entry = self.installed(id)?.enabled_as(false);
 
-        entry.enabled = false;
-        self.shelf.set_enabled(id, false)?;
-        self.take_loaded(id);
+        self.inventory().set_enabled(id, false)?;
+        self.roster.take(id);
 
-        Ok(self.info(entry))
+        Ok(self.info(&entry))
     }
 
     pub(crate) fn remove(&self, id: &str) -> Result<ExtensionInfo, ExtensionError> {
         let _changing = self.begin_change();
-        let entry = self.installed(id)?;
-        let info = self.info(entry);
+        let info = self.info(&self.installed(id)?);
 
-        self.take_loaded(id);
+        self.roster.take(id);
         self.folder.remove(id)?;
-        self.shelf.forget(id)?;
+        self.inventory().forget(id)?;
 
         Ok(info)
     }
 
     fn fresh_index(&self) -> Result<Index, ExtensionError> {
-        let index = self.remote.index()?;
+        let index = self.remote.index(self.services.now())?;
 
-        self.shelf.accept_index(index.serial)?;
+        self.services.shelf().index().accept(index.serial())?;
+
         Ok(index)
     }
 
     fn examine(&self, package: Package) -> Result<Candidate, ExtensionError> {
-        let manifest = package.manifest.clone();
-        manifest.check()?;
-        self.check_reserved(&manifest.id)?;
-        let ceiling = self.call_ceiling(&manifest)?;
-        let replaces = self.shelf.find(&manifest.id)?;
+        let ceiling = self.admit(package.manifest())?;
+        let replaces = self.inventory().find(package.manifest().id().as_str())?;
 
-        let compiled = self.runtime.compile(&package.wasm)?;
-        let guest = Arc::new(Guest::new(
+        let guest = self.compile_guest(&package)?;
+        let specs = Self::describe(&guest, ceiling)?;
+
+        Ok(Candidate::new(package, guest, specs, ceiling, replaces))
+    }
+
+    fn admit(&self, manifest: &Manifest) -> Result<Risk, ExtensionError> {
+        self.admission.check_id(manifest.id())?;
+
+        self.admission.ceiling(manifest)
+    }
+
+    fn compile_guest(&self, package: &Package) -> Result<Arc<Guest>, ExtensionError> {
+        let manifest = package.manifest().clone();
+        let compiled = self.runtime.compile(manifest.api(), package.wasm())?;
+
+        Ok(Arc::new(Guest::new(
             manifest,
             compiled,
             self.runtime.clone(),
-            self.shelf.clone(),
-            Arc::clone(&self.caller),
-        ));
+            Arc::clone(&self.services),
+        )))
+    }
+
+    fn describe(guest: &Arc<Guest>, ceiling: Risk) -> Result<Vec<ActionSpec>, ExtensionError> {
         let specs = guest
             .describe()?
             .into_iter()
             .map(|spec| spec.at_least(ceiling))
             .collect();
 
-        Ok(Candidate {
-            package,
-            guest,
-            specs,
-            replaces,
-        })
+        guest.check_contributed_actions()?;
+
+        Ok(specs)
     }
 
     fn activate(&self, entry: Installed) -> Result<(), ExtensionError> {
-        let (manifest, manifest_sha256, wasm) = self.folder.read(&entry.id)?;
-
-        let unchanged = sha256(&wasm) == entry.sha256
-            && manifest_sha256 == entry.manifest_sha256
-            && manifest.id == entry.id;
-        if !unchanged {
-            return Err(ExtensionError::Refused(format!(
-                "the installed files of {} changed since they were installed; install it again",
-                entry.id
-            )));
-        }
-
-        let package = Package::new(manifest, wasm, entry.signed);
+        let package = self.folder.read(entry.id().as_str())?.package_for(&entry)?;
         let candidate = self.examine(package)?;
 
-        let loaded = Loaded::new(candidate.guest, candidate.specs, entry);
-        self.put_loaded(Arc::new(loaded));
+        self.roster.put(Arc::new(candidate.into_loaded(entry)));
 
         Ok(())
     }
 
-    fn info(&self, entry: Installed) -> ExtensionInfo {
-        if let Some(loaded) = self.read_loaded().get(&entry.id) {
-            return ExtensionInfo::loaded(loaded);
+    fn info(&self, entry: &Installed) -> ExtensionInfo {
+        let id = entry.id().as_str();
+
+        if let Some(loaded) = self.roster.get(id) {
+            return ExtensionInfo::loaded(&loaded);
         }
 
-        let problem = self.read_problems().get(&entry.id).cloned();
-        let manifest = self.folder.read(&entry.id).map(|(manifest, _, _)| manifest);
+        let problem = self.roster.problem(id);
+        let manifest = self.folder.read(id).ok().map(InstalledFiles::into_manifest);
 
-        ExtensionInfo::resting(entry, manifest.ok(), problem)
+        ExtensionInfo::resting(entry, manifest, problem)
     }
 
     fn installed(&self, id: &str) -> Result<Installed, ExtensionError> {
-        self.shelf
+        self.inventory()
             .find(id)?
             .ok_or_else(|| ExtensionError::NotInstalled(id.to_owned()))
     }
 
-    fn check_reserved(&self, id: &str) -> Result<(), ExtensionError> {
-        let taken = RESERVED.contains(&id)
-            || self
-                .reserved
-                .get()
-                .is_some_and(|reserved| reserved.contains(id));
-
-        if taken {
-            return Err(ExtensionError::Refused(format!(
-                "the id {id} is taken by the core's own actions"
-            )));
-        }
-
-        Ok(())
-    }
-
-    fn call_ceiling(&self, manifest: &Manifest) -> Result<Risk, ExtensionError> {
-        let callable = self.core_risks.get();
-
-        manifest
-            .capabilities
-            .call
-            .iter()
-            .try_fold(Risk::Read, |ceiling, action| {
-                let risk = callable
-                    .and_then(|callable| callable.get(action))
-                    .ok_or_else(|| {
-                        ExtensionError::Refused(format!(
-                            "capabilities.call names {action}, which is not a core action an \
-                             extension may call"
-                        ))
-                    })?;
-
-                Ok(ceiling.max(*risk))
-            })
-    }
-
-    fn note_problem(&self, id: &str, error: &ExtensionError) {
-        eprintln!("synt-core: extension {id} is not loaded: {error}");
-
-        self.problems
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(id.to_owned(), error.to_string());
-    }
-
-    fn put_loaded(&self, loaded: Arc<Loaded>) {
-        let id = loaded.installed.id.clone();
-
-        self.problems
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(&id);
-        self.loaded
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(id, loaded);
-    }
-
-    fn take_loaded(&self, id: &str) {
-        self.loaded
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(id);
-        self.problems
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(id);
-    }
-
-    fn read_loaded(&self) -> RwLockReadGuard<'_, BTreeMap<String, Arc<Loaded>>> {
-        self.loaded.read().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    fn read_problems(&self) -> RwLockReadGuard<'_, BTreeMap<String, String>> {
-        self.problems.read().unwrap_or_else(PoisonError::into_inner)
+    fn inventory(&self) -> &Inventory {
+        self.services.shelf().inventory()
     }
 
     fn begin_change(&self) -> MutexGuard<'_, ()> {
         self.changing.lock().unwrap_or_else(PoisonError::into_inner)
     }
+
+    fn register_lifecycle(&self, registry: &mut Registry) -> Result<(), ActionError> {
+        registry.register(ExtensionSearch::new(self.clone()))?;
+        registry.register(ExtensionInstall::new(self.clone()))?;
+        registry.register(ExtensionInstallLocal::new(self.clone()))?;
+        registry.register(ExtensionList::new(self.clone()))?;
+        registry.register(ExtensionEnable::new(self.clone()))?;
+        registry.register(ExtensionDisable::new(self.clone()))?;
+        registry.register(ExtensionRemove::new(self.clone()))
+    }
+
+    fn register_surfaces(&self, registry: &mut Registry) -> Result<(), ActionError> {
+        registry.register(ExtensionContributions::new(self.clone()))?;
+        registry.register(ExtensionViewRender::new(self.clone()))?;
+        registry.register(ExtensionPanelOpen::new(self.clone()))?;
+        registry.register(ExtensionPanelAsset::new(self.clone()))?;
+        registry.register(ExtensionPanelMessage::new(self.clone()))?;
+        registry.register(ExtensionSettingsGet::new(self.clone()))?;
+        registry.register(ExtensionSettingsSet::new(self.clone()))
+    }
+
+    fn register_reach(&self, registry: &mut Registry) -> Result<(), ActionError> {
+        registry.register(ExtensionHttp::new(self.clone()))?;
+        registry.register(ExtensionDocuments::new(self.clone()))?;
+        registry.register(ExtensionFilePick::new(self.clone()))?;
+        registry.register(ExtensionFileForget::new(self.clone()))?;
+        registry.register(ExtensionFileList::new(self.clone()))
+    }
+}
+
+impl ActionGroup for Extensions {
+    fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
+        self.register_lifecycle(registry)?;
+        self.register_surfaces(registry)?;
+        self.register_reach(registry)?;
+
+        self.admission.learn(registry);
+        registry.attach(Arc::new(self.clone()));
+
+        Ok(())
+    }
 }
 
 impl Catalog for Extensions {
-    fn get(&self, id: &ActionId) -> Option<Handle> {
-        let (extension, _) = id.as_str().split_once('.')?;
-
-        self.read_loaded().get(extension)?.handle(id)
+    fn get(&self, id: &ActionId) -> Option<RegisteredAction> {
+        self.roster.handle(id)
     }
 
-    fn describe(&self) -> Vec<Description> {
-        self.read_loaded()
-            .values()
-            .flat_map(|loaded| loaded.describe())
-            .collect()
+    fn describe(&self) -> Vec<ActionDescription> {
+        self.roster.describe()
     }
-}
-
-fn callable(registry: &Registry) -> BTreeMap<String, Risk> {
-    registry
-        .describe()
-        .into_iter()
-        .filter(|description| !description.person_only)
-        .map(|description| (description.id.as_str().to_owned(), description.risk))
-        .collect()
-}
-
-fn check_not_older(listed: &str, installed: Option<&Installed>) -> Result<(), ExtensionError> {
-    let Some(installed) = installed else {
-        return Ok(());
-    };
-
-    let listed = Version::parse(listed).map_err(|error| {
-        ExtensionError::Refused(format!(
-            "the listed version {listed} is not semver: {error}"
-        ))
-    })?;
-    let Ok(current) = Version::parse(&installed.version) else {
-        return Ok(());
-    };
-
-    if listed < current {
-        return Err(ExtensionError::Refused(format!(
-            "the registry offers {} {listed}, older than the installed {current}",
-            installed.id
-        )));
-    }
-
-    Ok(())
-}
-
-fn namespaces(registry: &Registry) -> BTreeSet<String> {
-    registry
-        .ids()
-        .filter_map(|id| id.as_str().split_once('.'))
-        .map(|(namespace, _)| namespace.to_owned())
-        .collect()
 }

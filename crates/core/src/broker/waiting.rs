@@ -1,10 +1,11 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard};
 
+use synt_platform::Lock;
 use synt_proto::{ApprovalDecision, ApprovalId};
 use tokio::sync::oneshot;
 
-use super::open_question::OpenQuestion;
+use super::OpenQuestion;
 
 type Questions = HashMap<ApprovalId, oneshot::Sender<ApprovalDecision>>;
 
@@ -34,8 +35,6 @@ impl Waiting {
     }
 
     fn lock(&self) -> MutexGuard<'_, Questions> {
-        self.questions
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+        self.questions.locked()
     }
 }

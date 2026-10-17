@@ -1,108 +1,113 @@
-use std::path::PathBuf;
+use std::num::NonZeroU16;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use synt_ssh::Target;
 
-use crate::projects::names::check_name;
+use super::{Address, Identity, Login, ResourceName};
+use crate::CoreError;
+use crate::projects::LocalPath;
 
 const DEFAULT_PORT: u16 = 22;
-const AGENT: &str = "agent";
-const SECRET_PREFIX: &str = "secret://";
-const HOME_PREFIX: &str = "~/";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HostResource {
-    pub address: String,
+    pub(crate) address: Address,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub port: Option<u16>,
+    pub(crate) port: Option<NonZeroU16>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub user: Option<String>,
+    pub(crate) user: Option<Login>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub via: Option<String>,
+    pub(crate) via: Option<ResourceName>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub identity: Option<String>,
+    pub(crate) identity: Option<Identity>,
 }
 
 impl HostResource {
-    pub(crate) fn check(&self) -> Result<(), String> {
-        if !is_plain_word(&self.address) {
-            return Err(format!(
-                "address must be a host name or address, got {:?}",
-                self.address
-            ));
-        }
+    pub(crate) fn of_target(target: &Target) -> Result<Self, CoreError> {
+        let identity = target
+            .identity_files()
+            .first()
+            .and_then(|path| LocalPath::of_path(path).ok())
+            .map(Identity::File);
 
-        if self.port == Some(0) {
-            return Err("port must be between 1 and 65535".to_owned());
-        }
-
-        if let Some(user) = &self.user
-            && (!is_plain_word(user) || user.contains('@'))
-        {
-            return Err(format!("user must be a login name, got {user:?}"));
-        }
-
-        if let Some(via) = &self.via {
-            check_name(via).map_err(|reason| format!("via: {reason}"))?;
-        }
-
-        self.identity_files().map(|_| ())
+        Ok(Self {
+            address: Address::parse(target.host())?,
+            port: NonZeroU16::new(target.port()),
+            user: Login::parse(target.user()).ok(),
+            via: None,
+            identity,
+        })
     }
 
-    pub(crate) fn target(&self) -> Result<Target, String> {
+    pub(crate) fn target(&self) -> Result<Target, CoreError> {
         let user = self
             .user
-            .clone()
-            .or_else(synt_ssh::local_user)
-            .ok_or("no user given and none found in the environment")?;
+            .as_ref()
+            .map(|user| user.as_str().to_owned())
+            .or_else(synt_platform::user_name)
+            .ok_or(CoreError::NoLocalUser)?;
 
-        let target = Target::new(&self.address, self.port.unwrap_or(DEFAULT_PORT), user)
-            .with_identity_files(self.identity_files()?);
+        let port = self.port.map_or(DEFAULT_PORT, NonZeroU16::get);
+        let target = Target::new(self.address.as_str(), port, user);
 
-        Ok(target)
-    }
-
-    fn identity_files(&self) -> Result<Vec<PathBuf>, String> {
-        let Some(identity) = self.identity.as_deref() else {
-            return Ok(Vec::new());
+        let Some(identity) = &self.identity else {
+            return Ok(target);
         };
 
-        if identity == AGENT {
-            return Ok(Vec::new());
+        let target = target.with_identity_files(identity.files()?);
+
+        match identity.vault_key() {
+            Some(name) => Ok(target.with_vault_key(name.as_str())),
+            None => Ok(target),
         }
-
-        if identity.starts_with(SECRET_PREFIX) {
-            return Err(format!(
-                "identity {identity:?}: secret references are not supported yet; \
-                 use \"agent\" or the path of a key file"
-            ));
-        }
-
-        if let Some(rest) = identity.strip_prefix(HOME_PREFIX) {
-            let home = synt_platform::home_directory()
-                .map_err(|error| format!("there is no home folder to expand ~ in: {error}"))?;
-            return Ok(vec![home.join(rest)]);
-        }
-
-        let path = PathBuf::from(identity);
-
-        if !path.is_absolute() {
-            return Err(format!(
-                "identity {identity:?} must be \"agent\", an absolute path, or a path starting with ~/"
-            ));
-        }
-
-        Ok(vec![path])
     }
 }
 
-fn is_plain_word(text: &str) -> bool {
-    !text.is_empty()
-        && !text.contains(|character: char| character.is_whitespace() || character.is_control())
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::HostResource;
+
+    fn host(identity: &str) -> Result<HostResource, serde_json::Error> {
+        serde_json::from_value(json!({
+            "address": "203.0.113.7",
+            "user": "root",
+            "identity": identity,
+        }))
+    }
+
+    #[test]
+    fn a_secret_identity_names_a_vault_key_and_no_files() {
+        let resource = host("secret://night").expect("a host");
+
+        let target = resource.target().expect("target");
+
+        assert_eq!(target.vault_key(), Some("night"));
+        assert!(target.identity_files().is_empty());
+    }
+
+    #[test]
+    fn a_secret_identity_with_a_bad_name_is_refused() {
+        assert!(host("secret://../night").is_err());
+        assert!(host("secret://").is_err());
+    }
+
+    #[test]
+    fn a_zero_port_and_a_login_with_a_host_are_refused() {
+        let with = |field: &str, value| {
+            serde_json::from_value::<HostResource>(json!({ "address": "db", field: value }))
+        };
+
+        assert!(with("port", json!(0)).is_err());
+        assert!(with("user", json!("root@db")).is_err());
+        assert!(with("via", json!("../bastion")).is_err());
+        assert!(with("port", json!(2222)).is_ok());
+    }
 }

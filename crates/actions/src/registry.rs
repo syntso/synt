@@ -3,11 +3,11 @@ use std::sync::Arc;
 
 use synt_journal::ActionId;
 
-use crate::{Action, ActionError, Catalog, Description, Handle};
+use crate::{Action, ActionDescription, ActionError, Catalog, RegisteredAction};
 
 #[derive(Clone, Default)]
 pub struct Registry {
-    actions: HashMap<ActionId, Handle>,
+    actions: HashMap<ActionId, RegisteredAction>,
     catalogs: Vec<Arc<dyn Catalog>>,
 }
 
@@ -17,14 +17,14 @@ impl Registry {
     }
 
     pub fn register<A: Action>(&mut self, action: A) -> Result<(), ActionError> {
-        let id =
-            ActionId::new(A::ID).map_err(|reason| ActionError::InvalidId { id: A::ID, reason })?;
+        let id = ActionId::new(A::ID).map_err(|_| ActionError::InvalidId(A::ID))?;
 
         if self.actions.contains_key(&id) {
             return Err(ActionError::Duplicate(A::ID));
         }
 
-        self.actions.insert(id.clone(), Handle::new(id, action));
+        self.actions
+            .insert(id.clone(), RegisteredAction::new(id, action));
         Ok(())
     }
 
@@ -32,7 +32,7 @@ impl Registry {
         self.catalogs.push(catalog);
     }
 
-    pub fn get(&self, id: &ActionId) -> Option<Handle> {
+    pub fn get(&self, id: &ActionId) -> Option<RegisteredAction> {
         if let Some(handle) = self.actions.get(id) {
             return Some(handle.clone());
         }
@@ -44,12 +44,12 @@ impl Registry {
         self.actions.keys()
     }
 
-    pub fn describe(&self) -> Vec<Description> {
+    pub fn describe(&self) -> Vec<ActionDescription> {
         let attached = self.catalogs.iter().flat_map(|catalog| catalog.describe());
-        let mut descriptions: Vec<Description> = self
+        let mut descriptions: Vec<ActionDescription> = self
             .actions
             .values()
-            .map(Handle::describe)
+            .map(RegisteredAction::describe)
             .chain(attached)
             .collect();
 
@@ -68,7 +68,10 @@ mod tests {
     use synt_journal::{ActionId, Actor, ResourceRef, Seq};
 
     use super::Registry;
-    use crate::{Action, ActionError, Catalog, Context, Description, DynamicAction, Handle, Risk};
+    use crate::{
+        Action, ActionDescription, ActionError, Catalog, Context, DynamicAction, RegisteredAction,
+        Risk,
+    };
 
     struct Echo;
 
@@ -94,6 +97,30 @@ mod tests {
             Ok(Echoed {
                 text: params.text.to_uppercase(),
             })
+        }
+    }
+
+    struct Tail;
+
+    #[derive(Deserialize, JsonSchema)]
+    struct TailParams {
+        follow: bool,
+    }
+
+    impl Action for Tail {
+        const ID: &'static str = "test.tail";
+        const TITLE: &'static str = "Read now, or keep reading";
+        const RISK: Risk = Risk::Read;
+
+        type Params = TailParams;
+        type Output = ();
+
+        fn finishes_later(&self, params: &TailParams) -> bool {
+            params.follow
+        }
+
+        async fn run(&self, _context: &Context, _params: TailParams) -> Result<(), ActionError> {
+            Ok(())
         }
     }
 
@@ -142,15 +169,15 @@ mod tests {
     }
 
     struct Extra {
-        handle: Handle,
+        handle: RegisteredAction,
     }
 
     impl Catalog for Extra {
-        fn get(&self, id: &ActionId) -> Option<Handle> {
+        fn get(&self, id: &ActionId) -> Option<RegisteredAction> {
             (self.handle.id() == id).then(|| self.handle.clone())
         }
 
-        fn describe(&self) -> Vec<Description> {
+        fn describe(&self) -> Vec<ActionDescription> {
             vec![self.handle.describe()]
         }
     }
@@ -191,6 +218,22 @@ mod tests {
     }
 
     #[test]
+    fn a_call_can_say_it_finishes_later() {
+        let mut registry = registry();
+        registry.register(Tail).unwrap();
+        let tail = registry.get(&ActionId::new("test.tail").unwrap()).unwrap();
+        let echo = registry.get(&ActionId::new("test.echo").unwrap()).unwrap();
+
+        let following = tail.prepare(None, json!({ "follow": true })).unwrap();
+        let reading = tail.prepare(None, json!({ "follow": false })).unwrap();
+        let echoing = echo.prepare(None, json!({ "text": "hi" })).unwrap();
+
+        assert!(following.finishes_later());
+        assert!(!reading.finishes_later());
+        assert!(!echoing.finishes_later());
+    }
+
+    #[test]
     fn ids_are_registered_once() {
         let mut registry = registry();
         assert_eq!(
@@ -204,7 +247,7 @@ mod tests {
         let mut registry = Registry::new();
         assert!(matches!(
             registry.register(Broken),
-            Err(ActionError::InvalidId { .. })
+            Err(ActionError::InvalidId(_))
         ));
     }
 
@@ -212,7 +255,7 @@ mod tests {
     async fn attached_catalogs_add_their_actions() {
         let mut registry = registry();
         let id = ActionId::new("extra.shout").unwrap();
-        let handle = Handle::dynamic(id.clone(), Holler);
+        let handle = RegisteredAction::dynamic(id.clone(), Holler);
         registry.attach(Arc::new(Extra { handle }));
 
         let shout = registry.get(&id).unwrap();

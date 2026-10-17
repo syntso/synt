@@ -6,20 +6,20 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_ssh::WriteMode;
 
-use super::files::LARGEST_WRITE;
-use super::{Files, RemotePath};
+use super::LARGEST_WRITE;
+use super::{RemotePath, SftpActions};
 
 const DATA_FIELD: &str = "data";
 const BASE64_GROUP: usize = 4;
 const BYTES_PER_GROUP: usize = 3;
 
 #[derive(Debug, Clone)]
-pub struct SftpWrite {
-    files: Files,
+pub(crate) struct SftpWrite {
+    sftp: SftpActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
-pub struct WriteParams {
+pub(crate) struct WriteParams {
     pub path: RemotePath,
 
     #[serde(default)]
@@ -35,15 +35,15 @@ pub struct WriteParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct WriteResult {
+pub(crate) struct WriteResult {
     pub path: String,
     pub offset: u64,
     pub bytes: u64,
 }
 
 impl SftpWrite {
-    pub(super) fn new(files: Files) -> Self {
-        Self { files }
+    pub(super) fn new(sftp: SftpActions) -> Self {
+        Self { sftp }
     }
 }
 
@@ -57,11 +57,11 @@ impl Action for SftpWrite {
     type Output = WriteResult;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &WriteParams) -> Risk {
-        self.files.per_call_risk(target, Self::RISK)
+        self.sftp.per_call_risk(target, Self::RISK)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, _params: &WriteParams) -> Option<String> {
-        self.files.destination(target)
+        self.sftp.destination(target)
     }
 
     fn summary(&self, output: &WriteResult) -> Value {
@@ -101,7 +101,7 @@ impl Action for SftpWrite {
 
         let (path, offset, data) = (params.path.as_str(), params.offset, data.as_slice());
 
-        self.files
+        self.sftp
             .run(context, move |sftp| async move {
                 sftp.write(path, offset, data, mode).await
             })

@@ -1,26 +1,30 @@
+mod background;
 mod bindings;
 mod builtin;
-mod caller;
+mod call;
+mod documents;
 mod error;
-mod extension;
 mod extensions;
-mod install_folder;
-mod local_build;
+mod files;
+mod http;
+mod install;
+mod interface;
 mod manifest;
-mod package;
 mod remote;
 mod runtime;
+mod sha256;
 mod shelf;
+mod ui;
+mod view;
 
-pub use builtin::{
-    ExtensionDisable, ExtensionEnable, ExtensionInfo, ExtensionInstall, ExtensionInstallLocal,
-    ExtensionList, ExtensionRemove, ExtensionSearch, IdParams, InstallParams, LocalParams,
-    SearchHit, SearchParams,
-};
-pub use caller::{CallFailure, CallFuture, Caller, ExtensionCall};
+pub use background::ExtensionEvent;
+pub use call::{CallFailure, CallFuture, Caller, ExtensionCall, FailureCode};
+pub use documents::MergeSides;
 pub use error::ExtensionError;
 pub use extensions::Extensions;
-pub use manifest::{Capabilities, Manifest};
-pub use remote::{Listing, Remote};
+pub use files::FileAccess;
+pub use http::SecretSource;
+pub use manifest::{Api, Capabilities, Contributions, EventTopic, ExtensionId, Manifest};
+pub use remote::Remote;
 pub use runtime::Runtime;
-pub use shelf::{Installed, Shelf};
+pub use ui::{Screen, ScreenUpdate};

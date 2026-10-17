@@ -3,24 +3,24 @@ use std::sync::{Arc, Mutex};
 
 use russh::Channel;
 use russh::client::{Handle, Msg};
+use synt_platform::Lock;
 use tokio::runtime;
 
 use super::ClientHandler;
-use crate::pool::locked;
 
 #[derive(Default)]
-pub(crate) struct Spare {
+pub(super) struct Spare {
     channel: Mutex<Option<Channel<Msg>>>,
     filling: AtomicBool,
 }
 
 impl Spare {
-    pub(crate) fn take(&self) -> Option<Channel<Msg>> {
-        locked(&self.channel).take()
+    pub(super) fn take(&self) -> Option<Channel<Msg>> {
+        self.channel.locked().take()
     }
 
-    pub(crate) async fn fill_now(&self, handle: &Handle<ClientHandler>) {
-        if locked(&self.channel).is_some() {
+    pub(super) async fn fill_now(&self, handle: &Handle<ClientHandler>) {
+        if self.channel.locked().is_some() {
             return;
         }
 
@@ -29,7 +29,7 @@ impl Spare {
         }
     }
 
-    pub(crate) fn fill(self: &Arc<Self>, handle: &Arc<Handle<ClientHandler>>) {
+    pub(super) fn fill(self: &Arc<Self>, handle: &Arc<Handle<ClientHandler>>) {
         if handle.is_closed() || self.filling.swap(true, Ordering::AcqRel) {
             return;
         }
@@ -50,7 +50,7 @@ impl Spare {
 
     async fn keep(&self, channel: Channel<Msg>) {
         let extra = {
-            let mut slot = locked(&self.channel);
+            let mut slot = self.channel.locked();
 
             if slot.is_some() {
                 Some(channel)

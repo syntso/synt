@@ -3,8 +3,9 @@ use std::fmt::Write;
 use rusqlite::types::Value;
 
 use super::row::COLUMNS;
+use crate::codec::Encoder;
 use crate::filter::Filter;
-use crate::model::Seq;
+use crate::seq::Seq;
 
 pub(super) struct Query {
     pub(super) sql: String,
@@ -19,7 +20,7 @@ impl Query {
         };
 
         if let Some(actor) = &filter.actor {
-            query.condition("actor = ?", Value::Blob(actor.encode()));
+            query.condition("actor = ?", Value::Blob(Encoder::actor_bytes(actor)));
         }
         if let Some(kind) = filter.kind {
             query.condition("kind = ?", Value::Integer(kind.code().into()));
@@ -59,8 +60,9 @@ impl Query {
 #[cfg(test)]
 mod tests {
     use super::Query;
+    use crate::event::EventKind;
     use crate::filter::Filter;
-    use crate::model::{EventKind, Seq};
+    use crate::seq::Seq;
 
     #[test]
     fn numbers_every_parameter() {

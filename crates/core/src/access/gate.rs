@@ -2,7 +2,7 @@ use std::future::Future;
 
 use super::{AccessRequest, Decision};
 
-pub trait Gate: Send + Sync + 'static {
+pub(crate) trait Gate: Send + Sync + 'static {
     fn settled(&self, _request: &AccessRequest<'_>) -> Option<Decision> {
         None
     }

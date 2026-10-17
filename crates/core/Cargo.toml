@@ -6,6 +6,7 @@ rust-version.workspace = true
 license-file.workspace = true
 repository.workspace = true
 publish.workspace = true
+autotests = false
 
 [lints]
 workspace = true
@@ -23,17 +24,117 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 synt-actions.workspace = true
+synt-db.workspace = true
 synt-extensions.workspace = true
 synt-journal.workspace = true
+synt-kube.workspace = true
 synt-platform.workspace = true
 synt-proto.workspace = true
 synt-ssh.workspace = true
+synt-sync.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "sync", "time"] }
 tokio-util = { workspace = true, features = ["rt"] }
 toml.workspace = true
+vte.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
 synt-client.workspace = true
+synt-test-servers.workspace = true
+synt-testkit = { workspace = true, features = ["core", "extensions"] }
+rusqlite.workspace = true
 tempfile.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+
+[[test]]
+name = "approvals"
+path = "tests/approvals.rs"
+
+[[test]]
+name = "autostart"
+path = "tests/autostart.rs"
+
+[[test]]
+name = "clusters"
+path = "tests/clusters/main.rs"
+
+[[test]]
+name = "concurrency"
+path = "tests/concurrency.rs"
+
+[[test]]
+name = "databases"
+path = "tests/databases/main.rs"
+
+[[test]]
+name = "describe"
+path = "tests/describe.rs"
+
+[[test]]
+name = "error_codes"
+path = "tests/error_codes.rs"
+
+[[test]]
+name = "everything"
+path = "tests/everything/main.rs"
+
+[[test]]
+name = "extension_calls"
+path = "tests/extension_calls.rs"
+
+[[test]]
+name = "idle"
+path = "tests/idle.rs"
+
+[[test]]
+name = "kube_actions"
+path = "tests/kube_actions.rs"
+
+[[test]]
+name = "local_sessions"
+path = "tests/local_sessions.rs"
+
+[[test]]
+name = "projects"
+path = "tests/projects.rs"
+
+[[test]]
+name = "protocol"
+path = "tests/protocol.rs"
+
+[[test]]
+name = "refusals"
+path = "tests/refusals.rs"
+
+[[test]]
+name = "round_trip"
+path = "tests/round_trip.rs"
+
+[[test]]
+name = "runbooks"
+path = "tests/runbooks/main.rs"
+
+[[test]]
+name = "secrets"
+path = "tests/secrets.rs"
+
+[[test]]
+name = "servers"
+path = "tests/servers/main.rs"
+
+[[test]]
+name = "shutdown"
+path = "tests/shutdown.rs"
+
+[[test]]
+name = "standing_grants"
+path = "tests/standing_grants.rs"
+
+[[test]]
+name = "sync"
+path = "tests/sync.rs"
+
+[[test]]
+name = "vault_keys"
+path = "tests/vault_keys.rs"

@@ -1,10 +1,9 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
-use crate::blocking::blocking;
-use crate::projects::{ProjectInfo, Projects};
+use crate::projects::{ProjectInfo, ProjectSlug, Projects};
 
 #[derive(Debug, Clone)]
 pub struct ProjectClose {
@@ -13,7 +12,7 @@ pub struct ProjectClose {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct ProjectIdParams {
-    pub id: String,
+    pub(crate) id: ProjectSlug,
 }
 
 impl ProjectClose {
@@ -42,8 +41,6 @@ impl Action for ProjectClose {
     ) -> Result<ProjectInfo, ActionError> {
         let projects = self.projects.clone();
 
-        blocking(move || projects.close(&params.id))
-            .await
-            .map_err(|error| ActionError::Failed(error.to_string()))
+        blocking(move || projects.close(&params.id)).await
     }
 }

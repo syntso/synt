@@ -48,3 +48,62 @@ cargo test --workspace
 ```
 
 CI runs the same commands on macOS, Windows and Linux, plus `cargo deny check` for dependency licenses.
+
+## Fuzzing
+
+Every parser that reads bytes from outside has a target in `fuzz/`. They need nightly and `cargo install cargo-fuzz`:
+
+```bash
+cargo +nightly fuzz list
+cargo +nightly fuzz run osc133_scanner -- -max_total_time=180
+```
+
+A crash is a bug: fix it and keep the input as a regression test in the crate.
+
+## SSH integration tests
+
+The tests in `crates/ssh/tests/servers` and `crates/core/tests/servers` talk to real OpenSSH servers. They are ignored by default and skip themselves unless `SYNT_SSH_TESTS=1` is set.
+
+```bash
+tests/ssh/up.sh
+SYNT_SSH_TESTS=1 cargo nextest run -p synt-ssh -p synt-core --test servers --run-ignored only
+tests/ssh/down.sh
+```
+
+`up.sh` needs Docker and `ssh-keygen`. It generates fresh client and host keys in `tests/ssh/run/` (ignored by git) and starts two Alpine OpenSSH containers: `bastion`, published on a random port of `127.0.0.1`, and `target`, reachable only from the bastion as `target:22`. Both log in user `synt` with the client key or the vault key and run a TCP echo on port 7000. The tests write their own `known_hosts` into a temporary folder and never touch `~/.ssh`. CI runs them in the `ssh-integration` job.
+
+## Extension tests
+
+`tests/extension/everything` is an extension built with the [extension SDK](https://github.com/syntso/extension-api) that uses every capability and contribution point of API 0.2. Its build, `tests/extension/everything.wasm`, is committed, so `cargo test --workspace` needs no WebAssembly toolchain. After changing the fixture, build it and commit the new `.wasm`:
+
+```bash
+rustup target add wasm32-wasip2
+cargo build --manifest-path tests/extension/everything/Cargo.toml --target wasm32-wasip2 --release
+cp tests/extension/everything/target/wasm32-wasip2/release/everything.wasm tests/extension/
+```
+
+`SYNT_EVERYTHING_WASM=<path>` makes the tests load another build instead. CI's `extension-fixture` job rebuilds the fixture from source and runs `crates/extensions/tests/{api,install}.rs` and `crates/core/tests/everything` against it.
+
+## Kubernetes integration tests
+
+The tests in `crates/kube/tests/cluster` and `crates/core/tests/clusters` talk to a real cluster. They are ignored by default and skip themselves unless `SYNT_KUBE_TESTS=1` is set.
+
+```bash
+tests/kube/up.sh
+SYNT_KUBE_TESTS=1 cargo nextest run -p synt-kube --test cluster -p synt-core --test clusters --run-ignored only
+tests/kube/down.sh
+```
+
+`up.sh` needs Docker and `ssh-keygen`. It starts a single-node k3s cluster (`rancher/k3s`, the image k3d runs) with its API server published on a random port of `127.0.0.1`, and an OpenSSH `bastion` from `tests/ssh` on the same Docker network, where the API server is also reachable as `cluster:6443`. It writes `tests/kube/run/kubeconfig` (ignored by git) with three contexts: `direct` (the published port, client certificate), `inside` (`https://cluster:6443`, reachable only through the bastion, so it checks the SSH tunnel and the TLS name) and `plugin` (the published port with an exec credential plugin that prints a service account token). The tests make a namespace of their own and delete it at the end; pods run `busybox`. CI runs them in the `kube-integration` job.
+
+## Database integration tests
+
+The tests in `crates/db/tests/servers` and `crates/core/tests/databases/servers.rs` talk to real PostgreSQL, MySQL, MariaDB and Redis servers. They are ignored by default and skip themselves unless `SYNT_DB_TESTS=1` is set. SQLite needs no server, so its tests always run.
+
+```bash
+tests/db/up.sh
+SYNT_DB_TESTS=1 cargo nextest run -p synt-db -p synt-core --test servers --test databases --run-ignored only
+tests/db/down.sh
+```
+
+`up.sh` needs Docker and `openssl`. It writes a throwaway self-signed certificate to `tests/db/run/` (ignored by git), starts the four servers on random ports of `127.0.0.1` with TLS on (Redis also on a separate TLS port), and writes the ports to `tests/db/run/ports`. Every server logs in user `synt` with password `synt-test-password` to database `synt`. When the SSH test servers are already up, `up.sh` also puts PostgreSQL on their inner network as `db-postgres`, so `crates/core/tests/servers` can reach it through two SSH hops (that test needs both switches). CI runs all of this in the `db-integration` job.

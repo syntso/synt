@@ -3,23 +3,23 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::{FileInfo, Files, PathParams};
+use super::{FileInfo, PathParams, SftpActions};
 
 #[derive(Debug, Clone)]
-pub struct SftpList {
-    files: Files,
+pub(crate) struct SftpList {
+    sftp: SftpActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Listing {
+pub(crate) struct Listing {
     pub path: String,
     pub entries: Vec<FileInfo>,
     pub truncated: bool,
 }
 
 impl SftpList {
-    pub(super) fn new(files: Files) -> Self {
-        Self { files }
+    pub(super) fn new(sftp: SftpActions) -> Self {
+        Self { sftp }
     }
 }
 
@@ -33,11 +33,11 @@ impl Action for SftpList {
     type Output = Listing;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &PathParams) -> Risk {
-        self.files.per_call_risk(target, Self::RISK)
+        self.sftp.per_call_risk(target, Self::RISK)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, _params: &PathParams) -> Option<String> {
-        self.files.destination(target)
+        self.sftp.destination(target)
     }
 
     fn summary(&self, output: &Listing) -> Value {
@@ -52,7 +52,7 @@ impl Action for SftpList {
         let path = params.path.as_str();
 
         let directory = self
-            .files
+            .sftp
             .run(context, move |sftp| async move { sftp.list(path).await })
             .await?;
 

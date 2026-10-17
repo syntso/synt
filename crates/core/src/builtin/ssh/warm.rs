@@ -1,19 +1,14 @@
-use std::time::Duration;
-
 use serde::Serialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
-use synt_ssh::Pool;
-use tokio::time;
+use synt_ssh::{ConnectionState, Pool};
 
-use super::{destination, failure, logs_in_as_root, reach_host};
+use super::within_connect_limit;
 use crate::projects::Projects;
 
-const CONNECT_LIMIT: Duration = Duration::from_secs(30);
-
 #[derive(Debug, Clone)]
-pub struct SshWarm {
+pub(crate) struct SshWarm {
     pool: Pool,
     projects: Projects,
 }
@@ -21,7 +16,7 @@ pub struct SshWarm {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Warmed {
     pub target: String,
-    pub state: String,
+    pub state: ConnectionState,
 }
 
 impl SshWarm {
@@ -40,15 +35,11 @@ impl Action for SshWarm {
     type Output = Warmed;
 
     fn risk(&self, target: Option<&ResourceRef>, (): &()) -> Risk {
-        if logs_in_as_root(&self.projects, target) {
-            return Risk::Privileged;
-        }
-
-        Risk::Read
+        self.projects.login_risk(target, Self::RISK)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, (): &()) -> Option<String> {
-        destination(&self.projects, target)
+        self.projects.host_destination(target)
     }
 
     fn summary(&self, output: &Warmed) -> Value {
@@ -56,21 +47,13 @@ impl Action for SshWarm {
     }
 
     async fn run(&self, context: &Context, (): ()) -> Result<Warmed, ActionError> {
-        let target = reach_host(&self.projects, context).await?;
+        let target = self.projects.reach_host(context).await?;
 
-        let state = time::timeout(CONNECT_LIMIT, self.pool.warm(&target))
-            .await
-            .map_err(|_| {
-                ActionError::failed(format!(
-                    "could not connect within {} s",
-                    CONNECT_LIMIT.as_secs()
-                ))
-            })?
-            .map_err(|error| failure(&error))?;
+        let state = within_connect_limit(self.pool.warm(&target)).await?;
 
         Ok(Warmed {
             target: target.label(),
-            state: state.name().to_owned(),
+            state,
         })
     }
 }
