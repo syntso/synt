@@ -29,14 +29,17 @@ impl Fetcher {
         let mut response = agent
             .get(&url)
             .call()
-            .map_err(|error| ExtensionError::Fetch(format!("{url}: {error}")))?;
+            .map_err(|source| ExtensionError::Fetch {
+                url: url.clone(),
+                source,
+            })?;
 
         response
             .body_mut()
             .with_config()
             .limit(limit)
             .read_to_vec()
-            .map_err(|error| ExtensionError::Fetch(format!("{url}: {error}")))
+            .map_err(|source| ExtensionError::Fetch { url, source })
     }
 
     fn build_agent() -> Agent {

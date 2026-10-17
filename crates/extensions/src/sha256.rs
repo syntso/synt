@@ -11,7 +11,7 @@ const HEX_LENGTH: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
-pub(crate) struct Sha256(String);
+pub struct Sha256(String);
 
 impl Sha256 {
     pub(crate) fn of(bytes: &[u8]) -> Self {

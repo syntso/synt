@@ -1,6 +1,7 @@
 use std::error::Error as StdError;
 use std::io;
 use std::path::PathBuf;
+use std::str::Utf8Error;
 use std::time::Duration;
 
 use synt_actions::ActionError;
@@ -13,6 +14,7 @@ use crate::files::FileAccess;
 use crate::interface::GuestError;
 use crate::manifest::{Api, AssetPath, ExtensionId, HttpHost, LocalId, Suffix};
 use crate::runtime::Spend;
+use crate::sha256::Sha256;
 
 #[derive(Debug, Error)]
 pub enum ExtensionError {
@@ -28,8 +30,8 @@ pub enum ExtensionError {
     #[error("extension.toml: {0}")]
     ManifestWrite(#[from] toml::ser::Error),
 
-    #[error("the component cannot be used: {0}")]
-    Component(String),
+    #[error("the component cannot be used: {0:#}")]
+    Component(wasmtime::Error),
 
     #[error(
         "the component cannot be used: action {action:?} must be named {extension}.<name>, with a lowercase name"
@@ -120,8 +122,8 @@ pub enum ExtensionError {
     #[error("the work stopped unexpectedly")]
     Interrupted(#[from] JoinError),
 
-    #[error("the registry cannot be reached: {0}")]
-    Fetch(String),
+    #[error("the registry cannot be reached: {url}: {source}")]
+    Fetch { url: String, source: ureq::Error },
 
     #[error("the registry index is damaged: {0}")]
     Index(serde_json::Error),
@@ -130,7 +132,36 @@ pub enum ExtensionError {
     ReleaseFile(String),
 
     #[error("the signature does not check out: {0}")]
-    Signature(String),
+    Signature(#[from] minisign_verify::Error),
+
+    #[error("the signature does not check out: {0}")]
+    SignatureText(#[source] Utf8Error),
+
+    #[error("the signature does not check out: the public key: {0}")]
+    PublicKey(#[source] minisign_verify::Error),
+
+    #[error("the signature does not check out: the trusted comment of the index: {0}")]
+    IndexComment(#[source] serde_json::Error),
+
+    #[error(
+        "the signature does not check out: the registry index has expired; the registry has \
+         not been signed lately"
+    )]
+    IndexExpired,
+
+    #[error(
+        "the signature does not check out: the download has sha256 {found}, the index says {listed}"
+    )]
+    DownloadDigest { found: Sha256, listed: Sha256 },
+
+    #[error("the signature does not check out: the trusted comment: {0}")]
+    ListingComment(#[source] serde_json::Error),
+
+    #[error(
+        "the signature does not check out: the signed id, name, version, description, \
+         repository, sha256 or capabilities differ from the index"
+    )]
+    ListingDiffers,
 
     #[error("{extension} owns no document type with the suffix .{suffix}")]
     NoDocumentType { extension: String, suffix: String },
@@ -456,13 +487,7 @@ pub enum ExtensionError {
 
 impl From<wasmtime::Error> for ExtensionError {
     fn from(error: wasmtime::Error) -> Self {
-        Self::Component(format!("{error:#}"))
-    }
-}
-
-impl From<minisign_verify::Error> for ExtensionError {
-    fn from(error: minisign_verify::Error) -> Self {
-        Self::Signature(error.to_string())
+        Self::Component(error)
     }
 }
 
