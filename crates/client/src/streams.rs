@@ -87,10 +87,7 @@ impl Streams {
     }
 
     fn keep_ended(&self, entries: &mut HashMap<StreamId, StreamEntry>, stream: StreamId) {
-        let mut ended = self
-            .ended_unclaimed
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let mut ended = self.ended_unclaimed();
 
         ended.push_back(stream);
 
@@ -107,5 +104,11 @@ impl Streams {
 
     fn entries(&self) -> MutexGuard<'_, HashMap<StreamId, StreamEntry>> {
         self.entries.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn ended_unclaimed(&self) -> MutexGuard<'_, VecDeque<StreamId>> {
+        self.ended_unclaimed
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 }
