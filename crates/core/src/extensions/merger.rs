@@ -1,4 +1,4 @@
-use synt_extensions::Extensions;
+use synt_extensions::{Extensions, MergeSides};
 use synt_sync::{DocumentKind, DocumentMerger};
 
 pub struct ExtensionMerger {
@@ -24,7 +24,7 @@ impl DocumentMerger for ExtensionMerger {
         };
 
         self.extensions
-            .merge_document(extension, suffix, (base, older, newer))
+            .merge_document(extension, suffix, MergeSides::new(base, older, newer))
             .ok()
     }
 }
