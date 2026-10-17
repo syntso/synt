@@ -1,4 +1,7 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use serde::Serialize;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ConnectionState {
     Idle,
     Connecting,
@@ -6,17 +9,4 @@ pub enum ConnectionState {
     Lost,
     Reconnecting,
     Failed,
-}
-
-impl ConnectionState {
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Idle => "idle",
-            Self::Connecting => "connecting",
-            Self::Connected => "connected",
-            Self::Lost => "lost",
-            Self::Reconnecting => "reconnecting",
-            Self::Failed => "failed",
-        }
-    }
 }

@@ -1,6 +1,6 @@
 use serde::Serialize;
 use serde_json::{Value, json};
-use synt_ssh::TunnelStatus;
+use synt_ssh::{ConnectionState, TunnelStatus};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TunnelInfo {
@@ -9,7 +9,7 @@ pub struct TunnelInfo {
     pub local_port: u16,
     pub remote_host: String,
     pub remote_port: u16,
-    pub state: String,
+    pub state: ConnectionState,
     pub active: usize,
     pub connections: u64,
     pub sent_bytes: u64,
@@ -37,7 +37,7 @@ impl From<TunnelStatus> for TunnelInfo {
             local_port: status.local_port,
             remote_host: status.destination.host().to_owned(),
             remote_port: status.destination.port(),
-            state: status.state.name().to_owned(),
+            state: status.state,
             active: status.active,
             connections: status.connections,
             sent_bytes: status.sent_bytes,

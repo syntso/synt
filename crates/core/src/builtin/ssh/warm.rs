@@ -2,7 +2,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
-use synt_ssh::Pool;
+use synt_ssh::{ConnectionState, Pool};
 
 use super::within_connect_limit;
 use crate::projects::Projects;
@@ -16,7 +16,7 @@ pub struct SshWarm {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Warmed {
     pub target: String,
-    pub state: String,
+    pub state: ConnectionState,
 }
 
 impl SshWarm {
@@ -53,7 +53,7 @@ impl Action for SshWarm {
 
         Ok(Warmed {
             target: target.label(),
-            state: state.name().to_owned(),
+            state,
         })
     }
 }
