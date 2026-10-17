@@ -8,13 +8,14 @@ use std::time::Duration;
 
 use synt_actions::{ActionError, Registry};
 use synt_core::{
-    AlwaysGrants, Broker, Core, CoreCaller, CoreScreen, Databases, EventFeed, ExtensionMerger,
-    Files, GrantList, GrantRevoke, IdleWatch, JournalPage, JournalVerify, KeyGenerate, KeyImport,
-    KeyList, KeyRemove, Kube, LocalSessionOpen, LoginCommand, Ping, ProjectClose, ProjectList,
-    ProjectOpen, Projects, ResourceGet, ResourceList, ResourcePut, ResourceRemove, RunbookActions,
-    Runbooks, SecretList, SecretPut, SecretRemove, Secrets, Server, SessionAttach, SessionBlocks,
-    SessionClose, SessionIntegration, SessionList, SessionResize, SshConnections, SshExec, SshKeys,
-    SshSessionOpen, SshWarm, Storage, Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
+    AlwaysGrants, Broker, Core, CoreCaller, CoreFolders, CoreScreen, Databases, EventFeed,
+    ExtensionMerger, Files, GrantList, GrantRevoke, IdleWatch, JournalPage, JournalVerify,
+    KeyGenerate, KeyImport, KeyList, KeyRemove, Kube, LocalSessionOpen, LoginCommand, Ping,
+    ProjectClose, ProjectList, ProjectOpen, Projects, ResourceGet, ResourceList, ResourcePut,
+    ResourceRemove, RunbookActions, Runbooks, SecretList, SecretPut, SecretRemove, Secrets, Server,
+    SessionAttach, SessionBlocks, SessionClose, SessionIntegration, SessionList, SessionResize,
+    SshConnections, SshExec, SshKeys, SshSessionOpen, SshWarm, Storage, Terminals, TunnelClose,
+    TunnelList, TunnelOpen, VERSION,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Journal, JournalWriter};
@@ -96,7 +97,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         Remote::official()?,
     )?
     .with_secrets(Arc::new(secrets))
-    .with_projects(Arc::new(projects.clone()));
+    .with_projects(Arc::new(CoreFolders::new(projects.clone())));
 
     let syncer = syncer(&storage, &projects, &journal, &extensions)?;
     syncer.register(&mut registry)?;

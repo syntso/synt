@@ -23,8 +23,14 @@ impl DocumentMerger for ExtensionMerger {
             return None;
         };
 
-        self.extensions
-            .merge_document(extension, suffix, (base, older, newer))
+        let merged = self
+            .extensions
+            .merge_document(extension, suffix, (base, older, newer));
+
+        merged
+            .inspect_err(|error| {
+                eprintln!("synt-core: {extension} could not merge a .{suffix} document: {error}");
+            })
             .ok()
     }
 }

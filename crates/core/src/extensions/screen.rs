@@ -1,7 +1,7 @@
 use std::sync::{Arc, Weak};
 
 use synt_extensions::{Screen, ScreenUpdate};
-use synt_proto::{Notice, PanelPosted, ViewPatched};
+use synt_proto::{Notice, Notification, PanelPosted, ViewPatched};
 
 use crate::core::Core;
 
@@ -15,15 +15,9 @@ impl CoreScreen {
             core: Arc::downgrade(core),
         }
     }
-}
 
-impl Screen for CoreScreen {
-    fn show(&self, update: ScreenUpdate) {
-        let Some(core) = self.core.upgrade() else {
-            return;
-        };
-
-        let notification = match update {
+    fn notification(update: ScreenUpdate) -> Result<Notification, serde_json::Error> {
+        match update {
             ScreenUpdate::ViewPatched {
                 extension,
                 view,
@@ -44,13 +38,24 @@ impl Screen for CoreScreen {
                 message,
             }
             .to_notification(),
+        }
+    }
+}
+
+impl Screen for CoreScreen {
+    fn show(&self, update: ScreenUpdate) {
+        let Some(core) = self.core.upgrade() else {
+            return;
         };
 
-        match notification {
-            Ok(notification) => {
-                core.broker().tell_apps(&notification);
+        let notification = match Self::notification(update) {
+            Ok(notification) => notification,
+            Err(error) => {
+                eprintln!("synt-core: an extension update cannot be encoded: {error}");
+                return;
             }
-            Err(error) => eprintln!("synt-core: an extension update cannot be encoded: {error}"),
-        }
+        };
+
+        core.broker().tell_apps(&notification);
     }
 }

@@ -10,6 +10,8 @@ use crate::core::Core;
 use crate::link::Link;
 use crate::on_behalf::OnBehalf;
 
+const UNAVAILABLE: &str = "unavailable";
+
 pub struct CoreCaller {
     core: Weak<Core>,
 }
@@ -29,7 +31,7 @@ impl CoreCaller {
         let core = self
             .core
             .upgrade()
-            .ok_or_else(|| CallFailure::new("unavailable", "the core is stopping"))?;
+            .ok_or_else(|| CallFailure::new(UNAVAILABLE, "the core is stopping"))?;
 
         let actor = Actor::Plugin(call.extension);
         let request = ActionCall {
@@ -38,14 +40,15 @@ impl CoreCaller {
             params: call.params,
         };
 
-        let answer = match origin {
+        let outcome = match origin {
             Some(origin) => Self::on_behalf(&core, &actor, origin, request).await?,
-            None => core.dispatch_unprompted(&actor, request).await,
+            None => core
+                .dispatch_unprompted(&actor, request)
+                .await
+                .map_err(Self::failure)?,
         };
 
-        answer
-            .map(|outcome| outcome.value)
-            .map_err(|error| CallFailure::new(code_name(error.code), error.message))
+        Ok(outcome.value)
     }
 
     async fn on_behalf(
@@ -53,10 +56,10 @@ impl CoreCaller {
         actor: &Actor,
         origin: &Context,
         request: ActionCall,
-    ) -> Result<Result<ActionOutcome, RpcError>, CallFailure> {
+    ) -> Result<ActionOutcome, CallFailure> {
         let link = origin
             .connection::<Link>()
-            .ok_or_else(|| CallFailure::new("unavailable", "the call came without a connection"))?;
+            .ok_or_else(|| CallFailure::new(UNAVAILABLE, "the call came without a connection"))?;
 
         let behalf = OnBehalf {
             actor: origin.actor(),
@@ -66,25 +69,27 @@ impl CoreCaller {
             stop: Some(origin.stop()),
         };
 
-        Ok(core
-            .dispatch_on_behalf(actor, behalf, request, origin.stop(), &link)
-            .await)
+        core.dispatch_on_behalf(actor, behalf, request, origin.stop(), &link)
+            .await
+            .map_err(Self::failure)
+    }
+
+    fn failure(error: RpcError) -> CallFailure {
+        let code = match error.code {
+            ErrorCode::DENIED => "denied",
+            ErrorCode::UNKNOWN_ACTION => "unknown_action",
+            ErrorCode::INVALID_PARAMS => "invalid_params",
+            ErrorCode::ACTION_FAILED => "failed",
+            ErrorCode::JOURNAL_UNAVAILABLE => "journal_unavailable",
+            _ => "internal",
+        };
+
+        CallFailure::new(code, error.message)
     }
 }
 
 impl Caller for CoreCaller {
     fn call<'a>(&'a self, call: ExtensionCall, origin: Option<&'a Context>) -> CallFuture<'a> {
         Box::pin(self.dispatch(call, origin))
-    }
-}
-
-fn code_name(code: ErrorCode) -> &'static str {
-    match code {
-        ErrorCode::DENIED => "denied",
-        ErrorCode::UNKNOWN_ACTION => "unknown_action",
-        ErrorCode::INVALID_PARAMS => "invalid_params",
-        ErrorCode::ACTION_FAILED => "failed",
-        ErrorCode::JOURNAL_UNAVAILABLE => "journal_unavailable",
-        _ => "internal",
     }
 }
