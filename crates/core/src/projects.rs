@@ -8,7 +8,6 @@ mod personal;
 mod problem;
 mod resolved;
 mod resource;
-mod slug;
 mod source;
 mod sync;
 mod table;
@@ -24,8 +23,8 @@ pub use resource::{
     TunnelResource,
 };
 pub(crate) use resource::{ResourceFolder, ResourceName};
-pub use slug::ProjectSlug;
 pub use synt_sync::ProjectId;
+pub use synt_sync::ProjectSlug;
 pub(crate) use target_ref::TargetRef;
 
 use file::ProjectFile;
@@ -115,7 +114,7 @@ impl Projects {
     }
 
     pub(crate) fn close(&self, project: &ProjectSlug) -> Result<ProjectInfo, CoreError> {
-        if Personal::is_named(project.as_str()) {
+        if ProjectSlug::is_personal(project.as_str()) {
             return Err(CoreError::PersonalCannotClose);
         }
 
@@ -193,7 +192,7 @@ impl Projects {
     }
 
     pub(crate) fn resolve_target(&self, target: &TargetRef) -> Result<Resolved, CoreError> {
-        if Personal::is_named(target.project().as_str()) {
+        if ProjectSlug::is_personal(target.project().as_str()) {
             return self.personal.resolve(target.resource());
         }
 
@@ -271,7 +270,7 @@ impl Projects {
         project: &ProjectSlug,
         work: impl FnOnce(&mut dyn ProjectSource) -> Result<T, CoreError>,
     ) -> Result<T, CoreError> {
-        if Personal::is_named(project.as_str()) {
+        if ProjectSlug::is_personal(project.as_str()) {
             return work(&mut self.personal.clone());
         }
 

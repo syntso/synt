@@ -15,7 +15,7 @@ use crate::provider::Place;
 use crate::replica::Replica;
 use crate::report::{Disabled, MembershipChange, RevisionInfo, RoundReport, StatusReport};
 use crate::seal::{DeviceKey, Keyring};
-use crate::{OpenProjects, ProjectFolder, SyncError};
+use crate::{OpenProjects, ProjectFolder, ProjectSlug, SyncError};
 
 pub(crate) struct Engine {
     history: History,
@@ -49,7 +49,11 @@ impl Engine {
         }
     }
 
-    pub(crate) fn enable(&self, project: &str, place: &Place) -> Result<StatusReport, SyncError> {
+    pub(crate) fn enable(
+        &self,
+        project: &ProjectSlug,
+        place: &Place,
+    ) -> Result<StatusReport, SyncError> {
         let _work = self.work();
         let folder = self.projects.folder(project)?;
         let id = folder.id();
@@ -73,7 +77,7 @@ impl Engine {
         self.status_of(&synced)
     }
 
-    pub(crate) fn disable(&self, project: &str) -> Result<Disabled, SyncError> {
+    pub(crate) fn disable(&self, project: &ProjectSlug) -> Result<Disabled, SyncError> {
         let _work = self.work();
         let synced = self.synced_by_name(project)?;
         let id = synced.project.clone();
@@ -94,7 +98,7 @@ impl Engine {
         })
     }
 
-    pub(crate) fn status(&self, project: &str) -> Result<StatusReport, SyncError> {
+    pub(crate) fn status(&self, project: &ProjectSlug) -> Result<StatusReport, SyncError> {
         let _work = self.work();
         let synced = self.synced_by_name(project)?;
 
@@ -103,7 +107,7 @@ impl Engine {
 
     pub(crate) fn share(
         &self,
-        project: &str,
+        project: &ProjectSlug,
         member: &MemberId,
     ) -> Result<MembershipChange, SyncError> {
         self.change_member(project, member, Membership::share)
@@ -111,7 +115,7 @@ impl Engine {
 
     pub(crate) fn unshare(
         &self,
-        project: &str,
+        project: &ProjectSlug,
         member: &MemberId,
     ) -> Result<MembershipChange, SyncError> {
         self.change_member(project, member, Membership::unshare)
@@ -119,7 +123,7 @@ impl Engine {
 
     pub(crate) fn history_of(
         &self,
-        project: &str,
+        project: &ProjectSlug,
         path: &DocumentPath,
     ) -> Result<Vec<RevisionInfo>, SyncError> {
         let _work = self.work();
@@ -129,7 +133,7 @@ impl Engine {
 
     pub(crate) fn resolve(
         &self,
-        project: &str,
+        project: &ProjectSlug,
         path: &DocumentPath,
         revision: &RevisionId,
     ) -> Result<RevisionInfo, SyncError> {
@@ -160,7 +164,7 @@ impl Engine {
 
     fn change_member(
         &self,
-        project: &str,
+        project: &ProjectSlug,
         member: &MemberId,
         change: impl FnOnce(&Membership, &MemberId) -> Result<Generation, SyncError>,
     ) -> Result<MembershipChange, SyncError> {
@@ -194,7 +198,7 @@ impl Engine {
         synced: &SyncedProject,
         report: &mut RoundReport,
     ) -> Result<(), SyncError> {
-        let folder = self.projects.folder(synced.project.get())?;
+        let folder = self.projects.folder(&ProjectSlug::from(&synced.project))?;
         let membership = self.membership(synced)?;
 
         let Standing::Member(keyring) = membership.standing()? else {
@@ -233,7 +237,7 @@ impl Engine {
         })
     }
 
-    fn working_replica(&self, project: &str) -> Result<Replica, SyncError> {
+    fn working_replica(&self, project: &ProjectSlug) -> Result<Replica, SyncError> {
         let folder = self.projects.folder(project)?;
         let synced = self.synced(folder.id())?;
 
@@ -275,14 +279,14 @@ impl Engine {
             .ok_or_else(|| SyncError::NotEnabled(project.clone()))
     }
 
-    fn synced_by_name(&self, project: &str) -> Result<SyncedProject, SyncError> {
+    fn synced_by_name(&self, project: &ProjectSlug) -> Result<SyncedProject, SyncError> {
         self.synced(&self.project_id(project)?)
     }
 
-    fn project_id(&self, project: &str) -> Result<ProjectId, SyncError> {
+    fn project_id(&self, project: &ProjectSlug) -> Result<ProjectId, SyncError> {
         match self.projects.folder(project) {
             Ok(folder) => Ok(folder.id().clone()),
-            Err(error) => ProjectId::parse(project).map_err(|_| error),
+            Err(error) => ProjectId::parse(project.as_str()).map_err(|_| error),
         }
     }
 

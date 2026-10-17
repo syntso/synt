@@ -41,9 +41,6 @@ impl Action for DocumentHistory {
         _context: &Context,
         params: HistoryParams,
     ) -> Result<Vec<RevisionInfo>, ActionError> {
-        Ok(self
-            .syncer
-            .history(params.project.as_str(), params.path)
-            .await?)
+        Ok(self.syncer.history(&params.project, params.path).await?)
     }
 }

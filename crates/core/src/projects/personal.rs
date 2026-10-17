@@ -4,8 +4,7 @@ use clusters::Clusters;
 
 use synt_kube::{ClusterSpec, KubeconfigSource};
 use synt_ssh::Target;
-
-use synt_sync::ProjectFolder;
+use synt_sync::{ProjectFolder, ProjectSlug};
 
 use super::{
     ClusterResource, HostResource, Problem, ProjectInfo, ProjectSource, Resolved, ResolvedDatabase,
@@ -23,14 +22,8 @@ pub(crate) struct Personal {
 }
 
 impl Personal {
-    pub(crate) const SLUG: &str = "personal";
-
     pub(crate) fn new(kubeconfig: KubeconfigSource) -> Self {
         Self { kubeconfig }
-    }
-
-    pub(crate) fn is_named(project: &str) -> bool {
-        project.eq_ignore_ascii_case(Self::SLUG)
     }
 
     pub(crate) fn kubeconfig(&self) -> &KubeconfigSource {
@@ -145,9 +138,9 @@ impl ProjectSource for Personal {
         let clusters = self.clusters(&aliases);
 
         Ok(ProjectInfo {
-            id: Self::SLUG.to_owned(),
+            id: ProjectSlug::PERSONAL.to_owned(),
             name: NAME.to_owned(),
-            slug: Self::SLUG.to_owned(),
+            slug: ProjectSlug::PERSONAL.to_owned(),
             path: Self::config_path(),
             read_only: true,
             resources: aliases.len() + clusters.entries.len(),
@@ -166,7 +159,7 @@ impl ProjectSource for Personal {
         resources.extend(clusters.entries);
 
         Ok(ResourceListing {
-            project: Self::SLUG.to_owned(),
+            project: ProjectSlug::PERSONAL.to_owned(),
             resources,
             problems: clusters.problems,
         })
@@ -227,7 +220,7 @@ impl ProjectSource for Personal {
     }
 
     fn canonical_name(&self) -> String {
-        Self::SLUG.to_owned()
+        ProjectSlug::PERSONAL.to_owned()
     }
 }
 

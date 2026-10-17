@@ -46,7 +46,7 @@ impl Action for DocumentResolve {
     ) -> Result<RevisionInfo, ActionError> {
         let resolved = self
             .syncer
-            .resolve(params.project.as_str(), params.path, params.revision)
+            .resolve(&params.project, params.path, params.revision)
             .await?;
 
         Ok(resolved)

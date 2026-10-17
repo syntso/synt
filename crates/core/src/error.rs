@@ -166,15 +166,6 @@ pub enum CoreError {
     #[error("{} is not a folder", .0.display())]
     NotAFolder(PathBuf),
 
-    #[error("the folder name of {} cannot name a project", .0.display())]
-    UnnamedFolder(PathBuf),
-
-    #[error("a project folder cannot be called {0}: the name belongs to the Personal project")]
-    PersonalSlug(String),
-
-    #[error("a project folder cannot be called {0}: names of that shape are project ids")]
-    IdShapedSlug(String),
-
     #[error("a project named {slug} is already open from {path}", path = .path.display())]
     SlugTaken { slug: String, path: PathBuf },
 

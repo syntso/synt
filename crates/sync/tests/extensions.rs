@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use synt_sync::{DocumentKind, DocumentMerger, DocumentPath};
 use synt_testkit::TestError;
-use synt_testkit::sync::{PROJECT_SLUG, Team};
+use synt_testkit::sync::{Team, project_slug};
 use tokio::time;
 
 const DIAGRAM: &str = "extensions/uml/orders.uml";
@@ -77,7 +77,7 @@ async fn without_a_merger_both_versions_are_kept_until_the_person_picks_one()
     team.alice
         .syncer()
         .resolve(
-            PROJECT_SLUG,
+            &project_slug()?,
             DocumentPath::parse(DIAGRAM).unwrap(),
             theirs.revision.clone(),
         )

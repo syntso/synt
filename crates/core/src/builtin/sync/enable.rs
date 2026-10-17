@@ -65,6 +65,6 @@ impl Action for SyncEnable {
     ) -> Result<StatusReport, ActionError> {
         let place = Place::Folder(params.folder);
 
-        Ok(self.syncer.enable(params.project.as_str(), place).await?)
+        Ok(self.syncer.enable(&params.project, place).await?)
     }
 }

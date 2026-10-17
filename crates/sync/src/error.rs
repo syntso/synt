@@ -62,6 +62,18 @@ pub enum SyncError {
     #[error(transparent)]
     Projects(Box<dyn StdError + Send + Sync>),
 
+    #[error("the folder name of {} cannot name a project", .0.display())]
+    UnnamedFolder(PathBuf),
+
+    #[error("a project folder cannot be called {0}: the name belongs to the Personal project")]
+    PersonalSlug(String),
+
+    #[error("a project folder cannot be called {0}: names of that shape are project ids")]
+    IdShapedSlug(String),
+
+    #[error("no open project is called {0}")]
+    NotAProjectName(String),
+
     #[error("project {0} does not sync; run sync.enable first")]
     NotEnabled(ProjectId),
 

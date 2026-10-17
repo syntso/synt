@@ -2,7 +2,7 @@ use std::fs;
 
 use synt_sync::{Access, Generation, Place};
 use synt_testkit::TestError;
-use synt_testkit::sync::{Device, PROJECT_ID, PROJECT_SLUG, Team};
+use synt_testkit::sync::{Device, PROJECT_ID, Team, project_slug};
 
 const API: &str = "kind = \"host\"\naddress = \"10.0.1.12\"\nuser = \"deploy\"\n";
 
@@ -95,7 +95,7 @@ async fn sharing_needs_the_member_to_have_asked_to_join() -> Result<(), TestErro
     let member = stranger.member().await?;
     let error = alice
         .syncer()
-        .share(PROJECT_SLUG, member)
+        .share(&project_slug()?, member)
         .await
         .unwrap_err();
 
@@ -118,7 +118,7 @@ async fn removing_a_member_rotates_the_key_and_locks_them_out_of_new_revisions()
     let change = team
         .alice
         .syncer()
-        .unshare(PROJECT_SLUG, removed.clone())
+        .unshare(&project_slug()?, removed.clone())
         .await
         .unwrap();
 
@@ -156,7 +156,7 @@ async fn revisions_after_a_rotation_are_sealed_with_the_new_generation() -> Resu
     let removed = carol.member().await?;
     team.alice
         .syncer()
-        .unshare(PROJECT_SLUG, removed)
+        .unshare(&project_slug()?, removed)
         .await
         .unwrap();
 
@@ -184,7 +184,7 @@ async fn a_device_cannot_remove_itself() -> Result<(), TestError> {
     let error = team
         .alice
         .syncer()
-        .unshare(PROJECT_SLUG, me)
+        .unshare(&project_slug()?, me)
         .await
         .unwrap_err();
 
@@ -198,7 +198,7 @@ async fn disabling_forgets_the_key_and_leaves_the_project() -> Result<(), TestEr
     let team = Team::new().await?;
     let bob = team.bob.member().await?;
 
-    let disabled = team.bob.syncer().disable(PROJECT_SLUG).await.unwrap();
+    let disabled = team.bob.syncer().disable(&project_slug()?).await.unwrap();
 
     assert!(disabled.left);
     assert_eq!(disabled.device, bob);
@@ -209,7 +209,7 @@ async fn disabling_forgets_the_key_and_leaves_the_project() -> Result<(), TestEr
             .iter()
             .any(|item| item.starts_with("sync.project."))
     );
-    assert!(team.bob.syncer().status(PROJECT_SLUG).await.is_err());
+    assert!(team.bob.syncer().status(&project_slug()?).await.is_err());
     assert!(
         team.alice
             .status()
@@ -230,7 +230,7 @@ async fn a_project_syncs_through_one_folder_at_a_time() -> Result<(), TestError>
     let error = team
         .alice
         .syncer()
-        .enable(PROJECT_SLUG, Place::Folder(elsewhere.path().to_owned()))
+        .enable(&project_slug()?, Place::Folder(elsewhere.path().to_owned()))
         .await
         .unwrap_err();
 
@@ -247,7 +247,7 @@ async fn a_missing_sync_folder_is_refused() -> Result<(), TestError> {
 
     let error = alice
         .syncer()
-        .enable(PROJECT_SLUG, Place::Folder(missing))
+        .enable(&project_slug()?, Place::Folder(missing))
         .await
         .unwrap_err();
 

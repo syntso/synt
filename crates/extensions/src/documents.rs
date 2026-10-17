@@ -14,7 +14,7 @@ pub(crate) use written::Written;
 
 use pending::Pending;
 use place::{DocumentPlace, LARGEST_DOCUMENT};
-use synt_sync::{ExtensionDocumentPath, OpenProjects, ProjectFolder};
+use synt_sync::{ExtensionDocumentPath, OpenProjects, ProjectFolder, ProjectSlug, SyncError};
 use walk::Walk;
 
 use crate::call::FailureCode;
@@ -203,9 +203,11 @@ impl<'a> DocumentStore<'a> {
             ));
         }
 
-        self.folders
-            .folder(project)
-            .map_err(|reason| GuestError::new(FailureCode::UnknownProject, reason.to_string()))
+        let unknown =
+            |reason: SyncError| GuestError::new(FailureCode::UnknownProject, reason.to_string());
+        let project = ProjectSlug::named(project).map_err(unknown)?;
+
+        self.folders.folder(&project).map_err(unknown)
     }
 
     fn place(&self, project: ProjectFolder, path: &str) -> Result<DocumentPlace, GuestError> {

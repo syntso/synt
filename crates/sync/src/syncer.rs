@@ -19,7 +19,7 @@ use crate::document::DocumentPath;
 use crate::id::{MemberId, RevisionId};
 use crate::provider::Place;
 use crate::report::{Disabled, MembershipChange, RevisionInfo, RoundReport, StatusReport};
-use crate::{OpenProjects, SyncError};
+use crate::{OpenProjects, ProjectSlug, SyncError};
 use engine::Engine;
 
 #[derive(Clone)]
@@ -59,31 +59,35 @@ impl Syncer {
             .unwrap_or_default()
     }
 
-    pub async fn enable(&self, project: &str, place: Place) -> Result<StatusReport, SyncError> {
-        let project = project.to_owned();
+    pub async fn enable(
+        &self,
+        project: &ProjectSlug,
+        place: Place,
+    ) -> Result<StatusReport, SyncError> {
+        let project = project.clone();
 
         self.run(move |engine| engine.enable(&project, &place))
             .await
     }
 
-    pub async fn disable(&self, project: &str) -> Result<Disabled, SyncError> {
-        let project = project.to_owned();
+    pub async fn disable(&self, project: &ProjectSlug) -> Result<Disabled, SyncError> {
+        let project = project.clone();
 
         self.run(move |engine| engine.disable(&project)).await
     }
 
-    pub async fn status(&self, project: &str) -> Result<StatusReport, SyncError> {
-        let project = project.to_owned();
+    pub async fn status(&self, project: &ProjectSlug) -> Result<StatusReport, SyncError> {
+        let project = project.clone();
 
         self.run(move |engine| engine.status(&project)).await
     }
 
     pub async fn share(
         &self,
-        project: &str,
+        project: &ProjectSlug,
         member: MemberId,
     ) -> Result<MembershipChange, SyncError> {
-        let project = project.to_owned();
+        let project = project.clone();
 
         self.run(move |engine| engine.share(&project, &member))
             .await
@@ -91,10 +95,10 @@ impl Syncer {
 
     pub async fn unshare(
         &self,
-        project: &str,
+        project: &ProjectSlug,
         member: MemberId,
     ) -> Result<MembershipChange, SyncError> {
-        let project = project.to_owned();
+        let project = project.clone();
 
         self.run(move |engine| engine.unshare(&project, &member))
             .await
@@ -102,10 +106,10 @@ impl Syncer {
 
     pub async fn history(
         &self,
-        project: &str,
+        project: &ProjectSlug,
         path: DocumentPath,
     ) -> Result<Vec<RevisionInfo>, SyncError> {
-        let project = project.to_owned();
+        let project = project.clone();
 
         self.run(move |engine| engine.history_of(&project, &path))
             .await
@@ -113,11 +117,11 @@ impl Syncer {
 
     pub async fn resolve(
         &self,
-        project: &str,
+        project: &ProjectSlug,
         path: DocumentPath,
         revision: RevisionId,
     ) -> Result<RevisionInfo, SyncError> {
-        let project = project.to_owned();
+        let project = project.clone();
 
         self.run(move |engine| engine.resolve(&project, &path, &revision))
             .await

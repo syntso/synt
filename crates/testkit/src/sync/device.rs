@@ -8,7 +8,7 @@ use synt_sync::{
 };
 use tempfile::TempDir;
 
-use super::{OneProject, PROJECT_ID, PROJECT_SLUG};
+use super::{OneProject, PROJECT_ID, PROJECT_SLUG, project_slug};
 use crate::{MemoryVault, TestError};
 
 const STATE_FILE: &str = "state.sqlite";
@@ -90,12 +90,12 @@ impl Device {
 
     pub async fn enable(&self) -> Result<StatusReport, SyncError> {
         self.syncer
-            .enable(PROJECT_SLUG, Place::Folder(self.shared.clone()))
+            .enable(&project_slug()?, Place::Folder(self.shared.clone()))
             .await
     }
 
     pub async fn status(&self) -> Result<StatusReport, SyncError> {
-        self.syncer.status(PROJECT_SLUG).await
+        self.syncer.status(&project_slug()?).await
     }
 
     pub async fn member(&self) -> Result<MemberId, SyncError> {
@@ -105,7 +105,7 @@ impl Device {
     pub async fn share_with(&self, other: &Device) -> Result<(), SyncError> {
         let member = other.member().await?;
 
-        self.syncer.share(PROJECT_SLUG, member).await?;
+        self.syncer.share(&project_slug()?, member).await?;
 
         Ok(())
     }
@@ -127,6 +127,6 @@ impl Device {
     pub async fn history(&self, path: &str) -> Result<Vec<RevisionInfo>, SyncError> {
         let path = DocumentPath::parse(path)?;
 
-        self.syncer.history(PROJECT_SLUG, path).await
+        self.syncer.history(&project_slug()?, path).await
     }
 }

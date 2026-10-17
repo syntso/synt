@@ -9,7 +9,7 @@ mod id;
 mod membership;
 mod merge;
 mod open_projects;
-mod project_folder;
+mod project;
 mod provider;
 mod random;
 mod replica;
@@ -23,7 +23,7 @@ pub use error::SyncError;
 pub use id::{DocumentId, Generation, MemberId, ProjectId, RevisionId};
 pub use merge::DocumentMerger;
 pub use open_projects::OpenProjects;
-pub use project_folder::ProjectFolder;
+pub use project::{ProjectFolder, ProjectSlug};
 pub use provider::{
     Cursor, FolderProvider, MemberKey, Place, Pulled, SealedRevision, SyncProvider, WrappedKey,
 };

@@ -32,6 +32,6 @@ impl Action for SyncDisable {
         _context: &Context,
         params: ProjectParams,
     ) -> Result<Disabled, ActionError> {
-        Ok(self.syncer.disable(params.project.as_str()).await?)
+        Ok(self.syncer.disable(&params.project).await?)
     }
 }

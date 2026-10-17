@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use synt_sync::Access;
 use synt_testkit::TestError;
-use synt_testkit::sync::{Device, Team};
+use synt_testkit::sync::{Device, Team, project_slug};
 use tokio::time;
 
 const API: &str = "kind = \"host\"\naddress = \"10.0.1.12\"\nuser = \"deploy\"\nport = 22\n";
@@ -202,7 +202,7 @@ async fn a_conflict_is_resolved_by_keeping_one_revision() -> Result<(), TestErro
         .alice
         .syncer()
         .resolve(
-            "orders",
+            &project_slug()?,
             synt_sync::DocumentPath::parse("resources/api-1.toml").unwrap(),
             mine.revision.clone(),
         )
@@ -233,7 +233,7 @@ async fn a_document_without_a_conflict_cannot_be_resolved() -> Result<(), TestEr
         .alice
         .syncer()
         .resolve(
-            "orders",
+            &project_slug()?,
             synt_sync::DocumentPath::parse("resources/api-1.toml").unwrap(),
             history[0].revision.clone(),
         )
