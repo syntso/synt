@@ -1,13 +1,13 @@
 mod access;
 mod calendar;
 mod catalog;
-mod cells;
 mod database;
 mod driver;
 mod effect;
 mod endpoint;
 mod engine;
 mod error;
+mod json_cell;
 mod paging;
 mod place;
 mod query;

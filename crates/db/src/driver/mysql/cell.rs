@@ -2,10 +2,11 @@ use mysql_async::consts::ColumnType;
 use mysql_async::{Column, Row, Value as MysqlValue};
 use serde_json::{Value, json};
 
-use crate::cells::{binary, float, text_or_binary};
+use crate::calendar::{Clock, Date};
+use crate::json_cell::JsonCell;
 
 const BINARY_CHARACTER_SET: u16 = 63;
-const HOURS_PER_DAY: u32 = 24;
+const HOURS_PER_DAY: i64 = 24;
 
 pub(super) struct Cell<'a> {
     column: &'a Column,
@@ -17,7 +18,7 @@ impl<'a> Cell<'a> {
         Self { column, value }
     }
 
-    pub(super) fn read_row(mut row: Row) -> Vec<Value> {
+    pub(super) fn row(mut row: Row) -> Vec<Value> {
         let columns = row.columns();
 
         columns
@@ -25,27 +26,9 @@ impl<'a> Cell<'a> {
             .enumerate()
             .map(|(index, column)| {
                 let value = row.take(index).unwrap_or(MysqlValue::NULL);
-                Cell::new(column, value).into_json()
+                Value::from(Cell::new(column, value))
             })
             .collect()
-    }
-
-    pub(super) fn into_json(self) -> Value {
-        match self.value {
-            MysqlValue::NULL => Value::Null,
-            MysqlValue::Int(number) => json!(number),
-            MysqlValue::UInt(number) => json!(number),
-            MysqlValue::Float(number) => float(f64::from(number)),
-            MysqlValue::Double(number) => float(number),
-            MysqlValue::Date(year, month, day, hour, minute, second, micros) => {
-                let day = [year, month.into(), day.into()];
-                Value::String(self.date(day, [hour, minute, second], micros))
-            }
-            MysqlValue::Time(negative, days, hours, minutes, seconds, micros) => {
-                Value::String(time(negative, days, [hours, minutes, seconds], micros))
-            }
-            MysqlValue::Bytes(ref bytes) => self.bytes(bytes),
-        }
     }
 
     fn bytes(&self, bytes: &[u8]) -> Value {
@@ -53,31 +36,23 @@ impl<'a> Cell<'a> {
 
         match (self.kind(), text) {
             (_, Some(text)) if self.is_integer() => integer(text),
-            (ColumnType::MYSQL_TYPE_FLOAT | ColumnType::MYSQL_TYPE_DOUBLE, Some(text)) => {
-                text.parse::<f64>().map_or_else(|_| json!(text), float)
-            }
+            (ColumnType::MYSQL_TYPE_FLOAT | ColumnType::MYSQL_TYPE_DOUBLE, Some(text)) => text
+                .parse::<f64>()
+                .map_or_else(|_| json!(text), |number| JsonCell::float(number).into()),
             (ColumnType::MYSQL_TYPE_JSON, Some(text)) => {
                 serde_json::from_str(text).unwrap_or_else(|_| json!(text))
             }
-            _ if self.is_binary() => binary(bytes),
-            _ => text_or_binary(bytes),
+            _ if self.is_binary() => JsonCell::binary(bytes).into(),
+            _ => JsonCell::text_or_binary(bytes).into(),
         }
     }
 
-    fn date(&self, day: [u16; 3], clock: [u8; 3], micros: u32) -> String {
-        let [year, month, day] = day;
-        let calendar = format!("{year:04}-{month:02}-{day:02}");
-
+    fn date(&self, date: Date, clock: Clock) -> String {
         if self.kind() == ColumnType::MYSQL_TYPE_DATE {
-            return calendar;
+            return date.to_string();
         }
 
-        let [hours, minutes, seconds] = clock;
-
-        format!(
-            "{calendar} {}",
-            clock_text(u32::from(hours), minutes, seconds, micros)
-        )
+        format!("{date} {clock}")
     }
 
     fn kind(&self) -> ColumnType {
@@ -113,31 +88,37 @@ impl<'a> Cell<'a> {
     }
 }
 
+impl From<Cell<'_>> for Value {
+    fn from(cell: Cell<'_>) -> Self {
+        match cell.value {
+            MysqlValue::NULL => Self::Null,
+            MysqlValue::Int(number) => json!(number),
+            MysqlValue::UInt(number) => json!(number),
+            MysqlValue::Float(number) => JsonCell::float(f64::from(number)).into(),
+            MysqlValue::Double(number) => JsonCell::float(number).into(),
+            MysqlValue::Date(year, month, day, hours, minutes, seconds, micros) => {
+                let date = Date::new(year.into(), month.into(), day.into());
+                let clock = Clock::new(hours.into(), minutes.into(), seconds.into(), micros.into());
+
+                Self::String(cell.date(date, clock))
+            }
+            MysqlValue::Time(negative, days, hours, minutes, seconds, micros) => {
+                let hours = i64::from(days) * HOURS_PER_DAY + i64::from(hours);
+                let clock = Clock::new(hours, minutes.into(), seconds.into(), micros.into());
+                let sign = if negative { "-" } else { "" };
+
+                Self::String(format!("{sign}{clock}"))
+            }
+            MysqlValue::Bytes(ref bytes) => cell.bytes(bytes),
+        }
+    }
+}
+
 fn integer(text: &str) -> Value {
     text.parse::<i64>()
         .map(|number| json!(number))
         .or_else(|_| text.parse::<u64>().map(|number| json!(number)))
         .unwrap_or_else(|_| json!(text))
-}
-
-fn time(negative: bool, days: u32, clock: [u8; 3], micros: u32) -> String {
-    let [hours, minutes, seconds] = clock;
-    let hours = days * HOURS_PER_DAY + u32::from(hours);
-    let sign = if negative { "-" } else { "" };
-
-    format!("{sign}{}", clock_text(hours, minutes, seconds, micros))
-}
-
-fn clock_text(hours: u32, minutes: u8, seconds: u8, micros: u32) -> String {
-    let whole = format!("{hours:02}:{minutes:02}:{seconds:02}");
-
-    if micros == 0 {
-        return whole;
-    }
-
-    let fraction = format!("{micros:06}");
-
-    format!("{whole}.{}", fraction.trim_end_matches('0'))
 }
 
 #[cfg(test)]
@@ -153,7 +134,7 @@ mod tests {
     }
 
     fn decode(column: &Column, value: MysqlValue) -> Value {
-        Cell::new(column, value).into_json()
+        Cell::new(column, value).into()
     }
 
     #[test]

@@ -4,7 +4,7 @@ use tokio_postgres::{GenericClient, Statement};
 
 use super::catalog::Catalog;
 use super::cell::Cell;
-use super::text_param::TextParam;
+use super::param::Param;
 use crate::paging::Collector;
 use crate::{DbError, Query, Rows};
 
@@ -28,7 +28,7 @@ impl<'a, C: GenericClient + Sync> Session<'a, C> {
 
     pub(super) async fn run(&self, query: Query<'_>) -> Result<Rows, DbError> {
         let statement = self.prepare(query.text, query.params).await?;
-        let params: Vec<TextParam> = query.params.iter().map(TextParam::from_json).collect();
+        let params: Vec<Param> = query.params.iter().map(Param::from).collect();
         let columns = statement
             .columns()
             .iter()
@@ -38,23 +38,15 @@ impl<'a, C: GenericClient + Sync> Session<'a, C> {
         let stream = self.client.query_raw(&statement, &params).await?;
         pin_mut!(stream);
 
-        let mut collector = Collector::new(query.page);
+        let mut collector = Collector::new(query.page, query.access);
 
         while let Some(row) = stream.try_next().await? {
-            if collector.wants_more() {
-                collector.offer(Cell::read_row(&row));
-            } else if query.access.is_read_only() {
+            if collector.take(|| Cell::row(&row)).is_break() {
                 break;
             }
         }
 
-        let affected = if query.access.is_read_only() {
-            None
-        } else {
-            stream.rows_affected()
-        };
-
-        Ok(collector.finish(columns, affected))
+        Ok(collector.finish(columns, || stream.rows_affected()))
     }
 
     pub(super) async fn explain(&self, text: &str, params: &[Value]) -> Result<Value, DbError> {

@@ -7,8 +7,8 @@ use tokio_postgres::Row;
 use tokio_postgres::types::{FromSql, Kind, Type};
 
 use super::numeric::Numeric;
-use crate::calendar;
-use crate::cells::{binary, float, text_or_binary};
+use crate::calendar::{Clock, Date, Timestamp};
+use crate::json_cell::JsonCell;
 
 const DAYS_FROM_1970_TO_2000: i64 = 10_957;
 const MICROS_FROM_1970_TO_2000: i64 = DAYS_FROM_1970_TO_2000 * 86_400_000_000;
@@ -27,21 +27,13 @@ impl<'a> Cell<'a> {
         Self { kind, bytes }
     }
 
-    pub(super) fn read_row(row: &Row) -> Vec<Value> {
+    pub(super) fn row(row: &Row) -> Vec<Value> {
         (0..row.len())
             .map(|index| {
                 row.try_get::<_, Cell<'_>>(index)
-                    .map_or(Value::Null, Cell::into_json)
+                    .map_or(Value::Null, Value::from)
             })
             .collect()
-    }
-
-    pub(super) fn into_json(self) -> Value {
-        let Some(bytes) = self.bytes else {
-            return Value::Null;
-        };
-
-        self.known(bytes).unwrap_or_else(|| text_or_binary(bytes))
     }
 
     fn known(&self, bytes: &[u8]) -> Option<Value> {
@@ -55,18 +47,20 @@ impl<'a> Cell<'a> {
             Type::INT4 => json!(wire::int4_from_sql(bytes).ok()?),
             Type::INT8 => json!(wire::int8_from_sql(bytes).ok()?),
             Type::OID => json!(wire::oid_from_sql(bytes).ok()?),
-            Type::FLOAT4 => float(f64::from(wire::float4_from_sql(bytes).ok()?)),
-            Type::FLOAT8 => float(wire::float8_from_sql(bytes).ok()?),
+            Type::FLOAT4 => JsonCell::float(f64::from(wire::float4_from_sql(bytes).ok()?)).into(),
+            Type::FLOAT8 => JsonCell::float(wire::float8_from_sql(bytes).ok()?).into(),
             Type::NUMERIC => Value::String(Numeric::read(bytes)?.to_string()),
             Type::CHAR => {
                 json!(char::from(wire::char_from_sql(bytes).ok()?.cast_unsigned()).to_string())
             }
-            Type::BYTEA => binary(bytes),
+            Type::BYTEA => JsonCell::binary(bytes).into(),
             Type::JSON => serde_json::from_slice(bytes).ok()?,
             Type::JSONB => jsonb(bytes)?,
             Type::UUID => Value::String(uuid(wire::uuid_from_sql(bytes).ok()?)),
             Type::DATE => Value::String(date(wire::date_from_sql(bytes).ok()?)),
-            Type::TIME => Value::String(calendar::time_of_day(wire::time_from_sql(bytes).ok()?)),
+            Type::TIME => {
+                Value::String(Clock::from_micros(wire::time_from_sql(bytes).ok()?).to_string())
+            }
             Type::TIMESTAMP => Value::String(timestamp(wire::timestamp_from_sql(bytes).ok()?, "")),
             Type::TIMESTAMPTZ => {
                 Value::String(timestamp(wire::timestamp_from_sql(bytes).ok()?, UTC))
@@ -76,6 +70,17 @@ impl<'a> Cell<'a> {
         };
 
         Some(value)
+    }
+}
+
+impl From<Cell<'_>> for Value {
+    fn from(cell: Cell<'_>) -> Self {
+        let Some(bytes) = cell.bytes else {
+            return Self::Null;
+        };
+
+        cell.known(bytes)
+            .unwrap_or_else(|| JsonCell::text_or_binary(bytes).into())
     }
 }
 
@@ -104,7 +109,7 @@ fn array(element: &Type, bytes: &[u8]) -> Option<Value> {
 
     let values: Vec<Value> = array
         .values()
-        .map(|value| Ok(Cell::new(element.clone(), value).into_json()))
+        .map(|value| Ok(Value::from(Cell::new(element.clone(), value))))
         .collect()
         .ok()?;
 
@@ -164,7 +169,7 @@ fn date(days_since_2000: i32) -> String {
     match days_since_2000 {
         i32::MAX => "infinity".to_owned(),
         i32::MIN => "-infinity".to_owned(),
-        days => calendar::date(i64::from(days) + DAYS_FROM_1970_TO_2000),
+        days => Date::from_days_since_1970(i64::from(days) + DAYS_FROM_1970_TO_2000).to_string(),
     }
 }
 
@@ -174,7 +179,7 @@ fn timestamp(micros_since_2000: i64, zone: &str) -> String {
         i64::MIN => "-infinity".to_owned(),
         micros => format!(
             "{}{zone}",
-            calendar::timestamp(micros.saturating_add(MICROS_FROM_1970_TO_2000))
+            Timestamp::from_micros_since_1970(micros.saturating_add(MICROS_FROM_1970_TO_2000))
         ),
     }
 }
@@ -202,7 +207,7 @@ mod tests {
     use super::Cell;
 
     fn decode(kind: &Type, bytes: Option<&[u8]>) -> Value {
-        Cell::new(kind.clone(), bytes).into_json()
+        Cell::new(kind.clone(), bytes).into()
     }
 
     #[test]

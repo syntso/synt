@@ -1,23 +1,26 @@
 mod catalog;
-mod cells;
+mod cell;
 mod error;
+mod opened;
+mod param;
+mod plan_step;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Duration;
 
-use rusqlite::types::Value as SqliteValue;
-use rusqlite::{Connection, InterruptHandle, OpenFlags, Row, params_from_iter};
+use rusqlite::{Connection, params_from_iter};
 use serde_json::{Value, json};
 use tokio::task;
 
 use self::catalog::Catalog;
-use self::cells::{from_json, to_json};
+use self::cell::Cell;
+use self::opened::Opened;
+use self::param::Param;
+use self::plan_step::PlanStep;
 use crate::driver::{Answer, Driver};
 use crate::paging::Collector;
 use crate::{Access, DbError, Engine, Query, Rows, Schema, Server, TableName};
 
-const BUSY_LIMIT: Duration = Duration::from_secs(5);
 const VERSION: &str = "SELECT sqlite_version()";
 const BEGIN: &str = "BEGIN DEFERRED";
 const ROLLBACK: &str = "ROLLBACK";
@@ -25,12 +28,6 @@ const ROLLBACK: &str = "ROLLBACK";
 pub(crate) struct Sqlite {
     path: PathBuf,
     open: Mutex<Option<Opened>>,
-}
-
-struct Opened {
-    access: Access,
-    connection: Arc<Mutex<Connection>>,
-    interrupt: InterruptHandle,
 }
 
 impl Sqlite {
@@ -56,51 +53,26 @@ impl Sqlite {
 
     async fn run(&self, query: Query<'_>) -> Result<Rows, DbError> {
         let text = query.text.to_owned();
-        let params: Vec<_> = query.params.iter().map(from_json).collect();
-        let (access, page) = (query.access, query.page);
+        let params: Vec<Param> = query.params.iter().map(Param::from).collect();
+        let collector = Collector::new(query.page, query.access);
 
-        self.with(access, move |connection| {
-            let mut statement = connection.prepare(&text)?;
-            let columns = statement
-                .column_names()
-                .into_iter()
-                .map(str::to_owned)
-                .collect();
-            let mut rows = statement.query(params_from_iter(params))?;
-
-            let mut collector = Collector::new(page);
-
-            while let Some(row) = rows.next()? {
-                if collector.wants_more() {
-                    collector.offer(cells(row));
-                } else if access.is_read_only() {
-                    break;
-                }
-            }
-
-            drop(rows);
-            let affected = (!access.is_read_only()).then(|| connection.changes());
-
-            Ok(collector.finish(columns, affected))
+        self.with(query.access, move |connection| {
+            Self::collect(connection, &text, params, collector)
         })
         .await
     }
 
     async fn plan(&self, text: &str, params: &[Value]) -> Result<Value, DbError> {
         let text = format!("EXPLAIN QUERY PLAN {text}");
-        let params: Vec<_> = params.iter().map(from_json).collect();
+        let params: Vec<Param> = params.iter().map(Param::from).collect();
 
         self.with(Access::ReadOnly, move |connection| {
             let mut statement = connection.prepare(&text)?;
             let steps = statement
-                .query_map(params_from_iter(params), |row| {
-                    let (id, parent, _unused, detail): (i64, i64, SqliteValue, String) =
-                        row.try_into()?;
-                    Ok(json!({ "id": id, "parent": parent, "detail": detail }))
-                })?
+                .query_map(params_from_iter(params), |row| PlanStep::try_from(row))?
                 .collect::<Result<Vec<_>, _>>()?;
 
-            Ok(Value::Array(steps))
+            Ok(json!(steps))
         })
         .await
     }
@@ -117,6 +89,32 @@ impl Sqlite {
             Catalog::new(connection).schema()
         })
         .await
+    }
+
+    fn collect(
+        connection: &Connection,
+        text: &str,
+        params: Vec<Param>,
+        mut collector: Collector,
+    ) -> Result<Rows, DbError> {
+        let mut statement = connection.prepare(text)?;
+        let columns = statement
+            .column_names()
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+
+        let mut rows = statement.query(params_from_iter(params))?;
+
+        while let Some(row) = rows.next()? {
+            if collector.take(|| Cell::row(row)).is_break() {
+                break;
+            }
+        }
+
+        drop(rows);
+
+        Ok(collector.finish(columns, || Some(connection.changes())))
     }
 
     async fn with<T, Work>(&self, access: Access, work: Work) -> Result<T, DbError>
@@ -155,39 +153,15 @@ impl Sqlite {
         let mut open = self.open.lock().unwrap_or_else(PoisonError::into_inner);
 
         if let Some(opened) = open.as_ref()
-            && opened.access == access
+            && opened.serves(access)
         {
-            return Ok(Arc::clone(&opened.connection));
+            return Ok(opened.connection());
         }
 
-        let connection = Self::open_file(&self.path, access)?;
-        let interrupt = connection.get_interrupt_handle();
-        let connection = Arc::new(Mutex::new(connection));
+        let opened = Opened::open(&self.path, access)?;
+        let connection = opened.connection();
 
-        *open = Some(Opened {
-            access,
-            connection: Arc::clone(&connection),
-            interrupt,
-        });
-
-        Ok(connection)
-    }
-
-    fn open_file(path: &Path, access: Access) -> Result<Connection, DbError> {
-        let flags = match access {
-            Access::ReadOnly => OpenFlags::SQLITE_OPEN_READ_ONLY,
-            Access::ReadWrite => OpenFlags::SQLITE_OPEN_READ_WRITE,
-        } | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-
-        let connection = Connection::open_with_flags(path, flags).map_err(|error| {
-            DbError::Connect(format!("cannot open {}: {error}", path.display()))
-        })?;
-
-        connection.busy_timeout(BUSY_LIMIT)?;
-
-        if access.is_read_only() {
-            connection.pragma_update(None, "query_only", true)?;
-        }
+        *open = Some(opened);
 
         Ok(connection)
     }
@@ -224,13 +198,7 @@ impl Drop for Sqlite {
         let open = self.open.get_mut().unwrap_or_else(PoisonError::into_inner);
 
         if let Some(opened) = open.as_ref() {
-            opened.interrupt.interrupt();
+            opened.interrupt();
         }
     }
-}
-
-fn cells(row: &Row<'_>) -> Vec<Value> {
-    (0..row.as_ref().column_count())
-        .map(|index| row.get_ref(index).map_or(Value::Null, to_json))
-        .collect()
 }

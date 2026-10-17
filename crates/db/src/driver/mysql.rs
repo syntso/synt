@@ -2,17 +2,19 @@ mod catalog;
 mod cell;
 mod error;
 mod options;
-mod params;
-mod results;
+mod param;
 
-use mysql_async::prelude::Queryable;
-use mysql_async::{Conn, DriverError, Error, Opts};
+use futures_util::TryStreamExt;
+use futures_util::future::BoxFuture;
+use mysql_async::prelude::{Protocol, Queryable};
+use mysql_async::{Conn, DriverError, Error, Opts, Params, QueryResult, Row};
 use serde_json::Value;
 
 use self::catalog::Catalog;
-use self::params::params;
-use self::results::collect;
+use self::cell::Cell;
+use self::param::Param;
 use crate::driver::{Answer, Driver};
+use crate::paging::Collector;
 use crate::{DbError, Engine, Query, Rows, Schema, Server, TableName, TlsMode};
 
 const VERSION: &str = "SELECT VERSION()";
@@ -100,15 +102,50 @@ impl Mysql {
     async fn execute(&mut self, query: Query<'_>) -> Result<Rows, DbError> {
         if query.params.is_empty() && !query.access.is_read_only() {
             let result = self.connection.query_iter(query.text).await?;
-            return collect(result, query).await;
+            return Self::collect(result, query).await;
         }
 
+        let params: Vec<_> = query
+            .params
+            .iter()
+            .map(Param::from)
+            .map(Into::into)
+            .collect();
         let result = self
             .connection
-            .exec_iter(query.text, params(query.params))
+            .exec_iter(query.text, Params::Positional(params))
             .await?;
 
-        collect(result, query).await
+        Self::collect(result, query).await
+    }
+
+    async fn collect<P>(
+        mut result: QueryResult<'_, '_, P>,
+        query: Query<'_>,
+    ) -> Result<Rows, DbError>
+    where
+        P: Protocol + Unpin,
+    {
+        let columns = result.columns().unwrap_or_default();
+        let names = columns
+            .iter()
+            .map(|column| column.name_str().into_owned())
+            .collect();
+
+        let mut collector = Collector::new(query.page, query.access);
+
+        if let Some(mut stream) = result.stream::<Row>().await? {
+            while let Some(row) = stream.try_next().await? {
+                if collector.take(|| Cell::row(row)).is_break() {
+                    break;
+                }
+            }
+        }
+
+        let rows = collector.finish(names, || Some(result.affected_rows()));
+        result.drop_result().await?;
+
+        Ok(rows)
     }
 
     fn catalog(&mut self) -> Catalog<'_> {
@@ -141,7 +178,7 @@ impl Driver for Mysql {
         Box::pin(self.read_schema())
     }
 
-    fn close(self: Box<Self>) -> futures_util::future::BoxFuture<'static, ()> {
+    fn close(self: Box<Self>) -> BoxFuture<'static, ()> {
         Box::pin(async move {
             let _closed = self.connection.disconnect().await;
         })

@@ -1,3 +1,4 @@
+mod cell;
 mod error;
 mod options;
 mod reply;
@@ -15,7 +16,6 @@ use tokio_rustls::client::TlsStream;
 
 use self::reply::Reply;
 use crate::driver::{Answer, Driver};
-use crate::paging::Collector;
 use crate::{DbError, Engine, Page, Rows, Server, TlsMode};
 
 const VERSION_FIELD: &str = "redis_version:";
@@ -108,14 +108,8 @@ impl Redis {
         }
 
         let reply: RedisValue = command.query_async(&mut self.connection).await?;
-        let (columns, found) = Reply::new(reply).into_rows();
 
-        let mut collector = Collector::new(page);
-        for row in found {
-            collector.offer(row);
-        }
-
-        Ok(collector.finish(columns, None))
+        Ok(Reply::new(reply).rows(page))
     }
 }
 

@@ -6,10 +6,10 @@ use serde_json::Value;
 use tokio_postgres::types::{Format, IsNull, ToSql, Type, to_sql_checked};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct TextParam(Option<String>);
+pub(super) struct Param(Option<String>);
 
-impl TextParam {
-    pub(super) fn from_json(value: &Value) -> Self {
+impl From<&Value> for Param {
+    fn from(value: &Value) -> Self {
         let text = match value {
             Value::Null => None,
             Value::String(text) => Some(text.clone()),
@@ -20,7 +20,7 @@ impl TextParam {
     }
 }
 
-impl ToSql for TextParam {
+impl ToSql for Param {
     fn to_sql(
         &self,
         _type: &Type,
@@ -49,26 +49,17 @@ impl ToSql for TextParam {
 mod tests {
     use serde_json::json;
 
-    use super::TextParam;
+    use super::Param;
 
     #[test]
     fn json_values_become_the_text_postgres_parses() {
+        assert_eq!(Param::from(&json!("ann")), Param(Some("ann".to_owned())));
+        assert_eq!(Param::from(&json!(42)), Param(Some("42".to_owned())));
+        assert_eq!(Param::from(&json!(true)), Param(Some("true".to_owned())));
         assert_eq!(
-            TextParam::from_json(&json!("ann")),
-            TextParam(Some("ann".to_owned()))
+            Param::from(&json!({"a": 1})),
+            Param(Some(r#"{"a":1}"#.to_owned()))
         );
-        assert_eq!(
-            TextParam::from_json(&json!(42)),
-            TextParam(Some("42".to_owned()))
-        );
-        assert_eq!(
-            TextParam::from_json(&json!(true)),
-            TextParam(Some("true".to_owned()))
-        );
-        assert_eq!(
-            TextParam::from_json(&json!({"a": 1})),
-            TextParam(Some(r#"{"a":1}"#.to_owned()))
-        );
-        assert_eq!(TextParam::from_json(&json!(null)), TextParam(None));
+        assert_eq!(Param::from(&json!(null)), Param(None));
     }
 }

@@ -3,8 +3,8 @@ mod cell;
 mod error;
 mod numeric;
 mod options;
+mod param;
 mod session;
-mod text_param;
 
 use std::sync::Arc;
 
