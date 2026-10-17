@@ -1,8 +1,16 @@
+mod given;
+mod kind;
+mod name;
+mod values;
+
+pub use kind::ParamKind;
+pub use name::ParamName;
+pub(crate) use values::Values;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{ParamKind, ParamName};
 use crate::runbooks::RunbookError;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

@@ -1,6 +1,10 @@
-use super::quote::Quote;
-use super::step::ShellStep;
-use super::text::ShellText;
+mod quote;
+mod step;
+mod text;
+
+use self::quote::Quote;
+use self::step::ShellStep;
+use self::text::ShellText;
 use crate::runbooks::document::{OnFailure, RunbookDocument, Step};
 
 const INDENT: &str = "  ";
