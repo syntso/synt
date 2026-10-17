@@ -6,7 +6,7 @@ use synt_db::{
 use synt_test_servers::DbServers;
 use zeroize::Zeroizing;
 
-use crate::servers::{connect, read, run, server, with_tls, write};
+use crate::lab::{connect, read, run, server, write};
 
 fn postgres(servers: &DbServers) -> Server {
     server(Engine::Postgres, servers.postgres_port())
@@ -226,7 +226,7 @@ async fn tls_modes_encrypt_and_verify_full_refuses_an_untrusted_certificate() {
     };
 
     for tls in [TlsMode::Disable, TlsMode::Prefer, TlsMode::Require] {
-        let mut database = connect(&with_tls(postgres(&servers), tls)).await;
+        let mut database = connect(&postgres(&servers).with_tls(tls)).await;
         let ssl = read(
             &mut database,
             "SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
@@ -236,7 +236,7 @@ async fn tls_modes_encrypt_and_verify_full_refuses_an_untrusted_certificate() {
         assert_eq!(ssl.rows[0], vec![json!(tls != TlsMode::Disable)], "{tls}");
     }
 
-    let refused = Database::connect(&with_tls(postgres(&servers), TlsMode::VerifyFull)).await;
+    let refused = Database::connect(&postgres(&servers).with_tls(TlsMode::VerifyFull)).await;
 
     assert!(refused.is_err());
 }

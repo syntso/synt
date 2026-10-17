@@ -4,7 +4,7 @@ use synt_db::{
 };
 use synt_test_servers::DbServers;
 
-use crate::servers::{connect, read, run, server, with_tls, write};
+use crate::lab::{connect, read, run, server, write};
 
 fn both(servers: &DbServers) -> [(&'static str, Server); 2] {
     [
@@ -247,7 +247,7 @@ async fn tls_modes_encrypt_and_verify_full_refuses_an_untrusted_certificate() {
 
     for (name, server) in both(&servers) {
         for tls in [TlsMode::Disable, TlsMode::Prefer, TlsMode::Require] {
-            let mut database = connect(&with_tls(server.clone(), tls)).await;
+            let mut database = connect(&server.clone().with_tls(tls)).await;
             let cipher = read(&mut database, "SHOW SESSION STATUS LIKE 'Ssl_cipher'").await;
             let encrypted = cipher.rows[0][1]
                 .as_str()
@@ -256,7 +256,7 @@ async fn tls_modes_encrypt_and_verify_full_refuses_an_untrusted_certificate() {
             assert_eq!(encrypted, tls != TlsMode::Disable, "{name} {tls}");
         }
 
-        let verified = Database::connect(&with_tls(server, TlsMode::VerifyFull)).await;
+        let verified = Database::connect(&server.with_tls(TlsMode::VerifyFull)).await;
 
         assert!(verified.is_err(), "{name}");
     }

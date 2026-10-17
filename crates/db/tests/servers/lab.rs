@@ -1,5 +1,5 @@
 use serde_json::Value;
-use synt_db::{Access, Database, Engine, Page, Query, Rows, Server, TlsMode};
+use synt_db::{Access, Database, Engine, Page, Query, Rows, Server};
 use synt_test_servers::DbServers;
 use zeroize::Zeroizing;
 
@@ -8,10 +8,6 @@ pub fn server(engine: Engine, port: u16) -> Server {
         .with_database(Some(DbServers::DATABASE.to_owned()))
         .with_user(Some(DbServers::USER.to_owned()))
         .with_password(Some(Zeroizing::new(DbServers::PASSWORD.to_owned())))
-}
-
-pub fn with_tls(server: Server, tls: TlsMode) -> Server {
-    server.with_tls(tls)
 }
 
 pub async fn connect(server: &Server) -> Database {
