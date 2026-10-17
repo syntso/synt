@@ -110,6 +110,9 @@ pub enum CoreError {
     )]
     InvalidVaultName { noun: &'static str, text: String },
 
+    #[error("term must be 1 to {longest} letters, digits or -_.+")]
+    BadTerm { longest: usize },
+
     #[error("there is already a key named {0}; remove it first")]
     KeyExists(KeyName),
 

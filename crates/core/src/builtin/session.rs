@@ -9,6 +9,7 @@ mod local_open;
 mod open;
 mod resize;
 mod size;
+mod term;
 
 pub use attach::SessionAttach;
 pub use blocks::SessionBlocks;
@@ -22,6 +23,7 @@ pub(crate) use open::SessionOpenParams;
 pub use open::SshSessionOpen;
 pub use resize::SessionResize;
 pub(crate) use size::SessionSize;
+use term::Term;
 
 use synt_actions::{ActionError, ActionGroup, Registry};
 use synt_ssh::Pool;

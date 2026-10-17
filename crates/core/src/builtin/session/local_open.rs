@@ -3,7 +3,7 @@ use synt_platform::Pty;
 use synt_ssh::TerminalSize;
 
 use super::open::CARRIED;
-use super::{AttachedSession, Dimensions, SessionOpenParams};
+use super::{AttachedSession, Dimensions, SessionOpenParams, Term};
 use crate::CoreError;
 use crate::blocking::blocking;
 use crate::link::Link;
@@ -19,9 +19,9 @@ impl LocalSessionOpen {
         Self { terminals }
     }
 
-    async fn pty(term: String, size: TerminalSize) -> Result<OpenConsole, ActionError> {
+    async fn pty(term: Term, size: TerminalSize) -> Result<OpenConsole, ActionError> {
         let (pty, output) = blocking::<_, ActionError>(move || {
-            Pty::open(&term, size.columns, size.rows).map_err(CoreError::PtyStart)
+            Pty::open(term.as_str(), size.columns, size.rows).map_err(CoreError::PtyStart)
         })
         .await?;
 
@@ -45,10 +45,9 @@ impl Action for LocalSessionOpen {
         params: SessionOpenParams,
     ) -> Result<AttachedSession, ActionError> {
         let size = params.size()?;
-        let term = params.term()?.to_owned();
         let link = Link::of_call(context, CARRIED)?;
 
-        let opened = Self::pty(term, size).await?;
+        let opened = Self::pty(params.term, size).await?;
 
         let id = SessionId::new(context.request().get());
         let origin = Origin {
