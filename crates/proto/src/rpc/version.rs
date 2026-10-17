@@ -16,13 +16,13 @@ impl<'de> Deserialize<'de> for JsonRpcVersion {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let version = String::deserialize(deserializer)?;
 
-        if version == VERSION {
-            Ok(Self)
-        } else {
-            Err(de::Error::invalid_value(
+        if version != VERSION {
+            return Err(de::Error::invalid_value(
                 de::Unexpected::Str(&version),
                 &VERSION,
-            ))
+            ));
         }
+
+        Ok(Self)
     }
 }
