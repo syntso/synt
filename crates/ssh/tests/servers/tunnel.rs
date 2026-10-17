@@ -16,7 +16,7 @@ const GREETING: &[u8] = b"bytes through the tunnel\n";
 async fn a_tunnel_carries_bytes_both_ways() {
     let Some(setup) = Setup::start() else { return };
     let tunnels = Tunnels::new(setup.pool.clone());
-    let echo = Destination::new("127.0.0.1", SshServers::ECHO_PORT);
+    let echo = Destination::new("127.0.0.1", SshServers::ECHO_PORT).unwrap();
 
     let opened = tunnels
         .open(&setup.target(), echo, None, CancellationToken::new())
@@ -46,7 +46,7 @@ async fn a_cancelled_tunnel_stops_listening() {
     let Some(setup) = Setup::start() else { return };
     let tunnels = Tunnels::new(setup.pool.clone());
     let stop = CancellationToken::new();
-    let echo = Destination::new("127.0.0.1", SshServers::ECHO_PORT);
+    let echo = Destination::new("127.0.0.1", SshServers::ECHO_PORT).unwrap();
 
     let opened = tunnels
         .open(&setup.bastion(), echo, None, stop.clone())

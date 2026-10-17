@@ -33,6 +33,9 @@ pub enum SshError {
         reason: TargetProblem,
     },
 
+    #[error("{0:?} is not a destination: write host:port with a port from 1 to 65535")]
+    NotADestination(String),
+
     #[error("cannot connect to {host}: {cause}")]
     Connect { host: String, cause: Cause },
 

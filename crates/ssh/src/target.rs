@@ -131,7 +131,7 @@ impl Target {
         format!("{}:{}", self.host, self.port)
     }
 
-    pub(crate) fn destination(&self) -> Destination {
+    pub(crate) fn destination(&self) -> Result<Destination, SshError> {
         Destination::new(self.host.clone(), self.port)
     }
 

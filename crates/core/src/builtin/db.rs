@@ -201,7 +201,7 @@ impl Databases {
         stop: CancellationToken,
     ) -> Result<SocketAddr, DbActionError> {
         let host = resolved.resource.host.clone().unwrap_or_default();
-        let destination = Destination::new(host, resolved.resource.port());
+        let destination = Destination::new(host, resolved.resource.port())?;
 
         let opened = self.tunnels.open(via, destination, None, stop).await?;
 

@@ -26,6 +26,7 @@ impl Dialer for SshDialer {
         let destination = Destination::new(host, port);
 
         Box::pin(async move {
+            let destination = destination.map_err(io::Error::other)?;
             let opening = time::timeout(DIAL_LIMIT, lease.open_stream(&destination));
 
             let stream = opening

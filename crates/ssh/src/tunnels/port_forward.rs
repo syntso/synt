@@ -1,4 +1,5 @@
 use std::net::Ipv4Addr;
+use std::num::NonZeroU16;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -28,10 +29,10 @@ impl PortForward {
         pool: &Pool,
         target: &Target,
         destination: Destination,
-        local_port: Option<u16>,
+        local_port: Option<NonZeroU16>,
         stop: CancellationToken,
     ) -> Result<Self, SshError> {
-        let listener = Self::listen(local_port.unwrap_or(0)).await?;
+        let listener = Self::listen(local_port.map_or(0, NonZeroU16::get)).await?;
         let local_port = listener.local_addr()?.port();
 
         let lease = time::timeout(CONNECT_LIMIT, pool.acquire(target))

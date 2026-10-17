@@ -341,6 +341,12 @@ pub enum CoreError {
     #[error("{0} must be between 1 and 65535")]
     PortZero(&'static str),
 
+    #[error("local_port must be between 1 and 65535; leave it out to pick a free port")]
+    LocalPortZero,
+
+    #[error("remote_host and remote_port go together")]
+    RemoteApart,
+
     #[error("user must be a login name, got {0:?}")]
     NotALogin(String),
 
