@@ -74,6 +74,7 @@ impl From<Identity> for String {
 #[cfg(test)]
 mod tests {
     use super::Identity;
+    use crate::projects::local_path::rooted;
 
     #[test]
     fn an_identity_is_the_agent_a_vault_key_or_a_file() {
@@ -86,7 +87,7 @@ mod tests {
             Some("night".to_owned())
         );
         assert!(matches!(
-            Identity::parse("/home/deploy/.ssh/id_ed25519").unwrap(),
+            Identity::parse(&rooted("/home/deploy/.ssh/id_ed25519")).unwrap(),
             Identity::File(_)
         ));
 

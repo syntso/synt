@@ -187,6 +187,7 @@ mod tests {
 
     use super::{Address, DatabaseResource, Login, ResourceName};
     use crate::projects::LocalPath;
+    use crate::projects::local_path::rooted;
 
     fn postgres() -> DatabaseResource {
         DatabaseResource {
@@ -252,12 +253,14 @@ mod tests {
 
     #[test]
     fn sqlite_takes_an_absolute_path_and_nothing_of_the_network() {
-        assert!(sqlite("/var/lib/app.sqlite").check().is_ok());
+        let path = rooted("/var/lib/app.sqlite");
+
+        assert!(sqlite(&path).check().is_ok());
         assert!(LocalPath::parse("app.sqlite").is_err());
 
         let with_host = DatabaseResource {
             host: Some(Address::parse("x").unwrap()),
-            ..sqlite("/var/lib/app.sqlite")
+            ..sqlite(&path)
         };
         assert!(with_host.check().unwrap_err().to_string().contains("host"));
     }

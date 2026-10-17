@@ -59,21 +59,22 @@ mod tests {
 
     use super::ClusterResource;
     use crate::projects::Resource;
+    use crate::projects::local_path::rooted;
 
     #[test]
     fn a_cluster_file_names_its_kubeconfig_context_namespace_and_way_in() {
-        let text = "kind = \"cluster\"\nkubeconfig = \"/etc/synt/kubeconfig\"\n\
-                    context = \"prod-eu\"\nnamespace = \"orders\"\nvia = \"bastion\"\n";
+        let kubeconfig = rooted("/etc/synt/kubeconfig");
+        let text = format!(
+            "kind = \"cluster\"\nkubeconfig = \"{kubeconfig}\"\n\
+             context = \"prod-eu\"\nnamespace = \"orders\"\nvia = \"bastion\"\n"
+        );
 
-        let Resource::Cluster(cluster) = Resource::from_toml(text).expect("a cluster") else {
+        let Resource::Cluster(cluster) = Resource::from_toml(&text).expect("a cluster") else {
             panic!("a cluster resource");
         };
         let spec = cluster.spec().expect("a spec");
 
-        assert_eq!(
-            spec.kubeconfig,
-            KubeconfigSource::File("/etc/synt/kubeconfig".into())
-        );
+        assert_eq!(spec.kubeconfig, KubeconfigSource::File(kubeconfig.into()));
         assert_eq!(spec.context.as_deref(), Some("prod-eu"));
         assert_eq!(spec.namespace.as_deref(), Some("orders"));
         assert_eq!(cluster.via.map(String::from).as_deref(), Some("bastion"));

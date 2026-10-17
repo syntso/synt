@@ -54,12 +54,23 @@ impl From<LocalPath> for String {
 }
 
 #[cfg(test)]
+pub(crate) fn rooted(path: &str) -> String {
+    if cfg!(windows) {
+        format!("C:{path}")
+    } else {
+        path.to_owned()
+    }
+}
+
+#[cfg(test)]
 mod tests {
-    use super::LocalPath;
+    use super::{LocalPath, rooted};
 
     #[test]
     fn a_local_path_is_absolute_or_under_home() {
-        assert_eq!(LocalPath::parse("/etc/synt").unwrap().as_str(), "/etc/synt");
+        let absolute = rooted("/etc/synt");
+
+        assert_eq!(LocalPath::parse(&absolute).unwrap().as_str(), absolute);
         assert!(
             LocalPath::parse("~/.kube/config")
                 .unwrap()
