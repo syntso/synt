@@ -1,20 +1,20 @@
 use std::time::Duration;
 
 use serde::Serialize;
+use synt_proto::ExecOutput;
 
 use super::{Captured, ExitStatus};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ExecOutput {
+pub struct ExecOutcome {
     pub exit: Option<i32>,
     pub failure: Option<String>,
-    pub stdout: String,
-    pub stderr: String,
-    pub truncated: bool,
-    pub duration_ms: u64,
+
+    #[serde(flatten)]
+    pub output: ExecOutput,
 }
 
-impl ExecOutput {
+impl ExecOutcome {
     pub(super) fn new(captured: Captured, duration: Duration) -> Self {
         let Captured {
             status,
@@ -30,10 +30,7 @@ impl ExecOutput {
         Self {
             exit,
             failure,
-            stdout: stdout.text(),
-            stderr: stderr.text(),
-            truncated: stdout.truncated() || stderr.truncated(),
-            duration_ms: u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
+            output: ExecOutput::new(stdout, stderr, duration),
         }
     }
 }

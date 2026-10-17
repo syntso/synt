@@ -1,8 +1,9 @@
 use std::collections::VecDeque;
 use std::time::Instant;
 
+use synt_proto::Millis;
+
 use super::{Block, Mark, OpenBlock, Sighting};
-use crate::clock::milliseconds;
 
 const KEPT_BLOCKS: usize = 1000;
 
@@ -56,7 +57,7 @@ impl BlockHistory {
             number: self.count,
             command: open.command,
             exit,
-            duration_ms: milliseconds(now.saturating_duration_since(open.started)),
+            duration_ms: Millis::from(now.saturating_duration_since(open.started)),
             output_start: open.output_start,
             output_end: output_end.max(open.output_start),
         };
@@ -74,7 +75,7 @@ impl BlockHistory {
 mod tests {
     use std::time::{Duration, Instant};
 
-    use super::BlockHistory;
+    use super::{BlockHistory, Millis};
     use crate::terminals::block::{Mark, Sighting};
 
     fn sighting(mark: Mark, start: u64, end: u64) -> Sighting {
@@ -99,7 +100,7 @@ mod tests {
         assert_eq!(block.number, 1);
         assert_eq!(block.command.as_deref(), Some("false"));
         assert_eq!(block.exit, Some(1));
-        assert_eq!(block.duration_ms, 15);
+        assert_eq!(block.duration_ms, Millis::new(15));
         assert_eq!((block.output_start, block.output_end), (20, 30));
         assert_eq!(blocks.count(), 1);
         assert_eq!(blocks.list(), vec![block]);

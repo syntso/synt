@@ -13,10 +13,11 @@ pub use connection::{ConnectionState, ConnectionStatus};
 pub use lease::Lease;
 use registry::Registry;
 use slot::Slot;
+use synt_proto::ExecLimits;
 
 use crate::exec::RemoteCommand;
 use crate::known_hosts::KnownHosts;
-use crate::{ExecLimits, ExecOutput, SshError, Target};
+use crate::{ExecOutcome, SshError, Target};
 
 #[derive(Clone)]
 pub struct Pool {
@@ -55,7 +56,7 @@ impl Pool {
         command: &str,
         limits: ExecLimits,
         stop: impl Future<Output = ()>,
-    ) -> Result<ExecOutput, SshError> {
+    ) -> Result<ExecOutcome, SshError> {
         RemoteCommand::run(self, target, command, limits, stop).await
     }
 

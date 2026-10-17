@@ -12,7 +12,7 @@ async fn a_host_behind_the_bastion_is_reached_through_it() {
     let jumped = setup.run(&setup.target(), "hostname").await.unwrap();
 
     assert_eq!(jumped.exit, Some(0));
-    assert_ne!(jumped.stdout, direct.stdout);
+    assert_ne!(jumped.output.stdout, direct.output.stdout);
 
     let connections = setup.pool.connections();
     let target = connections

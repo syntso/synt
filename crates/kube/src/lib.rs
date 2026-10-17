@@ -17,7 +17,7 @@ pub use apply::{AppliedObject, Change, Manifest, Plan, PlannedObject};
 pub use changes::{Deleted, Restarted, Scaled};
 pub use cluster::{Cluster, ClusterObject};
 pub use error::KubeError;
-pub use exec::{Command, ExecLimits, ExecOutput, ExecRequest};
+pub use exec::{Command, ExecOutcome, ExecRequest};
 pub use forward::{ForwardRequest, ForwardStatus, ForwardTarget, PortForward};
 pub use kind::{Kind, KindCatalog, KindName};
 pub use kubeconfig::{ClusterPlace, ClusterSpec, ContextInfo, KubeconfigSource};

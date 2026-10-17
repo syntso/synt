@@ -9,13 +9,13 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_db::{Effect, Page, Rows, StatementKind};
 use synt_journal::ResourceRef;
+use synt_proto::Millis;
 
 use self::fields::QueryFields;
 use self::statement::Statement;
 use super::Databases;
 use super::error::DbActionError;
 use super::recorded::recorded_statement;
-use crate::clock::milliseconds;
 
 const DEFAULT_ROWS: usize = 100;
 const MOST_ROWS: usize = 10_000;
@@ -48,7 +48,7 @@ pub(crate) struct QueryResult {
     #[serde(flatten)]
     pub rows: Rows,
 
-    pub duration_ms: u64,
+    pub duration_ms: Millis,
 }
 
 impl DbQuery {
@@ -145,7 +145,7 @@ impl Action for DbQuery {
             kind: judged.kind,
             effect: judged.effect,
             rows,
-            duration_ms: milliseconds(started.elapsed()),
+            duration_ms: Millis::from(started.elapsed()),
         })
     }
 }

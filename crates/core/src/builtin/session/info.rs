@@ -1,8 +1,8 @@
 use serde::Serialize;
 use synt_actions::Risk;
 use synt_journal::Actor;
+use synt_proto::Millis;
 
-use crate::clock::milliseconds;
 use crate::terminals::{Session, SessionId, SessionKind};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -18,7 +18,7 @@ pub struct SessionInfo {
     pub rows: u16,
     pub attached: usize,
     pub blocks: usize,
-    pub age_ms: u64,
+    pub age_ms: Millis,
 }
 
 impl SessionInfo {
@@ -40,7 +40,7 @@ impl SessionInfo {
             rows: size.rows,
             attached: session.attached().await,
             blocks: session.blocks().await.len(),
-            age_ms: milliseconds(session.age()),
+            age_ms: Millis::from(session.age()),
         }
     }
 }

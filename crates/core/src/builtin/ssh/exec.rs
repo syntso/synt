@@ -1,19 +1,18 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
-use synt_ssh::{ExecLimits, ExecOutput, Pool};
+use synt_proto::{ExecLimits, ExecOutput};
+use synt_ssh::{ExecOutcome, Pool};
 use tokio::sync::Semaphore;
 
 use super::failure;
 use super::privilege::escalates;
 use crate::projects::Projects;
 
-const LONGEST_TIMEOUT: Duration = Duration::from_hours(24);
 const CONCURRENT_RUNS: usize = 8;
 
 #[derive(Debug, Clone)]
@@ -27,18 +26,18 @@ pub struct SshExec {
 pub struct ExecParams {
     pub command: String,
 
-    #[serde(default)]
-    pub timeout_seconds: Option<u64>,
+    #[serde(default, rename = "timeout_seconds")]
+    pub limits: ExecLimits,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ExecResult {
     pub exit: Option<u32>,
     pub signal: Option<String>,
-    pub stdout: String,
-    pub stderr: String,
-    pub truncated: bool,
-    pub duration_ms: u64,
+
+    #[serde(flatten)]
+    pub output: ExecOutput,
+
     pub kex: Option<String>,
     pub cipher: Option<String>,
 }
@@ -74,16 +73,18 @@ impl Action for SshExec {
         self.projects.host_destination(target)
     }
 
-    fn summary(&self, output: &ExecResult) -> Value {
+    fn summary(&self, result: &ExecResult) -> Value {
+        let output = &result.output;
+
         json!({
-            "exit": output.exit,
-            "signal": output.signal,
+            "exit": result.exit,
+            "signal": result.signal,
             "duration_ms": output.duration_ms,
             "stdout_bytes": output.stdout.len(),
             "stderr_bytes": output.stderr.len(),
             "truncated": output.truncated,
-            "kex": output.kex,
-            "cipher": output.cipher,
+            "kex": result.kex,
+            "cipher": result.cipher,
         })
     }
 
@@ -94,7 +95,6 @@ impl Action for SshExec {
             ));
         }
 
-        let limits = limits(params.timeout_seconds)?;
         let target = self.projects.reach_host(context).await?;
 
         let _slot = self
@@ -106,7 +106,7 @@ impl Action for SshExec {
         let stop = context.stop().cancelled();
         let output = self
             .pool
-            .exec(&target, &params.command, limits, stop)
+            .exec(&target, &params.command, params.limits, stop)
             .await
             .map_err(failure)?;
 
@@ -114,44 +114,19 @@ impl Action for SshExec {
     }
 }
 
-impl From<ExecOutput> for ExecResult {
-    fn from(output: ExecOutput) -> Self {
-        let (kex, cipher) = output
+impl From<ExecOutcome> for ExecResult {
+    fn from(outcome: ExecOutcome) -> Self {
+        let (kex, cipher) = outcome
             .algorithms
             .map(|algorithms| (algorithms.kex, algorithms.cipher))
             .unzip();
 
         Self {
-            exit: output.exit,
-            signal: output.signal,
-            stdout: output.stdout,
-            stderr: output.stderr,
-            truncated: output.truncated,
-            duration_ms: output.duration_ms,
+            exit: outcome.exit,
+            signal: outcome.signal,
+            output: outcome.output,
             kex,
             cipher,
         }
     }
-}
-
-fn limits(timeout_seconds: Option<u64>) -> Result<ExecLimits, ActionError> {
-    let defaults = ExecLimits::default();
-
-    let Some(seconds) = timeout_seconds else {
-        return Ok(defaults);
-    };
-
-    let timeout = Duration::from_secs(seconds);
-
-    if timeout.is_zero() || timeout > LONGEST_TIMEOUT {
-        return Err(ActionError::InvalidParams(format!(
-            "timeout_seconds must be between 1 and {}, got {seconds}",
-            LONGEST_TIMEOUT.as_secs()
-        )));
-    }
-
-    Ok(ExecLimits {
-        timeout,
-        ..defaults
-    })
 }

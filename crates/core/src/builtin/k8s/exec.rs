@@ -3,7 +3,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
-use synt_kube::{ExecLimits, ExecOutput, ExecRequest};
+use synt_kube::{ExecOutcome, ExecRequest};
+use synt_proto::ExecLimits;
 
 use super::{K8sError, Kube};
 use crate::builtin::ssh::escalates;
@@ -27,7 +28,7 @@ impl K8sExec {
         Self { kube }
     }
 
-    async fn exec(&self, context: &Context, params: &ExecParams) -> Result<ExecOutput, K8sError> {
+    async fn exec(&self, context: &Context, params: &ExecParams) -> Result<ExecOutcome, K8sError> {
         let cluster = self.kube.cluster(context).await?;
         let stop = context.stop().cancelled();
 
@@ -42,7 +43,7 @@ impl Action for K8sExec {
     const TAKES_TARGET: bool = true;
 
     type Params = ExecParams;
-    type Output = ExecOutput;
+    type Output = ExecOutcome;
 
     fn check(&self, target: Option<&ResourceRef>, _params: &ExecParams) -> Result<(), ActionError> {
         self.kube.reach(target)?;
@@ -62,10 +63,12 @@ impl Action for K8sExec {
         self.kube.destination(target)
     }
 
-    fn summary(&self, output: &ExecOutput) -> Value {
+    fn summary(&self, outcome: &ExecOutcome) -> Value {
+        let output = &outcome.output;
+
         json!({
-            "exit": output.exit,
-            "failure": output.failure,
+            "exit": outcome.exit,
+            "failure": outcome.failure,
             "stdout_bytes": output.stdout.len(),
             "stderr_bytes": output.stderr.len(),
             "truncated": output.truncated,
@@ -73,7 +76,7 @@ impl Action for K8sExec {
         })
     }
 
-    async fn run(&self, context: &Context, params: ExecParams) -> Result<ExecOutput, ActionError> {
+    async fn run(&self, context: &Context, params: ExecParams) -> Result<ExecOutcome, ActionError> {
         Ok(self.exec(context, &params).await?)
     }
 }

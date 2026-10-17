@@ -5,9 +5,9 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_db::{Effect, TableName};
 use synt_journal::ResourceRef;
+use synt_proto::Millis;
 
 use super::Databases;
-use crate::clock::milliseconds;
 
 const LIMIT: Duration = Duration::from_secs(60);
 
@@ -19,7 +19,7 @@ pub(crate) struct DbTables {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(crate) struct TablesResult {
     pub tables: Vec<TableName>,
-    pub duration_ms: u64,
+    pub duration_ms: Millis,
 }
 
 impl DbTables {
@@ -65,7 +65,7 @@ impl Action for DbTables {
 
         Ok(TablesResult {
             tables,
-            duration_ms: milliseconds(started.elapsed()),
+            duration_ms: Millis::from(started.elapsed()),
         })
     }
 }

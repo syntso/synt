@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use bytes::Bytes;
 use synt_actions::Context;
 use synt_platform::Lock;
-use synt_proto::EndReason;
+use synt_proto::{EndReason, Millis};
 use synt_ssh::{ShellEnd, TerminalSize};
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
 use tokio::time;
@@ -23,7 +23,6 @@ use tokio_util::sync::CancellationToken;
 
 use super::{Attachment, Block, Console, Screen};
 use crate::CoreError;
-use crate::clock::milliseconds;
 use crate::link::Link;
 
 const CLOSE_GRACE: Duration = Duration::from_secs(5);
@@ -197,7 +196,7 @@ impl Session {
             reason: self.reason(&end),
             exit: end.exit,
             signal: end.signal,
-            duration_ms: milliseconds(self.started.elapsed()),
+            duration_ms: Millis::from(self.started.elapsed()),
             output_bytes: screen.output_bytes(),
             blocks: screen.block_count(),
             kex: algorithms.map(|negotiated| negotiated.kex.clone()),

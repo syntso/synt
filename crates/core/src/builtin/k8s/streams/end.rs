@@ -4,6 +4,7 @@ pub(crate) use reason::EndReason;
 
 use serde::Serialize;
 use serde_json::{Map, Value};
+use synt_proto::Millis;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct StreamEnd {
@@ -14,7 +15,7 @@ pub(crate) struct StreamEnd {
 
     pub(crate) bytes: u64,
     pub(crate) items: u64,
-    pub(crate) duration_ms: u64,
+    pub(crate) duration_ms: Millis,
 }
 
 impl StreamEnd {
@@ -36,7 +37,7 @@ impl StreamEnd {
 mod tests {
     use serde_json::json;
 
-    use super::{EndReason, StreamEnd};
+    use super::{EndReason, Millis, StreamEnd};
 
     #[test]
     fn the_summary_adds_how_the_stream_ended_to_what_it_was_about() {
@@ -45,7 +46,7 @@ mod tests {
             error: None,
             bytes: 12,
             items: 2,
-            duration_ms: 40,
+            duration_ms: Millis::new(40),
         };
 
         let summary = ended.summary(json!({ "pod": "api", "stream": 3 }));

@@ -6,11 +6,11 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_db::{Classification, Effect, Engine, StatementKind};
 use synt_journal::ResourceRef;
+use synt_proto::Millis;
 
 use super::Databases;
 use super::error::DbActionError;
 use super::recorded::recorded_statement;
-use crate::clock::milliseconds;
 
 const LIMIT: Duration = Duration::from_secs(60);
 const EXPLAIN: &str = "explain";
@@ -33,7 +33,7 @@ pub(crate) struct ExplainParams {
 pub(crate) struct ExplainResult {
     pub kind: StatementKind,
     pub plan: Value,
-    pub duration_ms: u64,
+    pub duration_ms: Millis,
 }
 
 impl DbExplain {
@@ -97,7 +97,7 @@ impl Action for DbExplain {
         Ok(ExplainResult {
             kind: classified.kind,
             plan,
-            duration_ms: milliseconds(started.elapsed()),
+            duration_ms: Millis::from(started.elapsed()),
         })
     }
 }

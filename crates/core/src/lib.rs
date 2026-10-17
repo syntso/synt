@@ -2,7 +2,6 @@ mod access;
 mod arguments;
 mod broker;
 mod builtin;
-mod clock;
 mod core;
 mod error;
 mod extensions;

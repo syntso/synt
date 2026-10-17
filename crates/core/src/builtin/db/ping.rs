@@ -5,9 +5,9 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_db::{Effect, Engine};
 use synt_journal::ResourceRef;
+use synt_proto::Millis;
 
 use super::Databases;
-use crate::clock::milliseconds;
 
 const LIMIT: Duration = Duration::from_secs(30);
 
@@ -20,7 +20,7 @@ pub(crate) struct DbPing {
 pub(crate) struct PingResult {
     pub engine: Engine,
     pub version: String,
-    pub duration_ms: u64,
+    pub duration_ms: Millis,
 }
 
 impl DbPing {
@@ -72,7 +72,7 @@ impl Action for DbPing {
         Ok(PingResult {
             engine,
             version,
-            duration_ms: milliseconds(started.elapsed()),
+            duration_ms: Millis::from(started.elapsed()),
         })
     }
 }

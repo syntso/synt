@@ -1,12 +1,11 @@
+use synt_proto::ExecOutput;
+
 use crate::Algorithms;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExecOutput {
+pub struct ExecOutcome {
     pub exit: Option<u32>,
     pub signal: Option<String>,
-    pub stdout: String,
-    pub stderr: String,
-    pub truncated: bool,
-    pub duration_ms: u64,
+    pub output: ExecOutput,
     pub algorithms: Option<Algorithms>,
 }

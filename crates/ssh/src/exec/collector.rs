@@ -2,16 +2,17 @@ use std::time::Duration;
 
 use russh::client::Msg;
 use russh::{Channel, ChannelMsg};
+use synt_proto::{CappedText, ExecOutput};
 
-use super::{ExecOutput, StreamBuffer};
+use super::ExecOutcome;
 use crate::signal_name::SignalName;
 use crate::{Algorithms, SshError};
 
 const STDERR: u32 = 1;
 
 pub(super) struct Collector {
-    stdout: StreamBuffer,
-    stderr: StreamBuffer,
+    stdout: CappedText,
+    stderr: CappedText,
     exit: Option<u32>,
     signal: Option<String>,
 }
@@ -19,8 +20,8 @@ pub(super) struct Collector {
 impl Collector {
     pub(super) fn new(output_bytes: usize) -> Self {
         Self {
-            stdout: StreamBuffer::new(output_bytes),
-            stderr: StreamBuffer::new(output_bytes),
+            stdout: CappedText::new(output_bytes),
+            stderr: CappedText::new(output_bytes),
             exit: None,
             signal: None,
         }
@@ -48,17 +49,11 @@ impl Collector {
         Ok(self)
     }
 
-    pub(super) fn finish(self, elapsed: Duration, algorithms: Option<Algorithms>) -> ExecOutput {
-        let truncated = self.stdout.truncated() || self.stderr.truncated();
-        let duration_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
-
-        ExecOutput {
+    pub(super) fn finish(self, elapsed: Duration, algorithms: Option<Algorithms>) -> ExecOutcome {
+        ExecOutcome {
             exit: self.exit,
             signal: self.signal,
-            stdout: self.stdout.into_text(),
-            stderr: self.stderr.into_text(),
-            truncated,
-            duration_ms,
+            output: ExecOutput::new(self.stdout, self.stderr, elapsed),
             algorithms,
         }
     }

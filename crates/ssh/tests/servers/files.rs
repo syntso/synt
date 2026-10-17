@@ -33,7 +33,7 @@ async fn an_uploaded_file_downloads_back_with_the_same_sha256() {
 
     assert_eq!(downloaded.len(), SIZE);
     assert_eq!(sha256(&downloaded), sha256(&data));
-    assert!(on_server.stdout.starts_with(&sha256(&data)));
+    assert!(on_server.output.stdout.starts_with(&sha256(&data)));
 }
 
 #[tokio::test]

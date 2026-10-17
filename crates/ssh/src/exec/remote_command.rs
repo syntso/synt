@@ -6,7 +6,9 @@ use russh::client::Msg;
 use russh::{Channel, ChannelMsg, Sig};
 use tokio::time;
 
-use super::{Collector, ExecLimits, ExecOutput, Interruption};
+use synt_proto::ExecLimits;
+
+use super::{Collector, ExecOutcome, Interruption};
 use crate::{Lease, Pool, SshError, Target};
 
 const STOP_GRACE: Duration = Duration::from_secs(2);
@@ -22,7 +24,7 @@ impl RemoteCommand {
         command: &str,
         limits: ExecLimits,
         stop: impl Future<Output = ()>,
-    ) -> Result<ExecOutput, SshError> {
+    ) -> Result<ExecOutcome, SshError> {
         let started = Instant::now();
         let deadline = time::Instant::from_std(started) + limits.timeout;
         let mut stop = pin!(stop);

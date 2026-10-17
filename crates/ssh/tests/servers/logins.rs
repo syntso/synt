@@ -13,7 +13,7 @@ async fn a_key_file_logs_in_without_an_agent() {
 
     let output = setup.run(&setup.bastion(), "whoami").await.unwrap();
 
-    assert_eq!(output.stdout, "synt\n");
+    assert_eq!(output.output.stdout, "synt\n");
 }
 
 #[tokio::test]
@@ -45,7 +45,7 @@ async fn a_vault_key_logs_in_by_its_secret_name() {
     let bastion = setup.bastion().with_vault_key("night");
     let output = setup.run(&bastion, "whoami").await.unwrap();
 
-    assert_eq!(output.stdout, "synt\n");
+    assert_eq!(output.output.stdout, "synt\n");
 }
 
 #[tokio::test]

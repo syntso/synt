@@ -1,7 +1,9 @@
-use super::{Collected, ExitStatus};
+use synt_proto::CappedText;
+
+use super::ExitStatus;
 
 pub(super) struct Captured {
     pub(super) status: ExitStatus,
-    pub(super) stdout: Collected,
-    pub(super) stderr: Collected,
+    pub(super) stdout: CappedText,
+    pub(super) stderr: CappedText,
 }

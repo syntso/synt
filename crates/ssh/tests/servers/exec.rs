@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use synt_ssh::{ExecLimits, SshError};
+use synt_proto::ExecLimits;
+use synt_ssh::SshError;
 use tokio::time;
 
 use crate::Setup;
@@ -18,9 +19,9 @@ async fn a_command_reports_its_exit_code_output_and_errors() {
 
     assert_eq!(output.exit, Some(3));
     assert_eq!(output.signal, None);
-    assert_eq!(output.stdout, "out\n");
-    assert_eq!(output.stderr, "err\n");
-    assert!(!output.truncated);
+    assert_eq!(output.output.stdout, "out\n");
+    assert_eq!(output.output.stderr, "err\n");
+    assert!(!output.output.truncated);
     assert!(output.algorithms.is_some());
 }
 
@@ -53,9 +54,9 @@ async fn output_past_the_limit_is_cut_and_marked_truncated() {
         .await
         .unwrap();
 
-    assert_eq!(output.stdout, "a".repeat(1000));
-    assert_eq!(output.stderr, "short\n");
-    assert!(output.truncated);
+    assert_eq!(output.output.stdout, "a".repeat(1000));
+    assert_eq!(output.output.stderr, "short\n");
+    assert!(output.output.truncated);
     assert_eq!(output.exit, Some(0));
 }
 
@@ -78,7 +79,7 @@ async fn a_command_past_its_timeout_is_killed_on_the_server() {
         .run(&bastion, "pgrep -f 'sleep 3133[7]' || echo gone")
         .await
         .unwrap();
-    assert_eq!(left.stdout, "gone\n");
+    assert_eq!(left.output.stdout, "gone\n");
 }
 
 #[tokio::test]
@@ -99,5 +100,5 @@ async fn a_stopped_call_halts_its_command_on_the_server() {
         .run(&bastion, "pgrep -f 'sleep 3133[8]' || echo gone")
         .await
         .unwrap();
-    assert_eq!(left.stdout, "gone\n");
+    assert_eq!(left.output.stdout, "gone\n");
 }
