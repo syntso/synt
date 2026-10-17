@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
-use synt_kube::Scaled;
+use synt_kube::{Replicas, Scaled};
 
 use super::{K8sError, Kube, ObjectParams};
 
@@ -16,7 +16,7 @@ pub(crate) struct K8sScale {
 pub(crate) struct ScaleParams {
     #[serde(flatten)]
     pub object: ObjectParams,
-    pub replicas: u32,
+    pub replicas: Replicas,
 }
 
 impl K8sScale {
