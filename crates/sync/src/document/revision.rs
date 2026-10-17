@@ -44,21 +44,18 @@ impl Revision {
         sealed: &SealedRevision,
     ) -> Result<Self, SyncError> {
         if &sealed.project != project {
-            return Err(SyncError::refused("it belongs to another project"));
+            return Err(SyncError::OtherProject);
         }
 
         let key = keyring.key(sealed.generation)?;
         let plain = key.open(&sealed.associated_data(), sealed.sealed.get())?;
-        let payload: Payload = serde_json::from_slice(&plain)
-            .map_err(|error| SyncError::refused(format!("its payload is malformed: {error}")))?;
+        let payload: Payload =
+            serde_json::from_slice(&plain).map_err(SyncError::MalformedPayload)?;
 
         let revision = Self::new(&keyring.naming(project)?, payload.into_draft(sealed)?);
 
         if revision.document != sealed.document || revision.id != sealed.revision {
-            return Err(SyncError::refused(format!(
-                "revision {} does not match its content",
-                sealed.revision
-            )));
+            return Err(SyncError::Mismatch(sealed.revision.clone()));
         }
 
         Ok(revision)
@@ -69,11 +66,11 @@ impl Revision {
         project: &ProjectId,
         keyring: &Keyring,
     ) -> Result<SealedRevision, SyncError> {
-        let (generation, key) = keyring.current()?;
+        let generation = keyring.generation();
+        let key = keyring.key(generation)?;
         let mut sealed = self.unsealed(project, generation);
 
-        let payload = serde_json::to_vec(&self.payload())
-            .map_err(|error| SyncError::invalid(format!("cannot encode a revision: {error}")))?;
+        let payload = serde_json::to_vec(&self.payload())?;
         sealed.sealed = Base64::new(key.seal(&sealed.associated_data(), &payload)?);
 
         Ok(sealed)
@@ -85,7 +82,7 @@ impl Revision {
 
     pub(crate) fn applied(&self) -> Applied {
         Applied {
-            path: self.path.get().to_owned(),
+            path: self.path.clone(),
             revision: self.id.clone(),
             author: self.author.clone(),
             removed: self.is_removal(),
@@ -121,7 +118,7 @@ impl Revision {
 
     fn payload(&self) -> Payload {
         Payload {
-            path: self.path.get().to_owned(),
+            path: self.path.clone(),
             kind: self.path.kind().to_string(),
             body: self.body.clone().map(Base64::new),
             conflicts: self.conflicts.clone(),

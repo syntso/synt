@@ -5,7 +5,7 @@ use crate::id::{Generation, MemberId, ProjectId};
 use crate::provider::Place;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct SyncStatus {
+pub struct StatusReport {
     pub project: ProjectId,
     pub place: Place,
     pub device: MemberId,

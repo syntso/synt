@@ -35,14 +35,14 @@ impl Round<'_> {
 
     fn pull(&self, report: &mut RoundReport) -> Result<(), SyncError> {
         let project = &self.synced.project;
-        let (fresh, cursor) = self.provider.pull(project, &self.synced.cursor)?;
+        let pulled = self.provider.pull(project, &self.synced.cursor)?;
         let held = self.history.held(project)?;
 
-        for sealed in held.into_iter().chain(fresh) {
+        for sealed in held.into_iter().chain(pulled.revisions) {
             self.receive(&sealed, report)?;
         }
 
-        self.history.set_cursor(project, &cursor)
+        self.history.set_cursor(project, &pulled.cursor)
     }
 
     fn receive(&self, sealed: &SealedRevision, report: &mut RoundReport) -> Result<(), SyncError> {

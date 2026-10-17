@@ -24,8 +24,8 @@ impl DocumentKind {
 
         match parts.as_slice() {
             [PROJECT_FILE] => Some(Self::Project),
-            [RESOURCES, file] => is_toml_name(file).then_some(Self::Resource),
-            [RUNBOOKS, file] => is_toml_name(file).then_some(Self::Runbook),
+            [RESOURCES, file] => Self::is_toml_name(file).then_some(Self::Resource),
+            [RUNBOOKS, file] => Self::is_toml_name(file).then_some(Self::Runbook),
             [EXTENSIONS, extension, inside @ ..] => Self::extension(extension, inside),
             _ => None,
         }
@@ -39,16 +39,53 @@ impl DocumentKind {
         let (file, folders) = inside.split_last()?;
         let (name, suffix) = file.rsplit_once('.')?;
 
-        let valid = is_extension_id(extension)
-            && fits_extension_folder(inside)
-            && folders.iter().all(|folder| is_name(folder))
-            && is_name(name)
-            && is_suffix(suffix);
+        let valid = Self::is_extension_id(extension)
+            && Self::fits_extension_folder(inside)
+            && folders.iter().all(|folder| Self::is_name(folder))
+            && Self::is_name(name)
+            && Self::is_suffix(suffix);
 
         valid.then(|| Self::Extension {
             extension: extension.to_owned(),
             suffix: suffix.to_owned(),
         })
+    }
+
+    fn is_toml_name(file: &str) -> bool {
+        file.strip_suffix(TOML_SUFFIX).is_some_and(Self::is_name)
+    }
+
+    fn fits_extension_folder(inside: &[&str]) -> bool {
+        let length = inside.iter().map(|part| part.len() + 1).sum::<usize>();
+
+        inside.len() <= MOST_EXTENSION_PARTS && length <= LONGEST_EXTENSION_PATH + 1
+    }
+
+    fn is_name(name: &str) -> bool {
+        let allowed =
+            |character: char| character.is_ascii_alphanumeric() || "-_.".contains(character);
+
+        !name.is_empty()
+            && name.len() <= LONGEST_NAME
+            && !name.starts_with('.')
+            && name.chars().all(allowed)
+    }
+
+    fn is_extension_id(id: &str) -> bool {
+        let allowed = |character: char| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+        };
+
+        id.starts_with(|first: char| first.is_ascii_lowercase())
+            && id.len() <= LONGEST_NAME
+            && id.chars().all(allowed)
+    }
+
+    fn is_suffix(suffix: &str) -> bool {
+        let allowed =
+            |character: char| character.is_ascii_lowercase() || character.is_ascii_digit();
+
+        !suffix.is_empty() && suffix.len() <= LONGEST_NAME && suffix.chars().all(allowed)
     }
 }
 
@@ -63,39 +100,4 @@ impl fmt::Display for DocumentKind {
             }
         }
     }
-}
-
-fn is_toml_name(file: &str) -> bool {
-    file.strip_suffix(TOML_SUFFIX).is_some_and(is_name)
-}
-
-fn fits_extension_folder(inside: &[&str]) -> bool {
-    let length = inside.iter().map(|part| part.len() + 1).sum::<usize>();
-
-    inside.len() <= MOST_EXTENSION_PARTS && length <= LONGEST_EXTENSION_PATH + 1
-}
-
-fn is_name(name: &str) -> bool {
-    let allowed = |character: char| character.is_ascii_alphanumeric() || "-_.".contains(character);
-
-    !name.is_empty()
-        && name.len() <= LONGEST_NAME
-        && !name.starts_with('.')
-        && name.chars().all(allowed)
-}
-
-fn is_extension_id(id: &str) -> bool {
-    let allowed = |character: char| {
-        character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
-    };
-
-    id.starts_with(|first: char| first.is_ascii_lowercase())
-        && id.len() <= LONGEST_NAME
-        && id.chars().all(allowed)
-}
-
-fn is_suffix(suffix: &str) -> bool {
-    let allowed = |character: char| character.is_ascii_lowercase() || character.is_ascii_digit();
-
-    !suffix.is_empty() && suffix.len() <= LONGEST_NAME && suffix.chars().all(allowed)
 }

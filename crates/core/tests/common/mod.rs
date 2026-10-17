@@ -40,6 +40,6 @@ pub use runbook_desk::RunbookDesk;
 pub use running_server::RunningServer;
 pub use secret::Secret;
 pub use switch::Switch;
-pub use syncing_core::{PROJECT_ID, SyncingCore};
+pub use syncing_core::{PROJECT_ID, SyncingCore, register_sync};
 pub use touch::Touch;
 pub use waiting::Waiting;

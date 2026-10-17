@@ -5,6 +5,7 @@ use synt_actions::ActionError;
 use synt_db::Engine;
 use synt_journal::{JournalError, JournalId, KeyStoreError};
 use synt_platform::{KeyPlace, PlatformError};
+use synt_sync::SyncError;
 use thiserror::Error;
 
 use crate::secrets::SecretName;
@@ -414,5 +415,11 @@ impl From<CoreError> for ActionError {
 impl From<CoreError> for KeyStoreError {
     fn from(error: CoreError) -> Self {
         Self::new(error)
+    }
+}
+
+impl From<CoreError> for SyncError {
+    fn from(error: CoreError) -> Self {
+        Self::Projects(Box::new(error))
     }
 }

@@ -14,8 +14,8 @@ fuzz_target!(|data: &[u8]| {
     let merged = merge(Some(base), older, newer);
     assert_eq!(merged, merge(Some(base), older, newer));
 
-    let (untouched, _) = merge(Some(base), base, newer);
-    assert_eq!(untouched.as_deref(), Some(newer));
+    let untouched = merge(Some(base), base, newer);
+    assert_eq!(untouched.body.as_deref(), Some(newer));
 
     let parses = |bytes: &[u8]| {
         std::str::from_utf8(bytes)
@@ -23,6 +23,6 @@ fuzz_target!(|data: &[u8]| {
             .is_some_and(|text| text.parse::<toml::Table>().is_ok())
     };
     if parses(older) && parses(newer) {
-        assert!(parses(&merged.0.unwrap()));
+        assert!(parses(&merged.body.unwrap()));
     }
 });

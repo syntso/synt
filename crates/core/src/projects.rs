@@ -12,7 +12,7 @@ mod resolved;
 mod resource;
 mod slug;
 mod source;
-mod sync_folders;
+mod sync;
 mod table;
 mod target_ref;
 mod text;

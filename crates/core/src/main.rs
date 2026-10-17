@@ -11,8 +11,8 @@ use synt_core::{
     AlwaysGrants, Arguments, Broker, Core, CoreCaller, CoreScreen, Databases, EventFeed,
     ExtensionMerger, Files, GrantActions, IdleWatch, JournalActions, KeyActions, Kube,
     LoginCommand, Ping, ProjectActions, Projects, ResourceActions, Runbooks, SecretActions,
-    Secrets, Server, SessionActions, SshActions, SshKeys, Storage, Terminals, TunnelActions,
-    VERSION,
+    Secrets, Server, SessionActions, SshActions, SshKeys, Storage, SyncActions, Terminals,
+    TunnelActions, VERSION,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Journal, JournalWriter};
@@ -64,7 +64,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
 
     let extensions = extensions(&data, &storage, &builtins)?;
     let syncer = syncer(&storage, &builtins.projects, &builtins.journal, &extensions)?;
-    syncer.register(&mut registry)?;
+    SyncActions::new(syncer.clone()).register(&mut registry)?;
     extensions.register(&mut registry)?;
     load_extensions(&extensions).await?;
 

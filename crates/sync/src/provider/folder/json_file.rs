@@ -26,14 +26,16 @@ impl JsonFile {
             read => read.at(&self.path)?,
         };
 
-        serde_json::from_slice(&bytes).map(Some).map_err(|error| {
-            SyncError::provider(format!("{} is damaged: {error}", self.path.display()))
-        })
+        serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|source| SyncError::Damaged {
+                path: self.path.clone(),
+                source,
+            })
     }
 
     pub(super) fn write(&self, value: &impl Serialize) -> Result<(), SyncError> {
-        let bytes = serde_json::to_vec_pretty(value)
-            .map_err(|error| SyncError::provider(format!("cannot encode: {error}")))?;
+        let bytes = serde_json::to_vec_pretty(value)?;
 
         if let Some(folder) = self.path.parent() {
             fs::create_dir_all(folder).at(folder)?;

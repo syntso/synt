@@ -37,10 +37,10 @@ fn pushed_revisions_are_pulled_in_time_order() {
     provider
         .push(&project(), &[late.clone(), early.clone()])
         .unwrap();
-    let (pulled, cursor) = provider.pull(&project(), &Cursor::default()).unwrap();
+    let pulled = provider.pull(&project(), &Cursor::default()).unwrap();
 
-    assert_eq!(pulled, vec![early, late]);
-    assert_ne!(cursor, Cursor::default());
+    assert_eq!(pulled.revisions, vec![early, late]);
+    assert_ne!(pulled.cursor, Cursor::default());
 }
 
 #[test]
@@ -50,16 +50,19 @@ fn a_cursor_skips_what_is_long_past_and_keeps_the_last_minute() {
     let old = sealed(1_700_000_000_000, "a1");
     let recent = sealed(1_700_000_100_000, "b2");
     provider.push(&project(), &[old, recent.clone()]).unwrap();
-    let (_, cursor) = provider.pull(&project(), &Cursor::default()).unwrap();
+    let cursor = provider
+        .pull(&project(), &Cursor::default())
+        .unwrap()
+        .cursor;
 
     let newer = sealed(1_700_000_100_500, "c3");
     provider
         .push(&project(), std::slice::from_ref(&newer))
         .unwrap();
-    let (pulled, next) = provider.pull(&project(), &cursor).unwrap();
+    let pulled = provider.pull(&project(), &cursor).unwrap();
 
-    assert_eq!(pulled, vec![recent, newer]);
-    assert!(next.get() > cursor.get());
+    assert_eq!(pulled.revisions, vec![recent, newer]);
+    assert!(pulled.cursor.get() > cursor.get());
 }
 
 #[test]
@@ -67,10 +70,10 @@ fn an_empty_project_pulls_nothing() {
     let folder = tempfile::tempdir().unwrap();
     let provider = FolderProvider::open(folder.path()).unwrap();
 
-    let (pulled, cursor) = provider.pull(&project(), &Cursor::default()).unwrap();
+    let pulled = provider.pull(&project(), &Cursor::default()).unwrap();
 
-    assert!(pulled.is_empty());
-    assert_eq!(cursor, Cursor::default());
+    assert!(pulled.revisions.is_empty());
+    assert_eq!(pulled.cursor, Cursor::default());
 }
 
 #[test]

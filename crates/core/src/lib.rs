@@ -37,7 +37,7 @@ pub use builtin::{
     ResourceGet, ResourceList, ResourcePut, ResourceRemove, SecretActions, SecretList, SecretPut,
     SecretRemove, SessionActions, SessionAttach, SessionBlocks, SessionClose, SessionIntegration,
     SessionList, SessionResize, SshActions, SshConnections, SshExec, SshSessionOpen, SshWarm,
-    TunnelActions, TunnelClose, TunnelList, TunnelOpen,
+    SyncActions, TunnelActions, TunnelClose, TunnelList, TunnelOpen,
 };
 pub use core::{Core, VERSION};
 pub use error::CoreError;

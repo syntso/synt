@@ -52,9 +52,7 @@ impl<'a> KeyWrap<'a> {
         sender.check()?;
 
         if wrapped.member != self.device.member() || wrapped.by != sender.member {
-            return Err(SyncError::refused(
-                "the shared key names other members than the ones it came from and to",
-            ));
+            return Err(SyncError::Misaddressed);
         }
 
         let context = self.context(wrapped);
@@ -65,9 +63,7 @@ impl<'a> KeyWrap<'a> {
         let keyring = Keyring::from_bytes(&key.open(&context, wrapped.sealed.get())?)?;
 
         if keyring.generation() != wrapped.generation {
-            return Err(SyncError::refused(
-                "the shared key is not of the generation it claims",
-            ));
+            return Err(SyncError::WrongGeneration);
         }
 
         Ok(keyring)

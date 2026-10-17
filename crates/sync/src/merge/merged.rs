@@ -1,7 +1,7 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Merged {
-    pub(crate) body: Option<Vec<u8>>,
-    pub(crate) conflicts: Vec<String>,
+pub struct Merged {
+    pub body: Option<Vec<u8>>,
+    pub conflicts: Vec<String>,
 }
 
 impl Merged {

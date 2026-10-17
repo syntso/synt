@@ -61,7 +61,7 @@ async fn without_a_merger_both_versions_are_kept_until_the_person_picks_one() {
     assert_eq!(team.bob.read(DIAGRAM).as_deref(), Some("right"));
 
     let conflict = team.alice.status().await.conflicts.remove(0);
-    assert_eq!(conflict.path, DIAGRAM);
+    assert_eq!(conflict.path.get(), DIAGRAM);
     assert_eq!(conflict.merged, None);
     assert_eq!(conflict.candidates.len(), 2);
 

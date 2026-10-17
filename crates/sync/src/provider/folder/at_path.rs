@@ -9,6 +9,9 @@ pub(super) trait AtPath<T> {
 
 impl<T> AtPath<T> for io::Result<T> {
     fn at(self, path: &Path) -> Result<T, SyncError> {
-        self.map_err(|error| SyncError::provider(format!("{}: {error}", path.display())))
+        self.map_err(|source| SyncError::Provider {
+            path: path.to_owned(),
+            source,
+        })
     }
 }

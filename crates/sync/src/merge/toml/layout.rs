@@ -48,7 +48,7 @@ impl Layout {
     }
 
     fn apply_field(target: &mut dyn TableLike, older: Option<&Item>, key: &str, wanted: &Value) {
-        let current = target.get(key).and_then(|item| item_value(key, item));
+        let current = target.get(key).and_then(|item| Self::value_of(key, item));
         if current.as_ref() == Some(wanted) {
             return;
         }
@@ -62,9 +62,9 @@ impl Layout {
         }
 
         let replacement = older
-            .filter(|item| item_value(key, item).as_ref() == Some(wanted))
+            .filter(|item| Self::value_of(key, item).as_ref() == Some(wanted))
             .cloned()
-            .or_else(|| fresh_item(key, wanted));
+            .or_else(|| Self::fresh_item(key, wanted));
 
         match (target.get_mut(key), replacement) {
             (Some(item), Some(replacement)) => *item = replacement,
@@ -74,20 +74,20 @@ impl Layout {
             (_, None) => {}
         }
     }
-}
 
-fn item_value(key: &str, item: &Item) -> Option<Value> {
-    let mut alone = DocumentMut::new();
-    alone.insert(key, item.clone());
+    fn value_of(key: &str, item: &Item) -> Option<Value> {
+        let mut alone = DocumentMut::new();
+        alone.insert(key, item.clone());
 
-    alone.to_string().parse::<Table>().ok()?.remove(key)
-}
+        alone.to_string().parse::<Table>().ok()?.remove(key)
+    }
 
-fn fresh_item(key: &str, value: &Value) -> Option<Item> {
-    let mut alone = Table::new();
-    alone.insert(key.to_owned(), value.clone());
+    fn fresh_item(key: &str, value: &Value) -> Option<Item> {
+        let mut alone = Table::new();
+        alone.insert(key.to_owned(), value.clone());
 
-    Layout::parse(alone.to_string().as_bytes())?
-        .document
-        .remove(key)
+        Self::parse(alone.to_string().as_bytes())?
+            .document
+            .remove(key)
+    }
 }
