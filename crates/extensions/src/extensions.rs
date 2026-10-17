@@ -1,3 +1,12 @@
+mod action;
+mod candidate;
+mod guest;
+mod loaded;
+mod outside;
+mod roster;
+mod services;
+mod visit;
+
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -11,7 +20,6 @@ use crate::background::ExtensionEvent;
 use crate::builtin::{ExtensionInfo, Registration, SearchHit};
 use crate::call::Caller;
 use crate::documents::MergeSides;
-use crate::extension::{ActionSpec, Candidate, CoreLink, Guest, Loaded, Roster, Services};
 use crate::http::SecretSource;
 use crate::install::{Admission, InstallFolder, InstalledFiles, LocalBuild, Package};
 use crate::manifest::Manifest;
@@ -19,6 +27,15 @@ use crate::remote::{Index, Remote};
 use crate::runtime::Runtime;
 use crate::shelf::{Installed, Inventory, Shelf};
 use crate::ui::Screen;
+
+pub(crate) use action::{ActionSpec, ExtensionAction};
+pub(crate) use candidate::Candidate;
+pub(crate) use guest::Guest;
+pub(crate) use loaded::Loaded;
+pub(crate) use outside::Outside;
+pub(crate) use roster::Roster;
+pub(crate) use services::{CoreLink, Services};
+pub(crate) use visit::Visit;
 
 const FOLDER: &str = "extensions";
 

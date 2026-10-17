@@ -7,7 +7,7 @@ use synt_proto::ActionCall;
 
 use crate::builtin::ExtensionHttp;
 use crate::call::{ExtensionCall, FailureCode};
-use crate::extension::{Guest, Outside};
+use crate::extensions::{Guest, Outside};
 use crate::http::{HttpRequest, HttpResponse};
 use crate::interface::GuestError;
 

@@ -10,7 +10,7 @@ use super::rendered::Rendered;
 use crate::Extensions;
 use crate::blocking::Blocking;
 use crate::builtin::CallingActor;
-use crate::extension::Guest;
+use crate::extensions::Guest;
 use crate::runtime::GuestCall;
 use crate::view::ViewCheck;
 

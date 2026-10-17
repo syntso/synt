@@ -9,7 +9,7 @@ use synt_journal::ResourceRef;
 use super::ExtensionInfo;
 use crate::Extensions;
 use crate::blocking::Blocking;
-use crate::extension::Candidate;
+use crate::extensions::Candidate;
 
 pub(crate) use local::ExtensionInstallLocal;
 

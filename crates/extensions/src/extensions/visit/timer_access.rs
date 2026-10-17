@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::call::FailureCode;
-use crate::extension::Guest;
+use crate::extensions::Guest;
 use crate::interface::GuestError;
 
 pub(super) struct TimerAccess {

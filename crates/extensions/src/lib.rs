@@ -5,7 +5,6 @@ mod builtin;
 mod call;
 mod documents;
 mod error;
-mod extension;
 mod extensions;
 mod files;
 mod http;

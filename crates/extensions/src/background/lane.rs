@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 use driver::Driver;
 
 use super::Wake;
-use crate::extension::Guest;
+use crate::extensions::Guest;
 
 const QUEUED: usize = 64;
 

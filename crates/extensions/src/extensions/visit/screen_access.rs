@@ -4,7 +4,7 @@ use serde_json::Value;
 use synt_proto::{PanelPosted, ViewPatched};
 
 use crate::call::FailureCode;
-use crate::extension::Guest;
+use crate::extensions::Guest;
 use crate::interface::GuestError;
 use crate::ui::ScreenUpdate;
 use crate::view::ViewPatch;

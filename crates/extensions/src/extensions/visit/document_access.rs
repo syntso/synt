@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::call::FailureCode;
 use crate::documents::{DocumentInfo, DocumentStore, MergeSides, Merger, Opened, Written};
-use crate::extension::Guest;
+use crate::extensions::Guest;
 use crate::interface::GuestError;
 
 pub(super) struct DocumentAccess {

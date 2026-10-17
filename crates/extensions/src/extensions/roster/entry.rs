@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::extension::Loaded;
+use crate::extensions::Loaded;
 
 pub(super) enum Entry {
     Loaded(Arc<Loaded>),

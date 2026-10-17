@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::ExtensionError;
 use crate::call::FailureCode;
-use crate::extension::Guest;
+use crate::extensions::Guest;
 use crate::interface::GuestError;
 
 const LONGEST_KEY: usize = 256;
