@@ -54,8 +54,11 @@ impl ExecRequest {
         let mut process = self.attach(cluster).await?;
         let status = process.take_status();
 
-        let (stdout, stderr) =
-            future::join(read(process.stdout(), limit), read(process.stderr(), limit)).await;
+        let (stdout, stderr) = future::join(
+            Self::read(process.stdout(), limit),
+            Self::read(process.stderr(), limit),
+        )
+        .await;
         let status = match status {
             Some(status) => status.await,
             None => None,
@@ -93,14 +96,14 @@ impl ExecRequest {
             None => params,
         }
     }
-}
 
-async fn read(stream: Option<impl AsyncRead + Unpin>, limit: usize) -> CappedText {
-    let text = CappedText::new(limit);
+    async fn read(stream: Option<impl AsyncRead + Unpin>, limit: usize) -> CappedText {
+        let text = CappedText::new(limit);
 
-    match stream {
-        Some(stream) => text.read_from(stream).await,
-        None => text,
+        match stream {
+            Some(stream) => text.read_from(stream).await,
+            None => text,
+        }
     }
 }
 
