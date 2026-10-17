@@ -6,7 +6,6 @@ mod name;
 mod param;
 mod plan;
 mod run;
-mod runs;
 mod shell;
 mod template;
 
@@ -18,8 +17,7 @@ pub(crate) use folder::RunbookFolder;
 pub use folder::{RunbookEntry, RunbookListing};
 pub use name::RunbookName;
 pub(crate) use plan::Plan;
-pub use run::RunReport;
-pub use runs::Runs;
+pub use run::{RunReport, Runs};
 pub(crate) use shell::ShellScript;
 
 use std::fmt::{self, Debug, Formatter};

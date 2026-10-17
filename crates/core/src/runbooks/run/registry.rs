@@ -1,16 +1,12 @@
-mod active;
-mod guard;
-
-pub(crate) use guard::RunGuard;
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use synt_platform::Lock;
 use tokio_util::sync::CancellationToken;
 
-use super::RunbookError;
-use active::ActiveRun;
+use super::RunGuard;
+use super::active::ActiveRun;
+use crate::runbooks::RunbookError;
 
 type Active = HashMap<u64, ActiveRun>;
 

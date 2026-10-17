@@ -1,9 +1,14 @@
+mod active;
+mod guard;
 mod progress;
+mod registry;
 mod report;
 mod state;
 mod step;
 
+pub(crate) use guard::RunGuard;
 pub(crate) use progress::{LinkProgress, Progress};
+pub use registry::Runs;
 pub use report::RunReport;
 pub use state::RunState;
 pub use step::StepReport;
