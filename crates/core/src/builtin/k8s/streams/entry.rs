@@ -1,12 +1,12 @@
 use synt_journal::Actor;
 use tokio_util::sync::CancellationToken;
 
-pub(crate) struct OpenStream {
+pub(crate) struct StreamEntry {
     actor: Actor,
     stop: CancellationToken,
 }
 
-impl OpenStream {
+impl StreamEntry {
     pub(crate) fn new(actor: Actor, stop: CancellationToken) -> Self {
         Self { actor, stop }
     }

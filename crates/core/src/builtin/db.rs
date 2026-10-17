@@ -188,7 +188,8 @@ impl Databases {
 
         let secrets = self.secrets.clone();
         let used_for = format!("the database {resolved}");
-        let password = blocking::<_, DbActionError>(move || secrets.read_text_for(&name, &used_for)).await?;
+        let password =
+            blocking::<_, DbActionError>(move || secrets.read_text_for(&name, &used_for)).await?;
 
         Ok(Some(password))
     }

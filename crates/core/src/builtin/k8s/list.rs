@@ -3,11 +3,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
-use synt_kube::{ListQuery, Listing, Namespaces};
+use synt_kube::{KindName, ListQuery, Listing};
 
-use super::failure::failed;
-use super::names::{check_kind, check_namespaces};
-use super::{KindFacts, Kube};
+use super::{K8sError, KindFacts, Kube};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sList {
@@ -16,22 +14,10 @@ pub(crate) struct K8sList {
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub(crate) struct ListParams {
-    pub kind: String,
+    pub kind: KindName,
 
-    #[serde(default)]
-    pub namespace: Option<String>,
-
-    #[serde(default)]
-    pub all_namespaces: bool,
-
-    #[serde(default)]
-    pub selector: Option<String>,
-
-    #[serde(default)]
-    pub limit: Option<u32>,
-
-    #[serde(default, rename = "continue")]
-    pub continue_token: Option<String>,
+    #[serde(flatten)]
+    pub query: ListQuery,
 
     #[serde(skip)]
     #[schemars(skip)]
@@ -41,6 +27,13 @@ pub(crate) struct ListParams {
 impl K8sList {
     pub(super) fn new(kube: Kube) -> Self {
         Self { kube }
+    }
+
+    async fn list(&self, context: &Context, params: &ListParams) -> Result<Listing, K8sError> {
+        let cluster = self.kube.cluster(context).await?;
+        let kind = self.kube.kind(context, &cluster, &params.kind).await?;
+
+        Ok(params.query.run(&cluster, &kind).await?)
     }
 }
 
@@ -52,11 +45,6 @@ impl Action for K8sList {
 
     type Params = ListParams;
     type Output = Listing;
-
-    fn check(&self, _target: Option<&ResourceRef>, params: &ListParams) -> Result<(), ActionError> {
-        check_kind(&params.kind)?;
-        check_namespaces(params.namespace.as_deref(), params.all_namespaces)
-    }
 
     fn inspect(
         &self,
@@ -89,16 +77,6 @@ impl Action for K8sList {
     }
 
     async fn run(&self, context: &Context, params: ListParams) -> Result<Listing, ActionError> {
-        let cluster = self.kube.cluster(context).await?;
-        let kind = self.kube.kind(context, &cluster, &params.kind).await?;
-
-        let query = ListQuery {
-            namespaces: Namespaces::from_request(params.namespace, params.all_namespaces),
-            selector: params.selector,
-            limit: params.limit,
-            continue_token: params.continue_token,
-        };
-
-        cluster.list(&kind, &query).await.map_err(failed)
+        Ok(self.list(context, &params).await?)
     }
 }

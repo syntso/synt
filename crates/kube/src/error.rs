@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::io;
 use std::time::Duration;
 
@@ -46,6 +47,17 @@ impl KubeError {
         Self::Invalid(reason.into())
     }
 
+    pub(crate) fn kubeconfig(place: impl Display, reason: impl Display) -> Self {
+        Self::Kubeconfig {
+            place: place.to_string(),
+            reason: first_line(&reason),
+        }
+    }
+
+    pub(crate) fn manifest_not_yaml(reason: impl Display) -> Self {
+        Self::invalid(format!("the manifest is not YAML: {}", first_line(&reason)))
+    }
+
     #[must_use]
     pub(crate) fn concerning(self, object: &ObjectRef) -> Self {
         match self {
@@ -74,7 +86,7 @@ impl From<io::Error> for KubeError {
     }
 }
 
-pub(crate) fn first_line(reason: &impl std::fmt::Display) -> String {
+fn first_line(reason: &impl Display) -> String {
     let reason = reason.to_string();
 
     reason

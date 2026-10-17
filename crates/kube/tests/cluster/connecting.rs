@@ -2,7 +2,7 @@ use std::fs;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use synt_kube::{Cluster, ClusterSpec, KubeError, KubeconfigSource, ListQuery};
+use synt_kube::{Cluster, ClusterSpec, KindName, KubeError, KubeconfigSource, ListQuery};
 use synt_test_servers::KubeServers;
 
 use crate::TcpDialer;
@@ -34,9 +34,12 @@ async fn an_exec_credential_plugin_logs_in() {
     let cluster = Cluster::connect(&spec(&servers, KubeServers::PLUGIN), None)
         .await
         .unwrap();
-    let namespaces = cluster.kind("namespaces").await.unwrap();
-    let listing = cluster
-        .list(&namespaces, &ListQuery::default())
+    let namespaces = cluster
+        .kind(&KindName::try_from("namespaces").unwrap())
+        .await
+        .unwrap();
+    let listing = ListQuery::default()
+        .run(&cluster, &namespaces)
         .await
         .unwrap();
 

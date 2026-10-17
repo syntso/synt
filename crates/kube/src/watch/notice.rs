@@ -1,7 +1,10 @@
+mod kind;
+
+pub use kind::NoticeKind;
+
 use serde::Serialize;
 use serde_json::Value;
 
-use super::NoticeKind;
 use crate::objects::Fields;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

@@ -27,7 +27,7 @@ pub use resource::{
     ClusterResource, DatabaseResource, HostResource, Resource, ResourceEntry, ResourceListing,
     TunnelResource,
 };
-pub(crate) use resource::{ResourceFolder, ResourceName, check_name, is_namespace};
+pub(crate) use resource::{ResourceFolder, ResourceName, check_name};
 pub use slug::ProjectSlug;
 
 use file::ProjectFile;

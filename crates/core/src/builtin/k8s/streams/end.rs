@@ -1,7 +1,9 @@
+mod reason;
+
+pub(crate) use reason::EndReason;
+
 use serde::Serialize;
 use serde_json::{Map, Value};
-
-use super::EndReason;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct StreamEnd {
@@ -34,8 +36,7 @@ impl StreamEnd {
 mod tests {
     use serde_json::json;
 
-    use super::StreamEnd;
-    use crate::builtin::k8s::streams::EndReason;
+    use super::{EndReason, StreamEnd};
 
     #[test]
     fn the_summary_adds_how_the_stream_ended_to_what_it_was_about() {

@@ -44,9 +44,8 @@ impl Action for K8sStreamClose {
         context: &Context,
         params: StreamCloseParams,
     ) -> Result<StreamClosed, ActionError> {
-        self.kube
-            .streams()
-            .close(Seq::new(params.request), context.actor())?;
+        let request = Seq::new(params.request);
+        self.kube.streams().close(request, context.actor())?;
 
         Ok(StreamClosed {
             request: params.request,

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 
-use super::{Collected, ExitStatus};
+use super::{Captured, ExitStatus};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ExecOutput {
@@ -15,12 +15,13 @@ pub struct ExecOutput {
 }
 
 impl ExecOutput {
-    pub(crate) fn new(
-        status: ExitStatus,
-        stdout: &Collected,
-        stderr: &Collected,
-        duration: Duration,
-    ) -> Self {
+    pub(super) fn new(captured: Captured, duration: Duration) -> Self {
+        let Captured {
+            status,
+            stdout,
+            stderr,
+        } = captured;
+
         let (exit, failure) = match status {
             ExitStatus::Exited(code) => (Some(code), None),
             ExitStatus::Failed(reason) => (None, Some(reason)),

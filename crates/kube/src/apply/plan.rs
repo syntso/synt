@@ -1,6 +1,10 @@
+mod object;
+
+pub use object::PlannedObject;
+
 use serde::Serialize;
 
-use super::{Change, PlannedObject};
+use crate::Change;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Plan {

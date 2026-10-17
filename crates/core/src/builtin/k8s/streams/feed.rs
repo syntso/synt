@@ -3,12 +3,9 @@ use std::future::Future;
 use bytes::Bytes;
 use synt_kube::{KubeError, LogStream, Watch};
 
-const NEWLINE: u8 = b'\n';
+use super::Chunk;
 
-pub(crate) struct Chunk {
-    pub(crate) data: Bytes,
-    pub(crate) items: usize,
-}
+const NEWLINE: u8 = b'\n';
 
 pub(crate) trait Feed: Send {
     fn next_chunk(&mut self) -> impl Future<Output = Result<Option<Chunk>, KubeError>> + Send;

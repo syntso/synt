@@ -8,16 +8,23 @@ const NOISE: [&str; 5] = [
     "creationTimestamp",
 ];
 
-pub(crate) fn without_noise(mut object: Value) -> Value {
-    if let Some(fields) = object.as_object_mut() {
-        fields.remove("status");
+pub(crate) trait Noise {
+    #[must_use]
+    fn without_noise(self) -> Self;
+}
 
-        if let Some(metadata) = fields.get_mut("metadata").and_then(Value::as_object_mut) {
-            strip_metadata(metadata);
+impl Noise for Value {
+    fn without_noise(mut self) -> Self {
+        if let Some(fields) = self.as_object_mut() {
+            fields.remove("status");
+
+            if let Some(metadata) = fields.get_mut("metadata").and_then(Value::as_object_mut) {
+                strip_metadata(metadata);
+            }
         }
-    }
 
-    object
+        self
+    }
 }
 
 fn strip_metadata(metadata: &mut Map<String, Value>) {
@@ -39,7 +46,7 @@ fn strip_metadata(metadata: &mut Map<String, Value>) {
 mod tests {
     use serde_json::json;
 
-    use super::without_noise;
+    use super::Noise;
 
     #[test]
     fn noise_the_server_adds_is_left_out_of_a_comparison() {
@@ -60,7 +67,7 @@ mod tests {
         });
 
         assert_eq!(
-            without_noise(object),
+            object.without_noise(),
             json!({
                 "kind": "ConfigMap",
                 "metadata": { "name": "settings", "labels": { "app": "orders" } },

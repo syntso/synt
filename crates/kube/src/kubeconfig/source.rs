@@ -6,9 +6,8 @@ use std::time::SystemTime;
 
 use kube::config::Kubeconfig;
 
-use super::ContextInfo;
+use crate::ContextInfo;
 use crate::KubeError;
-use crate::error::first_line;
 
 const VARIABLE: &str = "KUBECONFIG";
 
@@ -72,10 +71,7 @@ impl KubeconfigSource {
     }
 
     pub(crate) fn broken(&self, reason: impl Display) -> KubeError {
-        KubeError::Kubeconfig {
-            place: self.to_string(),
-            reason: first_line(&reason),
-        }
+        KubeError::kubeconfig(self, reason)
     }
 
     fn default_paths() -> Vec<PathBuf> {

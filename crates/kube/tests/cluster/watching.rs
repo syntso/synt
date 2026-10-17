@@ -20,12 +20,12 @@ async fn a_watch_reports_what_exists_then_every_change() {
     };
     lab.apply(&manifest("before")).await;
 
-    let maps = lab.cluster.kind("configmaps").await.unwrap();
+    let maps = lab.kind("configmaps").await;
     let request = WatchRequest {
         selector: Some("watched=yes".to_owned()),
         ..WatchRequest::default()
     };
-    let mut watch = lab.cluster.watch(&maps, &request);
+    let mut watch = request.open(&lab.cluster, &maps);
 
     let existing = next(&mut watch).await;
     let synced = next(&mut watch).await;
@@ -33,7 +33,7 @@ async fn a_watch_reports_what_exists_then_every_change() {
     lab.apply(&manifest("after")).await;
     let added = next(&mut watch).await;
 
-    let deleted_name = lab.cluster.delete(&maps, "before", None).await.unwrap();
+    let deleted_name = lab.object(&maps, "before").delete().await.unwrap();
     let deleted = next(&mut watch).await;
 
     assert_eq!(

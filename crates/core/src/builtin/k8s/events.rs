@@ -1,34 +1,28 @@
-use schemars::JsonSchema;
-use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
-use synt_kube::{EventLine, Namespaces};
+use synt_kube::{EventLine, EventQuery};
 
-use super::Kube;
-use super::failure::failed;
-use super::names::{check_namespace, check_object_name};
+use super::{K8sError, Kube};
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sEvents {
     kube: Kube,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
-pub(crate) struct EventsParams {
-    #[serde(default)]
-    pub namespace: Option<String>,
-
-    #[serde(default)]
-    pub all_namespaces: bool,
-
-    #[serde(default)]
-    pub name: Option<String>,
-}
-
 impl K8sEvents {
     pub(super) fn new(kube: Kube) -> Self {
         Self { kube }
+    }
+
+    async fn events(
+        &self,
+        context: &Context,
+        query: &EventQuery,
+    ) -> Result<Vec<EventLine>, K8sError> {
+        let cluster = self.kube.cluster(context).await?;
+
+        Ok(query.run(&cluster).await?)
     }
 }
 
@@ -38,29 +32,20 @@ impl Action for K8sEvents {
     const RISK: Risk = Risk::Read;
     const TAKES_TARGET: bool = true;
 
-    type Params = EventsParams;
+    type Params = EventQuery;
     type Output = Vec<EventLine>;
 
-    fn check(
-        &self,
-        target: Option<&ResourceRef>,
-        params: &EventsParams,
-    ) -> Result<(), ActionError> {
+    fn check(&self, target: Option<&ResourceRef>, _query: &EventQuery) -> Result<(), ActionError> {
         self.kube.reach(target)?;
 
-        check_namespace(params.namespace.as_deref())?;
-
-        match &params.name {
-            Some(name) => check_object_name("name", name),
-            None => Ok(()),
-        }
+        Ok(())
     }
 
-    fn risk(&self, target: Option<&ResourceRef>, _params: &EventsParams) -> Risk {
+    fn risk(&self, target: Option<&ResourceRef>, _query: &EventQuery) -> Risk {
         self.kube.risk(target, Self::RISK)
     }
 
-    fn destination(&self, target: Option<&ResourceRef>, _params: &EventsParams) -> Option<String> {
+    fn destination(&self, target: Option<&ResourceRef>, _query: &EventQuery) -> Option<String> {
         self.kube.destination(target)
     }
 
@@ -71,14 +56,8 @@ impl Action for K8sEvents {
     async fn run(
         &self,
         context: &Context,
-        params: EventsParams,
+        query: EventQuery,
     ) -> Result<Vec<EventLine>, ActionError> {
-        let cluster = self.kube.cluster(context).await?;
-        let namespaces = Namespaces::from_request(params.namespace, params.all_namespaces);
-
-        cluster
-            .events(&namespaces, params.name.as_deref())
-            .await
-            .map_err(failed)
+        Ok(self.events(context, &query).await?)
     }
 }

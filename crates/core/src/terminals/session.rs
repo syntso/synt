@@ -5,9 +5,9 @@ mod origin;
 
 pub use attached::AttachedSession;
 pub use ending::Ending;
-pub use synt_proto::SessionId;
 pub use kind::SessionKind;
 pub(crate) use origin::Origin;
+pub use synt_proto::SessionId;
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};

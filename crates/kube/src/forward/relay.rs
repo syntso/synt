@@ -7,36 +7,34 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
-use super::ForwardTraffic;
+use super::{Backend, ForwardTraffic};
 use crate::KubeError;
 
 const CONCURRENT_CONNECTIONS: usize = 64;
 const BUFFER_BYTES: usize = 32 * 1024;
 
 #[derive(Clone)]
-pub(crate) struct Relay {
+pub(super) struct Relay {
     pods: Api<Pod>,
-    pod: String,
-    port: u16,
+    backend: Arc<Backend>,
     traffic: Arc<ForwardTraffic>,
 }
 
 impl Relay {
-    pub(crate) fn new(pods: Api<Pod>, pod: String, port: u16) -> Self {
+    pub(super) fn new(pods: Api<Pod>, backend: Backend) -> Self {
         Self {
             pods,
-            pod,
-            port,
+            backend: Arc::new(backend),
             traffic: Arc::default(),
         }
     }
 
     pub(super) fn pod(&self) -> &str {
-        &self.pod
+        &self.backend.pod
     }
 
     pub(super) fn port(&self) -> u16 {
-        self.port
+        self.backend.port
     }
 
     pub(super) fn traffic(&self) -> Arc<ForwardTraffic> {
@@ -69,19 +67,14 @@ impl Relay {
         }
     }
 
-    async fn carry(&self, socket: TcpStream) -> Result<(), String> {
-        socket
-            .set_nodelay(true)
-            .map_err(|error| error.to_string())?;
+    async fn carry(&self, socket: TcpStream) -> Result<(), KubeError> {
+        socket.set_nodelay(true)?;
 
-        let mut forwarder = self
-            .pods
-            .portforward(&self.pod, &[self.port])
-            .await
-            .map_err(|error| KubeError::from(error).to_string())?;
-        let stream = forwarder
-            .take_stream(self.port)
-            .ok_or_else(|| format!("the cluster opened no stream for port {}", self.port))?;
+        let port = self.port();
+        let mut forwarder = self.pods.portforward(self.pod(), &[port]).await?;
+        let stream = forwarder.take_stream(port).ok_or_else(|| {
+            KubeError::Io(format!("the cluster opened no stream for port {port}"))
+        })?;
 
         let (remote_read, remote_write) = io::split(stream);
         let (local_read, local_write) = socket.into_split();
@@ -91,11 +84,13 @@ impl Relay {
 
         let outgoing = pump(local_read, remote_write, sent);
         let incoming = pump(remote_read, local_write, received);
-        let carried = tokio::try_join!(outgoing, incoming).map_err(|error| error.to_string());
+        let carried = tokio::try_join!(outgoing, incoming);
 
         forwarder.abort();
 
-        carried.map(|_| ())
+        carried?;
+
+        Ok(())
     }
 }
 
