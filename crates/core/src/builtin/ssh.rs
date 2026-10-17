@@ -7,7 +7,7 @@ mod warm;
 pub(crate) use connect_limit::within_connect_limit;
 pub use connections::SshConnections;
 pub use exec::SshExec;
-pub use warm::SshWarm;
+pub(crate) use warm::SshWarm;
 
 use synt_actions::{ActionError, ActionGroup, Registry};
 use synt_ssh::Pool;
@@ -15,7 +15,7 @@ use synt_ssh::Pool;
 use crate::projects::Projects;
 
 #[derive(Debug, Clone)]
-pub struct SshActions {
+pub(crate) struct SshActions {
     pool: Pool,
     projects: Projects,
 }

@@ -10,7 +10,7 @@ use crate::link::Link;
 use crate::terminals::{SessionId, Terminals};
 
 #[derive(Debug, Clone)]
-pub struct SessionAttach {
+pub(crate) struct SessionAttach {
     terminals: Terminals,
 }
 

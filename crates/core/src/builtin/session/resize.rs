@@ -7,7 +7,7 @@ use super::{Dimensions, SessionSize};
 use crate::terminals::{SessionId, Terminals};
 
 #[derive(Debug, Clone)]
-pub struct SessionResize {
+pub(crate) struct SessionResize {
     terminals: Terminals,
 }
 

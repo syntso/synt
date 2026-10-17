@@ -16,7 +16,7 @@ use synt_ssh::Pool;
 use crate::ssh_keys::SshKeys;
 
 #[derive(Debug, Clone)]
-pub struct KeyActions {
+pub(crate) struct KeyActions {
     keys: SshKeys,
     pool: Pool,
 }

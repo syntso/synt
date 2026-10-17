@@ -2,14 +2,14 @@ mod page;
 mod read;
 mod verify;
 
-pub use page::JournalPage;
-pub use verify::JournalVerify;
+pub(crate) use page::JournalPage;
+pub(crate) use verify::JournalVerify;
 
 use synt_actions::{ActionError, ActionGroup, Registry};
 use synt_journal::JournalWriter;
 
 #[derive(Clone)]
-pub struct JournalActions {
+pub(crate) struct JournalActions {
     journal: JournalWriter,
 }
 

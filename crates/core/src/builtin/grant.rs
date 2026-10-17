@@ -12,7 +12,7 @@ use synt_journal::JournalWriter;
 use crate::grants::AlwaysGrants;
 
 #[derive(Clone)]
-pub struct GrantActions {
+pub(crate) struct GrantActions {
     grants: AlwaysGrants,
     journal: JournalWriter,
 }

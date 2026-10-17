@@ -11,7 +11,7 @@ use synt_actions::{ActionError, ActionGroup, Registry};
 use crate::secrets::Secrets;
 
 #[derive(Debug, Clone)]
-pub struct SecretActions {
+pub(crate) struct SecretActions {
     secrets: Secrets,
 }
 

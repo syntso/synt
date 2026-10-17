@@ -8,7 +8,7 @@ use super::within_connect_limit;
 use crate::projects::Projects;
 
 #[derive(Debug, Clone)]
-pub struct SshWarm {
+pub(crate) struct SshWarm {
     pool: Pool,
     projects: Projects,
 }

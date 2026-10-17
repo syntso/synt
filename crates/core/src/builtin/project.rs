@@ -11,7 +11,7 @@ use synt_actions::{ActionError, ActionGroup, Registry};
 use crate::projects::Projects;
 
 #[derive(Debug, Clone)]
-pub struct ProjectActions {
+pub(crate) struct ProjectActions {
     projects: Projects,
 }
 

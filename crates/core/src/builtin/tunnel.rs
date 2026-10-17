@@ -5,7 +5,7 @@ mod open;
 
 pub use close::TunnelClose;
 pub(crate) use info::TunnelInfo;
-pub use list::TunnelList;
+pub(crate) use list::TunnelList;
 pub use open::TunnelOpen;
 
 use synt_actions::{ActionError, ActionGroup, Registry};
@@ -14,7 +14,7 @@ use synt_ssh::Tunnels;
 use crate::projects::Projects;
 
 #[derive(Debug, Clone)]
-pub struct TunnelActions {
+pub(crate) struct TunnelActions {
     tunnels: Tunnels,
     projects: Projects,
 }

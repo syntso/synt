@@ -16,23 +16,30 @@ mod sync;
 mod tunnel;
 
 pub use db::DbActions;
-pub use grant::{GrantActions, GrantList, GrantRevoke};
-pub use journal::{JournalActions, JournalPage, JournalVerify};
+use grant::GrantActions;
+pub use grant::{GrantList, GrantRevoke};
+use journal::JournalActions;
 pub use k8s::K8sActions;
-pub use key::{KeyActions, KeyGenerate, KeyImport, KeyList, KeyRemove};
+use key::KeyActions;
+pub use key::{KeyGenerate, KeyImport, KeyList, KeyRemove};
 pub use ping::{Ping, Pong};
-pub use project::{ProjectActions, ProjectClose, ProjectList, ProjectOpen};
-pub use resource::{ResourceActions, ResourceGet, ResourceList, ResourcePut, ResourceRemove};
+use project::ProjectActions;
+pub use project::{ProjectClose, ProjectList, ProjectOpen};
+use resource::ResourceActions;
+pub use resource::{ResourceGet, ResourceList, ResourcePut, ResourceRemove};
 pub use runbook::RunbookActions;
-pub use secret::{SecretActions, SecretList, SecretPut, SecretRemove};
+use secret::SecretActions;
+pub use secret::{SecretList, SecretPut, SecretRemove};
+use session::SessionActions;
 pub use session::{
-    LocalSessionOpen, SessionActions, SessionAttach, SessionBlocks, SessionClose,
-    SessionIntegration, SessionList, SessionResize, SshSessionOpen,
+    LocalSessionOpen, SessionBlocks, SessionClose, SessionIntegration, SessionList, SshSessionOpen,
 };
 pub use sftp::SftpActions;
-pub use ssh::{SshActions, SshConnections, SshExec, SshWarm};
+use ssh::SshActions;
+pub use ssh::{SshConnections, SshExec};
 pub use sync::SyncActions;
-pub use tunnel::{TunnelActions, TunnelClose, TunnelList, TunnelOpen};
+use tunnel::TunnelActions;
+pub use tunnel::{TunnelClose, TunnelOpen};
 
 use std::path::Path;
 use std::sync::Arc;
