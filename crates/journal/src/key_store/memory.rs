@@ -4,7 +4,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use super::KeyStore;
 use crate::anchors::Anchors;
 use crate::chain::DeviceKey;
-use crate::error::KeyStoreError;
+use crate::error::JournalError;
 use crate::journal::JournalId;
 
 #[derive(Debug)]
@@ -35,19 +35,19 @@ impl MemoryKeyStore {
 }
 
 impl KeyStore for MemoryKeyStore {
-    fn device_key(&self) -> Result<DeviceKey, KeyStoreError> {
+    fn device_key(&self) -> Result<DeviceKey, JournalError> {
         Ok(self.device_key.clone())
     }
 
-    fn ensure_device_key(&self) -> Result<DeviceKey, KeyStoreError> {
+    fn ensure_device_key(&self) -> Result<DeviceKey, JournalError> {
         self.device_key()
     }
 
-    fn anchors(&self, journal: JournalId) -> Result<Option<Anchors>, KeyStoreError> {
+    fn anchors(&self, journal: JournalId) -> Result<Option<Anchors>, JournalError> {
         Ok(self.lock().get(&journal).copied())
     }
 
-    fn save_anchors(&self, journal: JournalId, anchors: &Anchors) -> Result<(), KeyStoreError> {
+    fn save_anchors(&self, journal: JournalId, anchors: &Anchors) -> Result<(), JournalError> {
         self.lock().insert(journal, *anchors);
         Ok(())
     }

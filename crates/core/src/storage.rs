@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use synt_journal::{Journal, JournalBuilder, JournalError, JournalId, KeyStore};
+use synt_journal::{Journal, JournalBuilder, JournalId, KeyStore};
 use synt_platform::Vault;
 
 use crate::CoreError;
@@ -81,7 +81,7 @@ impl Storage {
         id: JournalId,
         keys: Arc<JournalKeys>,
     ) -> Result<Journal, CoreError> {
-        if keys.anchors(id).map_err(JournalError::from)?.is_some() {
+        if keys.anchors(id)?.is_some() {
             return Err(CoreError::JournalMissing {
                 id,
                 journal: path.to_owned(),

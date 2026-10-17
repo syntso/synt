@@ -19,7 +19,7 @@ pub enum JournalError {
     Io(#[from] io::Error),
 
     #[error("key store: {0}")]
-    KeyStore(#[from] KeyStoreError),
+    KeyStore(#[source] Box<dyn Error + Send + Sync>),
 
     #[error("system random source: {0}")]
     Entropy(#[from] getrandom::Error),
@@ -97,6 +97,10 @@ impl JournalError {
         }
     }
 
+    pub fn key_store(source: impl Into<Box<dyn Error + Send + Sync>>) -> Self {
+        Self::KeyStore(source.into())
+    }
+
     pub(crate) fn at(self, seq: Seq) -> Self {
         match self {
             Self::Malformed(reason) => Self::Corrupt { seq, reason },
@@ -114,15 +118,5 @@ impl From<oneshot::error::RecvError> for JournalError {
 impl<T> From<std::sync::mpsc::SendError<T>> for JournalError {
     fn from(_: std::sync::mpsc::SendError<T>) -> Self {
         Self::WriterClosed
-    }
-}
-
-#[derive(Debug, Error)]
-#[error(transparent)]
-pub struct KeyStoreError(Box<dyn Error + Send + Sync>);
-
-impl KeyStoreError {
-    pub fn new(source: impl Into<Box<dyn Error + Send + Sync>>) -> Self {
-        Self(source.into())
     }
 }

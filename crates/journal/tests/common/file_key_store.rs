@@ -2,7 +2,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use synt_journal::{Anchors, DeviceKey, JournalId, KeyStore, KeyStoreError};
+use synt_journal::{Anchors, DeviceKey, JournalError, JournalId, KeyStore};
 
 pub struct FileKeyStore {
     dir: PathBuf,
@@ -32,38 +32,38 @@ impl FileKeyStore {
 }
 
 impl KeyStore for FileKeyStore {
-    fn device_key(&self) -> Result<DeviceKey, KeyStoreError> {
-        let bytes = fs::read(self.key_path()).map_err(KeyStoreError::new)?;
+    fn device_key(&self) -> Result<DeviceKey, JournalError> {
+        let bytes = fs::read(self.key_path()).map_err(JournalError::key_store)?;
         let bytes: [u8; 32] = bytes
             .try_into()
-            .map_err(|_| KeyStoreError::new("bad key file"))?;
+            .map_err(|_| JournalError::key_store("bad key file"))?;
 
         Ok(DeviceKey::from_bytes(bytes))
     }
 
-    fn ensure_device_key(&self) -> Result<DeviceKey, KeyStoreError> {
+    fn ensure_device_key(&self) -> Result<DeviceKey, JournalError> {
         if self.key_path().exists() {
             return self.device_key();
         }
 
-        let key = DeviceKey::generate().map_err(KeyStoreError::new)?;
-        Self::write_atomically(&self.key_path(), key.expose()).map_err(KeyStoreError::new)?;
+        let key = DeviceKey::generate().map_err(JournalError::key_store)?;
+        Self::write_atomically(&self.key_path(), key.expose()).map_err(JournalError::key_store)?;
 
         Ok(key)
     }
 
-    fn anchors(&self, journal: JournalId) -> Result<Option<Anchors>, KeyStoreError> {
+    fn anchors(&self, journal: JournalId) -> Result<Option<Anchors>, JournalError> {
         let Ok(bytes) = fs::read(self.anchors_path(journal)) else {
             return Ok(None);
         };
 
         Anchors::from_bytes(&bytes)
             .map(Some)
-            .ok_or_else(|| KeyStoreError::new("bad anchors file"))
+            .ok_or_else(|| JournalError::key_store("bad anchors file"))
     }
 
-    fn save_anchors(&self, journal: JournalId, anchors: &Anchors) -> Result<(), KeyStoreError> {
+    fn save_anchors(&self, journal: JournalId, anchors: &Anchors) -> Result<(), JournalError> {
         Self::write_atomically(&self.anchors_path(journal), &anchors.to_bytes())
-            .map_err(KeyStoreError::new)
+            .map_err(JournalError::key_store)
     }
 }

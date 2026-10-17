@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use synt_actions::ActionError;
 use synt_db::Engine;
-use synt_journal::{JournalError, JournalId, KeyStoreError};
+use synt_journal::{JournalError, JournalId};
 use synt_platform::{KeyPlace, PlatformError, SecretName};
 use synt_proto::ProtoError;
 use synt_sync::SyncError;
@@ -434,9 +434,9 @@ impl From<CoreError> for ActionError {
     }
 }
 
-impl From<CoreError> for KeyStoreError {
+impl From<CoreError> for JournalError {
     fn from(error: CoreError) -> Self {
-        Self::new(error)
+        Self::key_store(error)
     }
 }
 
