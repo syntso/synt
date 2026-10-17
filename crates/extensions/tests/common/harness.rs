@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::Value;
-use synt_actions::{ActionError, Context, Handle, Prepared, Registry};
+use synt_actions::{ActionError, Context, Prepared, RegisteredAction, Registry};
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{ActionId, Actor, ResourceRef, Seq};
 use tempfile::TempDir;
@@ -92,7 +92,7 @@ impl Harness {
         build
     }
 
-    pub fn handle(&self, action: &str) -> Option<Handle> {
+    pub fn handle(&self, action: &str) -> Option<RegisteredAction> {
         self.registry.get(&ActionId::new(action).unwrap())
     }
 

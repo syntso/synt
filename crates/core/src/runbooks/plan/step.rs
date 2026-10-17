@@ -1,6 +1,6 @@
 use serde::Serialize;
 use serde_json::Value;
-use synt_actions::{Handle, Prepared, Risk};
+use synt_actions::{Prepared, RegisteredAction, Risk};
 use synt_journal::{ActionId, ResourceRef};
 
 use crate::runbooks::RunbookError;
@@ -36,7 +36,7 @@ impl PlannedStep {
         number: usize,
         step: &Step,
         values: &Values,
-        lookup: &impl Fn(&ActionId) -> Option<Handle>,
+        lookup: &impl Fn(&ActionId) -> Option<RegisteredAction>,
     ) -> Result<Self, RunbookError> {
         let action = step.action().id().clone();
         let target = Self::render_target(step.target(), values)?;
@@ -152,7 +152,7 @@ impl PlannedStep {
     }
 
     fn prepare(
-        handle: &Handle,
+        handle: &RegisteredAction,
         target: Option<&ResourceRef>,
         params: &Value,
     ) -> Result<Prepared, RunbookError> {
@@ -167,7 +167,7 @@ impl PlannedStep {
         Ok(prepared)
     }
 
-    fn admit(handle: &Handle, target: Option<&ResourceRef>) -> Result<(), RunbookError> {
+    fn admit(handle: &RegisteredAction, target: Option<&ResourceRef>) -> Result<(), RunbookError> {
         let action = handle.id();
 
         if handle.person_only() {

@@ -3,7 +3,7 @@ mod spec;
 use std::sync::Arc;
 
 use serde_json::Value;
-use synt_actions::{ActionError, Context, DynamicAction, Handle, Risk};
+use synt_actions::{ActionError, Context, DynamicAction, RegisteredAction, Risk};
 use synt_journal::ResourceRef;
 use tokio::runtime::Handle as RuntimeHandle;
 
@@ -24,10 +24,10 @@ impl ExtensionAction {
         Self { spec, guest }
     }
 
-    pub(crate) fn into_handle(self) -> Handle {
+    pub(crate) fn into_handle(self) -> RegisteredAction {
         let id = self.spec.id().clone();
 
-        Handle::dynamic(id, self)
+        RegisteredAction::dynamic(id, self)
     }
 }
 

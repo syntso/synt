@@ -9,12 +9,12 @@ use crate::typed::Typed;
 use crate::{Action, ActionDescription, ActionError, DynamicAction, Prepared, Risk};
 
 #[derive(Clone)]
-pub struct Handle {
+pub struct RegisteredAction {
     id: ActionId,
     action: Arc<dyn Erased>,
 }
 
-impl Handle {
+impl RegisteredAction {
     pub(crate) fn new<A: Action>(id: ActionId, action: A) -> Self {
         Self {
             id,

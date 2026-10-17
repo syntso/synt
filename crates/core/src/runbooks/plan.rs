@@ -3,7 +3,7 @@ mod step;
 pub(crate) use step::PlannedStep;
 
 use serde_json::{Map, Value, json};
-use synt_actions::Handle;
+use synt_actions::RegisteredAction;
 use synt_journal::{ActionId, Actor, Name};
 use synt_proto::RunPhase;
 
@@ -25,7 +25,7 @@ impl Plan {
         reference: String,
         document: &RunbookDocument,
         given: &Map<String, Value>,
-        lookup: &impl Fn(&ActionId) -> Option<Handle>,
+        lookup: &impl Fn(&ActionId) -> Option<RegisteredAction>,
     ) -> Result<Self, RunbookError> {
         let values = Values::resolve(document.params(), given)?;
 
@@ -89,7 +89,7 @@ impl Plan {
         steps: &[Step],
         phase: RunPhase,
         values: &Values,
-        lookup: &impl Fn(&ActionId) -> Option<Handle>,
+        lookup: &impl Fn(&ActionId) -> Option<RegisteredAction>,
     ) -> Result<Vec<PlannedStep>, RunbookError> {
         (1..)
             .zip(steps)
@@ -104,7 +104,7 @@ impl Plan {
 #[cfg(test)]
 mod tests {
     use serde_json::{Map, Value, json};
-    use synt_actions::{Action, ActionError, Context, Handle, Registry, Risk};
+    use synt_actions::{Action, ActionError, Context, RegisteredAction, Registry, Risk};
     use synt_journal::{ActionId, Actor, ResourceRef};
 
     use super::Plan;
@@ -181,7 +181,7 @@ mod tests {
 
     fn plan(runbook: &RunbookDocument, given: &Value) -> Result<Plan, String> {
         let registry = registry();
-        let lookup = |id: &ActionId| -> Option<Handle> { registry.get(id) };
+        let lookup = |id: &ActionId| -> Option<RegisteredAction> { registry.get(id) };
         let given: Map<String, Value> = given.as_object().cloned().unwrap();
 
         Plan::make("@lab/deploy".to_owned(), runbook, &given, &lookup)

@@ -3,7 +3,7 @@ mod entry;
 use std::collections::BTreeMap;
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use synt_actions::{ActionDescription, Handle};
+use synt_actions::{ActionDescription, RegisteredAction};
 use synt_journal::ActionId;
 
 use entry::Entry;
@@ -67,7 +67,7 @@ impl Roster {
             .count()
     }
 
-    pub(crate) fn handle(&self, id: &ActionId) -> Option<Handle> {
+    pub(crate) fn handle(&self, id: &ActionId) -> Option<RegisteredAction> {
         let (extension, _) = id.as_str().split_once('.')?;
 
         self.get(extension)?.handle(id)

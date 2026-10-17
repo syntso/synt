@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use synt_actions::{ActionDescription, ActionError, Catalog, Handle, Registry, Risk};
+use synt_actions::{ActionDescription, ActionError, Catalog, RegisteredAction, Registry, Risk};
 use synt_journal::{ActionId, SystemClock};
 use synt_sync::OpenProjects;
 
@@ -331,7 +331,7 @@ impl Extensions {
 }
 
 impl Catalog for Extensions {
-    fn get(&self, id: &ActionId) -> Option<Handle> {
+    fn get(&self, id: &ActionId) -> Option<RegisteredAction> {
         self.roster.handle(id)
     }
 

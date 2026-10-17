@@ -1,5 +1,5 @@
 use serde_json::json;
-use synt_actions::{ActionDescription, Catalog, Handle, Risk};
+use synt_actions::{ActionDescription, Catalog, RegisteredAction, Risk};
 use synt_journal::ActionId;
 
 const ACTIONS: [(&str, Risk); 3] = [
@@ -11,7 +11,7 @@ const ACTIONS: [(&str, Risk); 3] = [
 pub struct CoreStub;
 
 impl Catalog for CoreStub {
-    fn get(&self, _id: &ActionId) -> Option<Handle> {
+    fn get(&self, _id: &ActionId) -> Option<RegisteredAction> {
         None
     }
 
