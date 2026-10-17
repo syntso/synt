@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use crate::projects::Resource;
-use crate::terminal::{Blocks, Scanner};
+use crate::terminals::{BlockHistory, Scanner};
 
 pub struct Seen {
     pub marks: Vec<(u64, u64, String)>,
@@ -10,7 +10,7 @@ pub struct Seen {
 
 pub fn scan(chunks: &[&[u8]]) -> Seen {
     let mut scanner = Scanner::default();
-    let mut blocks = Blocks::default();
+    let mut blocks = BlockHistory::default();
     let mut seen = Seen {
         marks: Vec::new(),
         blocks: Vec::new(),

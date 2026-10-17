@@ -26,7 +26,7 @@ mod server;
 mod ssh_keys;
 mod state;
 mod storage;
-mod terminal;
+mod terminals;
 mod vault;
 
 pub use broker::Broker;
@@ -54,5 +54,5 @@ pub use server::Server;
 pub use ssh_keys::{KeyInfo, KeyName, SshKeyItem, SshKeys};
 pub use state::State;
 pub use storage::Storage;
-pub use terminal::Terminals;
+pub use terminals::Terminals;
 pub use vault::{VaultKind, VaultName};

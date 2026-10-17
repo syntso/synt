@@ -9,7 +9,7 @@ use super::checks::{connection, term, terminal_size};
 use super::revocation::close_when_revoked;
 use crate::builtin::ssh::{failure, within_connect_limit};
 use crate::projects::Projects;
-use crate::terminal::{Console, ConsoleOutput, Origin, SessionId, Terminals};
+use crate::terminals::{OpenConsole, Origin, SessionId, Terminals};
 
 #[derive(Debug, Clone)]
 pub struct SshSessionOpen {
@@ -42,12 +42,12 @@ impl SshSessionOpen {
         target: &Target,
         term: &str,
         size: TerminalSize,
-    ) -> Result<(Console, ConsoleOutput), ActionError> {
+    ) -> Result<OpenConsole, ActionError> {
         let lease = within_connect_limit(self.pool.acquire(target)).await?;
 
         let (shell, output) = Shell::open(lease, term, size).await.map_err(failure)?;
 
-        Ok((Console::Remote(shell), ConsoleOutput::Remote(output)))
+        Ok(OpenConsole::new(shell, output))
     }
 }
 
@@ -98,14 +98,14 @@ impl Action for SshSessionOpen {
             risk,
         };
 
-        let terminal = self
+        let session = self
             .terminals
             .start(id, origin, opened, size)
             .ok_or_else(|| ActionError::failed("the core is stopping, so no session was opened"))?;
-        let attached = terminal.attach(&link).await;
+        let attached = session.attach(&link).await;
 
-        close_when_revoked(context, terminal);
+        close_when_revoked(context, session);
 
-        Ok(AttachedSession::new(id, &attached))
+        Ok(attached)
     }
 }

@@ -1,21 +1,34 @@
+mod block;
+mod console;
+mod screen;
+mod session;
+
+pub(crate) use block::{Block, BlockHistory, Scanner};
+pub(crate) use console::{Console, ConsoleOutput, OpenConsole};
+pub(crate) use session::Session;
+pub use session::{AttachedSession, Ending, SessionId, SessionKind};
+pub(crate) use session::Origin;
+
+use screen::{Attachment, Screen};
+
 use std::collections::HashMap;
 use std::fmt::{self, Debug, Formatter};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use bytes::Bytes;
 use futures_util::future::join_all;
 use synt_journal::{ActionId, EventKind, JournalWriter};
 use synt_proto::EndReason;
 use synt_ssh::TerminalSize;
 use tokio::sync::mpsc;
 
-use super::{Console, ConsoleOutput, Ending, Origin, SessionId, Terminal, pump};
 use crate::locked::locked;
 use crate::log::log;
 use crate::recorder::{Call, Recorder};
 
-type Open = HashMap<SessionId, Arc<Terminal>>;
+type Open = HashMap<SessionId, Arc<Session>>;
+
+const INPUT_BACKLOG: usize = 256;
 
 #[derive(Clone)]
 pub struct Terminals {
@@ -34,7 +47,7 @@ impl Terminals {
     }
 
     pub async fn close_all(&self) {
-        let open: Vec<Arc<Terminal>> = {
+        let open: Vec<Arc<Session>> = {
             let open = self.lock();
             self.closing.store(true, Ordering::SeqCst);
             open.values().map(Arc::clone).collect()
@@ -42,7 +55,7 @@ impl Terminals {
 
         let closing = open
             .iter()
-            .map(|terminal| terminal.close(EndReason::CoreStopped));
+            .map(|session| session.close(EndReason::CoreStopped));
 
         join_all(closing).await;
     }
@@ -51,32 +64,70 @@ impl Terminals {
         &self,
         id: SessionId,
         origin: Origin,
-        (console, output): (Console, ConsoleOutput),
+        opened: OpenConsole,
         size: TerminalSize,
-    ) -> Option<Arc<Terminal>> {
-        let (terminal, typed) = self.admit(id, origin, console, size)?;
+    ) -> Option<Arc<Session>> {
+        let OpenConsole { console, output } = opened;
+        let (input, typed) = mpsc::channel(INPUT_BACKLOG);
 
-        tokio::spawn(Arc::clone(&terminal).type_in(typed));
-        tokio::spawn(pump(self.clone(), Arc::clone(&terminal), output));
+        let session = self.admit(Session::new(id, origin, console, size, input))?;
 
-        Some(terminal)
+        tokio::spawn(Arc::clone(&session).type_in(typed));
+        tokio::spawn(self.clone().pump(Arc::clone(&session), output));
+
+        Some(session)
     }
 
-    pub(crate) fn get(&self, id: SessionId) -> Option<Arc<Terminal>> {
+    pub(crate) fn get(&self, id: SessionId) -> Option<Arc<Session>> {
         self.lock().get(&id).map(Arc::clone)
     }
 
-    pub(crate) fn all(&self) -> Vec<Arc<Terminal>> {
-        let mut open: Vec<Arc<Terminal>> = self.lock().values().map(Arc::clone).collect();
-        open.sort_by_key(|terminal| terminal.id());
+    pub(crate) fn all(&self) -> Vec<Arc<Session>> {
+        let mut open: Vec<Arc<Session>> = self.lock().values().map(Arc::clone).collect();
+        open.sort_by_key(|session| session.id());
 
         open
     }
 
-    pub(super) async fn retire(&self, terminal: &Terminal, ending: &Ending) {
-        self.lock().remove(&terminal.id());
+    fn admit(&self, session: Arc<Session>) -> Option<Arc<Session>> {
+        let mut open = self.lock();
 
-        let origin = terminal.origin();
+        if self.closing.load(Ordering::SeqCst) {
+            drop(open);
+            tokio::spawn(async move { session.discard().await });
+            return None;
+        }
+
+        open.insert(session.id(), Arc::clone(&session));
+
+        Some(session)
+    }
+
+    async fn pump(self, session: Arc<Session>, mut output: Box<dyn ConsoleOutput>) {
+        loop {
+            let data = tokio::select! {
+                biased;
+                () = session.stopped().cancelled() => break,
+                data = output.next() => data,
+            };
+
+            let Some(data) = data else {
+                break;
+            };
+
+            session.show(data).await;
+        }
+
+        let ending = session.end(output.end()).await;
+        self.retire(&session, &ending).await;
+
+        session.mark_finished();
+    }
+
+    async fn retire(&self, session: &Session, ending: &Ending) {
+        self.lock().remove(&session.id());
+
+        let origin = session.origin();
 
         let Ok(action) = ActionId::new(origin.action) else {
             return;
@@ -97,30 +148,9 @@ impl Terminals {
         if let Err(error) = recorded {
             log!(
                 "journal: session {} ended but was not journaled: {error}",
-                terminal.id()
+                session.id()
             );
         }
-    }
-
-    fn admit(
-        &self,
-        id: SessionId,
-        origin: Origin,
-        console: Console,
-        size: TerminalSize,
-    ) -> Option<(Arc<Terminal>, mpsc::Receiver<Bytes>)> {
-        let mut open = self.lock();
-
-        if self.closing.load(Ordering::SeqCst) {
-            drop(open);
-            tokio::spawn(async move { console.close().await });
-            return None;
-        }
-
-        let (terminal, typed) = Terminal::new(id, origin, console, size);
-        open.insert(id, Arc::clone(&terminal));
-
-        Some((terminal, typed))
     }
 
     fn lock(&self) -> MutexGuard<'_, Open> {

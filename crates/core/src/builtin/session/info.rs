@@ -2,7 +2,7 @@ use serde::Serialize;
 use synt_actions::Risk;
 use synt_proto::Requester;
 
-use crate::terminal::{SessionId, SessionKind};
+use crate::terminals::{SessionId, SessionKind};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SessionInfo {

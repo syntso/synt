@@ -5,7 +5,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_proto::EndReason;
 
 use super::checks::find;
-use crate::terminal::{Ending, SessionId, Terminals};
+use crate::terminals::{Ending, SessionId, Terminals};
 
 #[derive(Debug, Clone)]
 pub struct SessionClose {
@@ -41,9 +41,9 @@ impl Action for SessionClose {
         _context: &Context,
         params: SessionCloseParams,
     ) -> Result<Ending, ActionError> {
-        let terminal = find(&self.terminals, params.session)?;
+        let session = find(&self.terminals, params.session)?;
 
-        terminal
+        session
             .close(EndReason::Closed)
             .await
             .ok_or_else(|| ActionError::failed("the session did not end"))

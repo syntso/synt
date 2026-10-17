@@ -6,7 +6,7 @@ use synt_journal::ResourceRef;
 
 use super::AttachedSession;
 use super::checks::{connection, find};
-use crate::terminal::{SessionId, Terminals};
+use crate::terminals::{SessionId, Terminals};
 
 #[derive(Debug, Clone)]
 pub struct SessionAttach {
@@ -36,7 +36,7 @@ impl Action for SessionAttach {
     fn risk(&self, _target: Option<&ResourceRef>, params: &SessionAttachParams) -> Risk {
         self.terminals
             .get(params.session)
-            .map_or(Risk::Write, |terminal| terminal.origin().risk)
+            .map_or(Risk::Write, |session| session.origin().risk)
     }
 
     fn summary(&self, output: &AttachedSession) -> Value {
@@ -53,9 +53,9 @@ impl Action for SessionAttach {
         params: SessionAttachParams,
     ) -> Result<AttachedSession, ActionError> {
         let link = connection(context)?;
-        let terminal = find(&self.terminals, params.session)?;
-        let attached = terminal.attach(&link).await;
+        let session = find(&self.terminals, params.session)?;
+        let attached = session.attach(&link).await;
 
-        Ok(AttachedSession::new(params.session, &attached))
+        Ok(attached)
     }
 }

@@ -16,7 +16,7 @@ use crate::builtin::{
 use crate::core::Core;
 use crate::link::Link;
 use crate::projects::Projects;
-use crate::terminal::Terminals;
+use crate::terminals::Terminals;
 
 #[derive(Clone)]
 pub struct Runbooks {

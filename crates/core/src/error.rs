@@ -34,6 +34,15 @@ pub enum CoreError {
     Stopped,
 
     #[error("{0}")]
+    Shell(#[source] synt_ssh::SshError),
+
+    #[error("{0}")]
+    Pty(#[source] PlatformError),
+
+    #[error("could not start the shell: {0}")]
+    PtyStart(#[source] PlatformError),
+
+    #[error("{0}")]
     Project(String),
 
     #[error("{0}")]

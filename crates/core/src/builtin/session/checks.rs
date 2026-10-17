@@ -4,7 +4,7 @@ use synt_actions::{ActionError, Context};
 use synt_ssh::TerminalSize;
 
 use crate::link::Link;
-use crate::terminal::{SessionId, Terminal, Terminals};
+use crate::terminals::{Session, SessionId, Terminals};
 
 const LARGEST_SIDE: u16 = 1000;
 const DEFAULT_TERM: &str = "xterm-256color";
@@ -16,7 +16,7 @@ pub(super) fn connection(context: &Context) -> Result<Arc<Link>, ActionError> {
         .ok_or_else(|| ActionError::failed("this call has no connection to carry a terminal"))
 }
 
-pub(super) fn find(terminals: &Terminals, id: SessionId) -> Result<Arc<Terminal>, ActionError> {
+pub(super) fn find(terminals: &Terminals, id: SessionId) -> Result<Arc<Session>, ActionError> {
     terminals
         .get(id)
         .ok_or_else(|| ActionError::failed(format!("there is no open session {id}")))

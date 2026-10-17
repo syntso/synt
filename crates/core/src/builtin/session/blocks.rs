@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::checks::find;
-use crate::terminal::{Block, SessionId, Terminals};
+use crate::terminals::{Block, SessionId, Terminals};
 
 #[derive(Debug, Clone)]
 pub struct SessionBlocks {
@@ -40,8 +40,8 @@ impl Action for SessionBlocks {
         _context: &Context,
         params: SessionBlocksParams,
     ) -> Result<Vec<Block>, ActionError> {
-        let terminal = find(&self.terminals, params.session)?;
+        let session = find(&self.terminals, params.session)?;
 
-        Ok(terminal.blocks().await)
+        Ok(session.blocks().await)
     }
 }

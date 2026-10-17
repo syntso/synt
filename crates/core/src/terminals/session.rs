@@ -1,3 +1,15 @@
+mod attached;
+mod ending;
+mod id;
+mod kind;
+mod origin;
+
+pub use attached::AttachedSession;
+pub use ending::Ending;
+pub use id::SessionId;
+pub use kind::SessionKind;
+pub(crate) use origin::Origin;
+
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -8,18 +20,18 @@ use tokio::sync::{Mutex as AsyncMutex, mpsc};
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
-use super::{Attached, Attachment, Block, Console, Ending, Origin, Screen, SessionId, SessionKind};
+use super::{Attachment, Block, Console, Screen};
+use crate::CoreError;
 use crate::clock::milliseconds;
 use crate::link::Link;
 use crate::locked::locked;
 
-const INPUT_BACKLOG: usize = 256;
 const CLOSE_GRACE: Duration = Duration::from_secs(5);
 
-pub(crate) struct Terminal {
+pub(crate) struct Session {
     id: SessionId,
     origin: Origin,
-    console: Console,
+    console: Box<dyn Console>,
     input: mpsc::Sender<Bytes>,
     screen: AsyncMutex<Screen>,
     started: Instant,
@@ -29,16 +41,15 @@ pub(crate) struct Terminal {
     ending: Mutex<Option<Ending>>,
 }
 
-impl Terminal {
+impl Session {
     pub(super) fn new(
         id: SessionId,
         origin: Origin,
-        console: Console,
+        console: Box<dyn Console>,
         size: TerminalSize,
-    ) -> (Arc<Self>, mpsc::Receiver<Bytes>) {
-        let (input, typed) = mpsc::channel(INPUT_BACKLOG);
-
-        let terminal = Arc::new(Self {
+        input: mpsc::Sender<Bytes>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
             id,
             origin,
             console,
@@ -49,9 +60,7 @@ impl Terminal {
             stop: CancellationToken::new(),
             finished: CancellationToken::new(),
             ending: Mutex::new(None),
-        });
-
-        (terminal, typed)
+        })
     }
 
     pub(crate) fn id(&self) -> SessionId {
@@ -86,21 +95,24 @@ impl Terminal {
         self.screen.lock().await.blocks()
     }
 
-    pub(crate) async fn attach(&self, link: &Arc<Link>) -> Attached {
+    pub(crate) async fn attach(&self, link: &Arc<Link>) -> AttachedSession {
         let stream = link.open_stream(self.input.clone());
         let attachment = Attachment::new(stream, link);
 
         let mut screen = self.screen.lock().await;
         let replayed = screen.attach(attachment).await;
+        let size = screen.size();
 
-        Attached {
+        AttachedSession {
+            session: self.id,
             stream,
-            size: screen.size(),
-            replayed,
+            columns: size.columns,
+            rows: size.rows,
+            replayed_bytes: replayed,
         }
     }
 
-    pub(crate) async fn resize(&self, size: TerminalSize) -> Result<(), String> {
+    pub(crate) async fn resize(&self, size: TerminalSize) -> Result<(), CoreError> {
         let mut screen = self.screen.lock().await;
 
         self.console.resize(size).await?;
@@ -122,6 +134,10 @@ impl Terminal {
         }
 
         self.ending()
+    }
+
+    pub(super) async fn discard(&self) {
+        self.console.close().await;
     }
 
     pub(crate) async fn finished(&self) {

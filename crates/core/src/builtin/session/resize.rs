@@ -5,7 +5,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::SessionSize;
 use super::checks::{find, terminal_size};
-use crate::terminal::{SessionId, Terminals};
+use crate::terminals::{SessionId, Terminals};
 
 #[derive(Debug, Clone)]
 pub struct SessionResize {
@@ -45,9 +45,9 @@ impl Action for SessionResize {
         params: SessionResizeParams,
     ) -> Result<SessionSize, ActionError> {
         let size = terminal_size(params.columns, params.rows)?;
-        let terminal = find(&self.terminals, params.session)?;
+        let session = find(&self.terminals, params.session)?;
 
-        terminal.resize(size).await.map_err(ActionError::Failed)?;
+        session.resize(size).await?;
 
         Ok(SessionSize {
             session: params.session,

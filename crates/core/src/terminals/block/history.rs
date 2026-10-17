@@ -7,13 +7,13 @@ use crate::clock::milliseconds;
 const KEPT_BLOCKS: usize = 1000;
 
 #[derive(Default)]
-pub(crate) struct Blocks {
+pub(crate) struct BlockHistory {
     open: Option<OpenBlock>,
     finished: VecDeque<Block>,
     count: u64,
 }
 
-impl Blocks {
+impl BlockHistory {
     pub(crate) fn see(&mut self, sighting: Sighting, now: Instant) -> Option<Block> {
         match sighting.mark {
             Mark::OutputStart { command } => {
@@ -74,8 +74,8 @@ impl Blocks {
 mod tests {
     use std::time::{Duration, Instant};
 
-    use super::Blocks;
-    use crate::terminal::blocks::{Mark, Sighting};
+    use super::BlockHistory;
+    use crate::terminals::block::{Mark, Sighting};
 
     fn sighting(mark: Mark, start: u64, end: u64) -> Sighting {
         Sighting { mark, start, end }
@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn output_start_and_end_make_a_block() {
-        let mut blocks = Blocks::default();
+        let mut blocks = BlockHistory::default();
         let started = Instant::now();
         let command = Some("false".to_owned());
 
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn an_end_without_a_start_is_no_block() {
-        let mut blocks = Blocks::default();
+        let mut blocks = BlockHistory::default();
 
         let block = blocks.see(
             sighting(Mark::CommandEnd { exit: Some(0) }, 0, 5),
@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn a_new_prompt_ends_a_block_the_shell_never_closed() {
-        let mut blocks = Blocks::default();
+        let mut blocks = BlockHistory::default();
         let now = Instant::now();
 
         blocks.see(sighting(Mark::OutputStart { command: None }, 0, 5), now);
@@ -132,7 +132,7 @@ mod tests {
 
     #[test]
     fn a_repeated_start_keeps_the_first_and_fills_the_command() {
-        let mut blocks = Blocks::default();
+        let mut blocks = BlockHistory::default();
         let now = Instant::now();
         let command = Some("ls".to_owned());
 

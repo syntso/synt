@@ -1,12 +1,13 @@
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_platform::Pty;
 use synt_ssh::TerminalSize;
-use tokio::task;
 
 use super::checks::{connection, term, terminal_size};
 use super::revocation::close_when_revoked;
 use super::{AttachedSession, SessionOpenParams};
-use crate::terminal::{Console, ConsoleOutput, Origin, SessionId, Terminals};
+use crate::CoreError;
+use crate::blocking::blocking;
+use crate::terminals::{OpenConsole, Origin, SessionId, Terminals};
 
 #[derive(Debug, Clone)]
 pub struct LocalSessionOpen {
@@ -49,28 +50,23 @@ impl Action for LocalSessionOpen {
             risk: context.risk(),
         };
 
-        let terminal = self
+        let session = self
             .terminals
             .start(id, origin, opened, size)
             .ok_or_else(|| ActionError::failed("the core is stopping, so no session was opened"))?;
-        let attached = terminal.attach(&link).await;
+        let attached = session.attach(&link).await;
 
-        close_when_revoked(context, terminal);
+        close_when_revoked(context, session);
 
-        Ok(AttachedSession::new(id, &attached))
+        Ok(attached)
     }
 }
 
-async fn open_pty(
-    term: String,
-    size: TerminalSize,
-) -> Result<(Console, ConsoleOutput), ActionError> {
-    let opened = task::spawn_blocking(move || Pty::open(&term, size.columns, size.rows))
-        .await
-        .map_err(|_| ActionError::failed("the shell could not be started"))?;
+async fn open_pty(term: String, size: TerminalSize) -> Result<OpenConsole, ActionError> {
+    let (pty, output) = blocking::<_, ActionError>(move || {
+        Pty::open(&term, size.columns, size.rows).map_err(CoreError::PtyStart)
+    })
+    .await?;
 
-    let (pty, output) = opened
-        .map_err(|error| ActionError::failed(format!("could not start the shell: {error}")))?;
-
-    Ok((Console::Local(pty), ConsoleOutput::Local(output)))
+    Ok(OpenConsole::new(pty, output))
 }

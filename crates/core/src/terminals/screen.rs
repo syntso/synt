@@ -1,10 +1,17 @@
+mod attachment;
+mod replay;
+
+pub(in crate::terminals) use attachment::Attachment;
+
+use replay::Replay;
+
 use std::time::Instant;
 
 use bytes::Bytes;
-use synt_proto::{Frame, Message, Notice, Notification, StreamId};
+use synt_proto::{Frame, Notice, StreamId};
 use synt_ssh::TerminalSize;
 
-use super::{Attachment, Block, Blocks, Ending, Replay, Scanner, SessionId};
+use super::{Block, BlockHistory, Ending, Scanner, SessionId};
 
 const REPLAY_LIMIT: usize = 1024 * 1024;
 const REPLAY_CHUNK: usize = 32 * 1024;
@@ -13,7 +20,7 @@ pub(super) struct Screen {
     session: SessionId,
     replay: Replay,
     scanner: Scanner,
-    blocks: Blocks,
+    blocks: BlockHistory,
     attachments: Vec<Attachment>,
     size: TerminalSize,
     ending: Option<Ending>,
@@ -25,7 +32,7 @@ impl Screen {
             session,
             replay: Replay::new(REPLAY_LIMIT),
             scanner: Scanner::default(),
-            blocks: Blocks::default(),
+            blocks: BlockHistory::default(),
             attachments: Vec::new(),
             size,
             ending: None,
@@ -72,7 +79,7 @@ impl Screen {
         for block in finished {
             let session = self.session;
             self.send_all(|stream| {
-                message_frame(block.notice(session, stream).to_notification().ok()?)
+                Attachment::frame(block.notice(session, stream).to_notification().ok()?)
             })
             .await;
         }
@@ -95,7 +102,7 @@ impl Screen {
         }
 
         match &self.ending {
-            Some(ending) => announce(&attachment, ending).await,
+            Some(ending) => attachment.announce(ending).await,
             None => self.attachments.push(attachment),
         }
 
@@ -104,7 +111,7 @@ impl Screen {
 
     pub(super) async fn end(&mut self, ending: Ending) {
         for attachment in self.attachments.drain(..) {
-            announce(&attachment, &ending).await;
+            attachment.announce(&ending).await;
         }
 
         self.ending = Some(ending);
@@ -136,23 +143,4 @@ impl Screen {
 
         self.attachments = kept;
     }
-}
-
-async fn announce(attachment: &Attachment, ending: &Ending) {
-    let Some(frame) = ending
-        .notice(attachment.stream())
-        .to_notification()
-        .ok()
-        .and_then(message_frame)
-    else {
-        return;
-    };
-
-    attachment.send(frame).await;
-}
-
-fn message_frame(notification: Notification) -> Option<Frame> {
-    let body = Message::from(notification).encode().ok()?;
-
-    Some(Frame::message(body))
 }

@@ -22,7 +22,7 @@ impl Scanner {
 #[cfg(test)]
 mod tests {
     use super::Scanner;
-    use crate::terminal::blocks::Mark;
+    use crate::terminals::block::Mark;
 
     #[test]
     fn marks_are_found_with_their_place_in_the_stream() {

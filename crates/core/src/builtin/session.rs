@@ -1,5 +1,4 @@
 mod attach;
-mod attached;
 mod blocks;
 mod checks;
 mod close;
@@ -13,7 +12,7 @@ mod revocation;
 mod size;
 
 pub use attach::SessionAttach;
-pub(crate) use attached::AttachedSession;
+pub(crate) use crate::terminals::AttachedSession;
 pub use blocks::SessionBlocks;
 pub use close::SessionClose;
 pub(crate) use info::SessionInfo;

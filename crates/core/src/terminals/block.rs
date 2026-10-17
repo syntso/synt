@@ -1,7 +1,26 @@
+mod collector;
+mod format_character;
+mod history;
+mod mark;
+mod open;
+mod percent;
+mod scanner;
+mod sighting;
+
+pub(crate) use history::BlockHistory;
+pub(crate) use scanner::Scanner;
+
+use collector::Collector;
+use format_character::is_format_character;
+use mark::Mark;
+use open::OpenBlock;
+use percent::percent_decode;
+use sighting::Sighting;
+
 use serde::Serialize;
 use synt_proto::{SessionBlock, StreamId};
 
-use crate::terminal::SessionId;
+use super::SessionId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Block {
