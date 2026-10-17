@@ -60,28 +60,10 @@ impl Watch {
     }
 
     async fn relist(&mut self) -> Result<(), KubeError> {
-        let mut continue_token: Option<String> = None;
+        let mut continue_token = self.list_page(None).await?;
 
-        loop {
-            let mut params = self.list_params();
-            if let Some(token) = &continue_token {
-                params = params.continue_token(token);
-            }
-
-            let page = self.api.list(&params).await?;
-            self.version.clone_from(&page.metadata.resource_version);
-            continue_token = page.metadata.continue_.filter(|token| !token.is_empty());
-
-            for object in page.items {
-                self.pending.push_back(WatchNotice::about(
-                    NoticeKind::Existing,
-                    self.kind.tidy(object),
-                ));
-            }
-
-            if continue_token.is_none() {
-                break;
-            }
+        while let Some(token) = continue_token {
+            continue_token = self.list_page(Some(&token)).await?;
         }
 
         self.pending
@@ -89,6 +71,23 @@ impl Watch {
         self.events = None;
 
         Ok(())
+    }
+
+    async fn list_page(&mut self, token: Option<&str>) -> Result<Option<String>, KubeError> {
+        let params = match token {
+            Some(token) => self.list_params().continue_token(token),
+            None => self.list_params(),
+        };
+
+        let page = self.api.list(&params).await?;
+        self.version.clone_from(&page.metadata.resource_version);
+
+        for object in page.items {
+            let notice = WatchNotice::about(NoticeKind::Existing, self.kind.tidy(object));
+            self.pending.push_back(notice);
+        }
+
+        Ok(page.metadata.continue_.filter(|token| !token.is_empty()))
     }
 
     async fn open(&mut self) -> Result<Events, KubeError> {

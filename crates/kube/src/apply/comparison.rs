@@ -30,22 +30,7 @@ impl Comparison {
 
     pub(crate) fn hide_secret_values(&mut self) {
         for field in SECRET_FIELDS {
-            let old = self
-                .before
-                .as_mut()
-                .and_then(|before| take_map(before, field));
-            let new = take_map(&mut self.after, field);
-
-            if let (Some(before), Some(old)) = (self.before.as_mut(), &old) {
-                put_map(before, field, hidden(old, new.as_ref(), HIDDEN_BEFORE));
-            }
-            if let Some(new) = &new {
-                put_map(
-                    &mut self.after,
-                    field,
-                    hidden(new, old.as_ref(), HIDDEN_AFTER),
-                );
-            }
+            self.hide_values_of(field);
         }
     }
 
@@ -68,6 +53,25 @@ impl Comparison {
             .context_radius(CONTEXT_LINES)
             .header(old_label, label)
             .to_string()
+    }
+    fn hide_values_of(&mut self, field: &str) {
+        let old = self
+            .before
+            .as_mut()
+            .and_then(|before| take_map(before, field));
+        let new = take_map(&mut self.after, field);
+
+        if let (Some(before), Some(old)) = (self.before.as_mut(), &old) {
+            put_map(before, field, hidden(old, new.as_ref(), HIDDEN_BEFORE));
+        }
+
+        if let Some(new) = &new {
+            put_map(
+                &mut self.after,
+                field,
+                hidden(new, old.as_ref(), HIDDEN_AFTER),
+            );
+        }
     }
 }
 

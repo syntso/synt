@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use futures_util::future;
 use k8s_openapi::api::core::v1::Pod;
-use kube::api::AttachParams;
+use kube::api::{AttachParams, AttachedProcess};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio::time;
@@ -49,14 +49,7 @@ impl ExecRequest {
     }
 
     async fn capture(&self, cluster: &Cluster, limit: usize) -> Result<Captured, KubeError> {
-        let pods = cluster.namespaced::<Pod>(self.namespace.as_ref().map(Namespace::as_str));
-        let mut process = pods
-            .exec(
-                self.pod.as_str(),
-                self.command.words().to_vec(),
-                &self.params(),
-            )
-            .await?;
+        let mut process = self.attach(cluster).await?;
         let status = process.take_status();
 
         let (stdout, stderr) = future::join(
@@ -79,6 +72,15 @@ impl ExecRequest {
             stdout,
             stderr,
         })
+    }
+
+    async fn attach(&self, cluster: &Cluster) -> Result<AttachedProcess, KubeError> {
+        let pods = cluster.namespaced::<Pod>(self.namespace.as_ref().map(Namespace::as_str));
+        let command = self.command.words().to_vec();
+
+        Ok(pods
+            .exec(self.pod.as_str(), command, &self.params())
+            .await?)
     }
 
     fn params(&self) -> AttachParams {

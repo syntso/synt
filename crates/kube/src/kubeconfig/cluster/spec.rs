@@ -1,4 +1,4 @@
-use kube::config::Kubeconfig;
+use kube::config::{Context, Kubeconfig};
 
 use super::ClusterPlace;
 use crate::kubeconfig::servers::Servers;
@@ -42,20 +42,7 @@ impl ClusterSpec {
 
     pub(crate) fn place_in(&self, kubeconfig: &Kubeconfig) -> Result<ClusterPlace, KubeError> {
         let context = self.context_name(kubeconfig)?;
-
-        let named = kubeconfig
-            .contexts
-            .iter()
-            .find(|named| named.name == context)
-            .ok_or_else(|| KubeError::UnknownContext {
-                context: context.clone(),
-                place: self.kubeconfig.to_string(),
-            })?;
-
-        let details = named.context.as_ref().ok_or_else(|| {
-            self.kubeconfig
-                .broken(format!("context {context} is empty"))
-        })?;
+        let details = self.details_of(kubeconfig, &context)?;
 
         let server = kubeconfig.server_of(&details.cluster).ok_or_else(|| {
             self.kubeconfig.broken(format!(
@@ -75,6 +62,26 @@ impl ClusterSpec {
             context,
             server,
             namespace,
+        })
+    }
+
+    fn details_of<'config>(
+        &self,
+        kubeconfig: &'config Kubeconfig,
+        context: &str,
+    ) -> Result<&'config Context, KubeError> {
+        let named = kubeconfig
+            .contexts
+            .iter()
+            .find(|named| named.name == context)
+            .ok_or_else(|| KubeError::UnknownContext {
+                context: context.to_owned(),
+                place: self.kubeconfig.to_string(),
+            })?;
+
+        named.context.as_ref().ok_or_else(|| {
+            self.kubeconfig
+                .broken(format!("context {context} is empty"))
         })
     }
 
