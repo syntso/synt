@@ -1,7 +1,7 @@
 use kube::config::{Kubeconfig, NamedContext};
 use serde::Serialize;
 
-use super::servers::Servers;
+use crate::kubeconfig::servers::Servers;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ContextInfo {
