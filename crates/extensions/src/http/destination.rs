@@ -2,6 +2,7 @@ use std::net::Ipv4Addr;
 
 use ureq::http::Uri;
 
+use crate::error::HttpError;
 use crate::manifest::Capabilities;
 
 const HTTPS_PORT: u16 = 443;
@@ -10,51 +11,47 @@ const LOCALHOST: &str = "localhost";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Destination {
-    pub(crate) secure: bool,
-    pub(crate) host: String,
-    pub(crate) port: u16,
+    secure: bool,
+    host: String,
+    port: u16,
 }
 
 impl Destination {
-    pub(crate) fn parse(url: &str) -> Result<Self, String> {
-        let uri: Uri = url
-            .parse()
-            .map_err(|error| format!("{url:?} is not a URL: {error}"))?;
+    pub(crate) fn parse(url: &str) -> Result<Self, HttpError> {
+        let uri: Uri = url.parse().map_err(|source| HttpError::NotUrl {
+            url: url.to_owned(),
+            source,
+        })?;
 
         let secure = match uri.scheme_str() {
             Some("https") => true,
             Some("http") => false,
-            _ => return Err(format!("{url:?} must start with https:// or http://")),
+            _ => return Err(HttpError::Scheme(url.to_owned())),
         };
 
         let host = uri
             .host()
             .filter(|host| !host.is_empty() && !host.starts_with('['))
-            .ok_or_else(|| format!("{url:?} names no host this core may reach"))?
+            .ok_or_else(|| HttpError::NoHost(url.to_owned()))?
             .to_ascii_lowercase();
 
         let has_user = uri
             .authority()
             .is_some_and(|authority| authority.as_str().contains('@'));
         if has_user {
-            return Err(format!(
-                "{url:?} carries credentials; attach a secret instead"
-            ));
+            return Err(HttpError::Credentials(url.to_owned()));
         }
 
-        let port = uri.port_u16().unwrap_or(default_port(secure));
+        let port = uri.port_u16().unwrap_or(Self::port_for(secure));
 
         Ok(Self { secure, host, port })
     }
 
-    pub(crate) fn listed_in(url: &str, capabilities: &Capabilities) -> Result<Self, String> {
+    pub(crate) fn listed_in(url: &str, capabilities: &Capabilities) -> Result<Self, HttpError> {
         let destination = Self::parse(url)?;
 
         if !destination.is_listed_in(capabilities) {
-            return Err(format!(
-                "{} is not listed in capabilities.http",
-                destination.listed()
-            ));
+            return Err(HttpError::NotListed(destination.listed()));
         }
 
         Ok(destination)
@@ -79,7 +76,11 @@ impl Destination {
     }
 
     fn default_port(&self) -> bool {
-        self.port == default_port(self.secure)
+        self.port == Self::port_for(self.secure)
+    }
+
+    fn port_for(secure: bool) -> u16 {
+        if secure { HTTPS_PORT } else { HTTP_PORT }
     }
 
     fn is_loopback(&self) -> bool {
@@ -91,24 +92,19 @@ impl Destination {
     }
 }
 
-fn default_port(secure: bool) -> u16 {
-    if secure { HTTPS_PORT } else { HTTP_PORT }
-}
-
 #[cfg(test)]
 mod tests {
     use super::Destination;
     use crate::manifest::Capabilities;
 
     fn capabilities() -> Capabilities {
-        Capabilities {
-            http: vec![
-                "grafana.example.com".to_owned(),
-                "127.0.0.1:3000".to_owned(),
-            ],
-            secrets: [("token".to_owned(), vec!["grafana.example.com".to_owned()])].into(),
-            ..Capabilities::default()
-        }
+        toml::from_str(
+            r#"
+            http = ["grafana.example.com", "127.0.0.1:3000"]
+            secrets = { token = ["grafana.example.com"] }
+            "#,
+        )
+        .unwrap()
     }
 
     #[test]

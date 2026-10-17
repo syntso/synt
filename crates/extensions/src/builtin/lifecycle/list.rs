@@ -3,7 +3,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::ExtensionInfo;
 use crate::Extensions;
-use crate::builtin::blocking::blocking;
+use crate::blocking::Blocking;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionList {
@@ -31,6 +31,6 @@ impl Action for ExtensionList {
     async fn run(&self, _context: &Context, (): ()) -> Result<Vec<ExtensionInfo>, ActionError> {
         let extensions = self.extensions.clone();
 
-        blocking(move || extensions.list()).await
+        Blocking::run(move || extensions.list()).await
     }
 }

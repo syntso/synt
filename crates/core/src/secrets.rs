@@ -6,6 +6,7 @@ pub use info::SecretInfo;
 pub use name::{SecretItem, SecretName};
 pub(crate) use table::SecretTable;
 
+use std::error::Error;
 use std::str;
 use std::sync::Arc;
 
@@ -131,10 +132,14 @@ impl Secrets {
 }
 
 impl SecretSource for Secrets {
-    fn reveal(&self, name: &str, extension: &str) -> Result<Option<Zeroizing<Vec<u8>>>, String> {
-        SecretName::parse(name)
-            .and_then(|name| self.reveal_to(&name, extension))
-            .map_err(|error| error.to_string())
+    fn reveal(
+        &self,
+        name: &str,
+        extension: &str,
+    ) -> Result<Option<Zeroizing<Vec<u8>>>, Box<dyn Error + Send + Sync>> {
+        let name = SecretName::parse(name)?;
+
+        Ok(self.reveal_to(&name, extension)?)
     }
 }
 
@@ -188,7 +193,10 @@ mod tests {
         secrets
             .read_text_for(&name, "the database postgres db:5432")
             .unwrap();
-        let refused = secrets.reveal("grafana/token", "grafana").unwrap_err();
+        let refused = secrets
+            .reveal("grafana/token", "grafana")
+            .unwrap_err()
+            .to_string();
 
         assert!(
             refused.contains("kept for the database postgres db:5432"),

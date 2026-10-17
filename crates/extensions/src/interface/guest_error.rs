@@ -1,44 +1,52 @@
-use std::fmt::{self, Display, Formatter};
 use std::io;
 
 use synt_actions::ActionError;
+use thiserror::Error;
 
 use crate::ExtensionError;
-use crate::call::CallFailure;
+use crate::call::{CallFailure, FailureCode};
+use crate::error::HttpError;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct GuestError {
-    pub(crate) code: String,
-    pub(crate) message: String,
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("{code}: {message}")]
+pub struct GuestError {
+    code: FailureCode,
+    message: String,
 }
 
 impl GuestError {
-    pub(crate) fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
+    pub(crate) fn new(code: FailureCode, message: impl Into<String>) -> Self {
         Self {
-            code: code.into(),
+            code,
             message: message.into(),
         }
     }
 
     pub(crate) fn failed(message: impl Into<String>) -> Self {
-        Self::new("failed", message)
+        Self::new(FailureCode::Failed, message)
     }
 
     pub(crate) fn not_allowed(message: impl Into<String>) -> Self {
-        Self::new("not_allowed", message)
+        Self::new(FailureCode::NotAllowed, message)
+    }
+
+    pub(crate) fn missing_capability(extension: &str, missing: &str) -> Self {
+        Self::not_allowed(format!("{extension} has no {missing} in its capabilities"))
     }
 
     pub(crate) fn unsupported(entry: &str) -> Self {
         Self::new(
-            "unsupported",
+            FailureCode::Unsupported,
             format!("extensions for api 0.1 have no {entry}"),
         )
     }
-}
 
-impl Display for GuestError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}: {}", self.code, self.message)
+    pub(crate) fn code(&self) -> &FailureCode {
+        &self.code
+    }
+
+    pub(crate) fn message(&self) -> &str {
+        &self.message
     }
 }
 
@@ -50,6 +58,15 @@ impl From<io::Error> for GuestError {
 
 impl From<ExtensionError> for GuestError {
     fn from(error: ExtensionError) -> Self {
+        match error {
+            ExtensionError::Guest(error) => error,
+            other => Self::failed(other.to_string()),
+        }
+    }
+}
+
+impl From<HttpError> for GuestError {
+    fn from(error: HttpError) -> Self {
         Self::failed(error.to_string())
     }
 }
@@ -62,6 +79,6 @@ impl From<GuestError> for ActionError {
 
 impl From<CallFailure> for GuestError {
     fn from(failure: CallFailure) -> Self {
-        Self::new(failure.code, failure.message)
+        Self::new(failure.code().clone(), failure.message())
     }
 }

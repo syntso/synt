@@ -6,7 +6,7 @@ use synt_platform::{read_plain_file, replace_file};
 
 use super::path::DocumentPath;
 use super::{DocumentInfo, ProjectFolder};
-use crate::digest::sha256;
+use crate::call::FailureCode;
 use crate::interface::GuestError;
 
 const FOLDER: &str = "extensions";
@@ -37,11 +37,11 @@ impl DocumentPlace {
     }
 
     pub(super) fn root(project: &ProjectFolder, extension: &str) -> PathBuf {
-        project.path.join(FOLDER).join(extension)
+        project.path().join(FOLDER).join(extension)
     }
 
     pub(super) fn project_id(&self) -> &str {
-        &self.project.id
+        self.project.id()
     }
 
     pub(super) fn path(&self) -> &str {
@@ -57,13 +57,12 @@ impl DocumentPlace {
     }
 
     pub(super) fn info(&self, body: &[u8]) -> DocumentInfo {
-        DocumentInfo {
-            project: self.project.id.clone(),
-            path: self.path.as_str().to_owned(),
-            kind: self.kind.clone(),
-            revision: sha256(body),
-            size: u64::try_from(body.len()).unwrap_or(u64::MAX),
-        }
+        DocumentInfo::new(
+            self.project.id().to_owned(),
+            self.path.as_str().to_owned(),
+            self.kind.clone(),
+            body,
+        )
     }
 
     pub(super) fn read(&self) -> Result<Option<Vec<u8>>, GuestError> {
@@ -97,7 +96,7 @@ impl DocumentPlace {
 
     pub(super) fn not_found(&self) -> GuestError {
         GuestError::new(
-            "not_found",
+            FailureCode::NotFound,
             format!("there is no document {}", self.path.as_str()),
         )
     }
@@ -112,18 +111,18 @@ impl DocumentPlace {
     fn check_folders(&self) -> io::Result<()> {
         self.folders()
             .iter()
-            .try_for_each(|folder| check_plain(folder))
+            .try_for_each(|folder| Self::check_plain(folder))
     }
 
     fn prepare_folders(&self) -> io::Result<()> {
         self.folders()
             .iter()
-            .try_for_each(|folder| create_plain(folder))
+            .try_for_each(|folder| Self::create_plain(folder))
     }
 
     fn folders(&self) -> Vec<PathBuf> {
         let mut current = Self::root(&self.project, &self.extension);
-        let mut folders = vec![self.project.path.join(FOLDER), current.clone()];
+        let mut folders = vec![self.project.path().join(FOLDER), current.clone()];
 
         let segments: Vec<&str> = self.path.segments().collect();
         let (_, inner) = segments.split_last().unwrap_or((&"", &[]));
@@ -135,25 +134,25 @@ impl DocumentPlace {
 
         folders
     }
-}
 
-fn check_plain(folder: &Path) -> io::Result<()> {
-    if fs::symlink_metadata(folder)?.is_dir() {
-        return Ok(());
+    fn check_plain(folder: &Path) -> io::Result<()> {
+        if fs::symlink_metadata(folder)?.is_dir() {
+            return Ok(());
+        }
+
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "{} must be a plain folder, not a link or a file",
+                folder.display()
+            ),
+        ))
     }
 
-    Err(io::Error::new(
-        io::ErrorKind::InvalidInput,
-        format!(
-            "{} must be a plain folder, not a link or a file",
-            folder.display()
-        ),
-    ))
-}
-
-fn create_plain(folder: &Path) -> io::Result<()> {
-    match check_plain(folder) {
-        Err(error) if error.kind() == io::ErrorKind::NotFound => fs::create_dir(folder),
-        checked => checked,
+    fn create_plain(folder: &Path) -> io::Result<()> {
+        match Self::check_plain(folder) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => fs::create_dir(folder),
+            checked => checked,
+        }
     }
 }

@@ -1,7 +1,7 @@
-use crate::documents::{Document, DocumentInfo, Written};
+use crate::documents::{DocumentInfo, Opened, Written};
+use crate::files::Picked;
 use crate::http::{HttpRequest, HttpResponse};
 use crate::interface::{GuestError, Level};
-use crate::picked::Picked;
 
 pub(crate) trait Imports: Send {
     fn call(
@@ -23,7 +23,7 @@ pub(crate) trait Imports: Send {
 
     fn documents(&mut self, project: String) -> Result<Vec<DocumentInfo>, GuestError>;
 
-    fn read_document(&mut self, project: String, path: String) -> Result<Document, GuestError>;
+    fn read_document(&mut self, project: String, path: String) -> Result<Opened, GuestError>;
 
     fn write_document(
         &mut self,

@@ -3,9 +3,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::check::SettingsCheck;
 use super::values::SettingsValues;
-use crate::builtin::blocking::blocking;
+use crate::blocking::Blocking;
 use crate::{ExtensionError, Extensions};
 
 #[derive(Clone)]
@@ -16,8 +15,8 @@ pub(crate) struct ExtensionSettingsSet {
 #[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SetParams {
-    pub extension: String,
-    pub values: Value,
+    extension: String,
+    values: Value,
 }
 
 impl ExtensionSettingsSet {
@@ -26,17 +25,15 @@ impl ExtensionSettingsSet {
     }
 
     fn save(&self, params: &SetParams) -> Result<SettingsValues, ExtensionError> {
-        let SettingsValues { schema, .. } =
-            SettingsValues::current(&self.extensions, &params.extension)?;
+        let current = SettingsValues::current(&self.extensions, &params.extension)?;
 
-        SettingsCheck::new(&schema)
-            .check(&params.values)
-            .map_err(ExtensionError::Refused)?;
+        current.schema().check(&params.values)?;
 
         self.extensions
             .services()
-            .shelf
-            .put_settings(&params.extension, &params.values)?;
+            .shelf()
+            .settings()
+            .put(&params.extension, &params.values)?;
 
         SettingsValues::current(&self.extensions, &params.extension)
     }
@@ -52,14 +49,17 @@ impl Action for ExtensionSettingsSet {
     type Output = SettingsValues;
 
     fn recorded_params(&self, params: &Value) -> Value {
-        json!({
-            "extension": params.get("extension"),
-            "keys": keys(params.get("values")),
-        })
+        let keys: Vec<&String> = params
+            .get("values")
+            .and_then(Value::as_object)
+            .map(|values| values.keys().collect())
+            .unwrap_or_default();
+
+        json!({ "extension": params.get("extension"), "keys": keys })
     }
 
     fn summary(&self, output: &SettingsValues) -> Value {
-        json!({ "extension": output.extension, "keys": keys(Some(&output.values)) })
+        json!({ "extension": output.extension(), "keys": output.keys() })
     }
 
     async fn run(
@@ -69,13 +69,6 @@ impl Action for ExtensionSettingsSet {
     ) -> Result<SettingsValues, ActionError> {
         let action = self.clone();
 
-        blocking(move || action.save(&params)).await
+        Blocking::run(move || action.save(&params)).await
     }
-}
-
-fn keys(values: Option<&Value>) -> Vec<&String> {
-    values
-        .and_then(Value::as_object)
-        .map(|values| values.keys().collect())
-        .unwrap_or_default()
 }

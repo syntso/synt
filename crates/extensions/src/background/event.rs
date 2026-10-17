@@ -5,9 +5,9 @@ use crate::manifest::EventTopic;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtensionEvent {
-    pub topic: EventTopic,
-    pub payload: Value,
-    pub actor: Option<Actor>,
+    topic: EventTopic,
+    payload: Value,
+    actor: Option<Actor>,
 }
 
 impl ExtensionEvent {
@@ -20,9 +20,23 @@ impl ExtensionEvent {
     }
 
     #[must_use]
-    pub fn by(mut self, actor: Actor) -> Self {
-        self.actor = Some(actor);
-        self
+    pub fn by(self, actor: Actor) -> Self {
+        Self {
+            actor: Some(actor),
+            ..self
+        }
+    }
+
+    pub fn topic(&self) -> EventTopic {
+        self.topic
+    }
+
+    pub fn payload(&self) -> &Value {
+        &self.payload
+    }
+
+    pub fn actor(&self) -> Option<&Actor> {
+        self.actor.as_ref()
     }
 
     pub(crate) fn caused_by_an_extension(&self) -> bool {

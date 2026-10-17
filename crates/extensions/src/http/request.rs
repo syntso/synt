@@ -7,8 +7,10 @@ use ureq::http::request::Builder;
 use ureq::http::{HeaderName, HeaderValue, Method, Request};
 
 use super::{Header, Revealed, SecretHeader};
+use crate::error::HttpError;
 
 const METHODS: [&str; 7] = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+const READING_METHODS: [&str; 3] = ["GET", "HEAD", "OPTIONS"];
 const RESERVED_HEADERS: [&str; 6] = [
     "host",
     "content-length",
@@ -24,20 +26,20 @@ const LONGEST_TIMEOUT_MS: u32 = 60_000;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HttpRequest {
-    pub(crate) method: String,
-    pub(crate) url: String,
+    method: String,
+    url: String,
 
     #[serde(default)]
-    pub(crate) headers: Vec<Header>,
+    headers: Vec<Header>,
 
     #[serde(default)]
-    pub(crate) secrets: Vec<SecretHeader>,
+    secrets: Vec<SecretHeader>,
 
     #[serde(default)]
-    pub(crate) body: Option<String>,
+    body: Option<String>,
 
     #[serde(default)]
-    pub(crate) timeout_ms: Option<u32>,
+    timeout_ms: Option<u32>,
 }
 
 impl HttpRequest {
@@ -53,121 +55,151 @@ impl HttpRequest {
     }
 
     #[must_use]
-    pub(crate) fn body_bytes(mut self, body: Option<&[u8]>) -> Self {
-        self.body = body.map(|bytes| BASE64.encode(bytes));
-        self
+    pub(crate) fn with_headers(self, headers: Vec<Header>, secrets: Vec<SecretHeader>) -> Self {
+        Self {
+            headers,
+            secrets,
+            ..self
+        }
     }
 
-    pub(crate) fn checked_method(&self) -> Result<Method, String> {
+    #[must_use]
+    pub(crate) fn with_body(self, body: Option<&[u8]>) -> Self {
+        Self {
+            body: body.map(|bytes| BASE64.encode(bytes)),
+            ..self
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn with_timeout_ms(self, timeout_ms: Option<u32>) -> Self {
+        Self { timeout_ms, ..self }
+    }
+
+    pub(crate) fn url(&self) -> &str {
+        &self.url
+    }
+
+    pub(crate) fn secrets(&self) -> &[SecretHeader] {
+        &self.secrets
+    }
+
+    pub(crate) fn only_reads(&self) -> bool {
+        let method = self.method.to_ascii_uppercase();
+
+        READING_METHODS.contains(&method.as_str())
+    }
+
+    pub(crate) fn checked_method(&self) -> Result<Method, HttpError> {
         let upper = self.method.to_ascii_uppercase();
+        let refused = || HttpError::Method {
+            method: self.method.clone(),
+            allowed: METHODS.join(", "),
+        };
 
         if !METHODS.contains(&upper.as_str()) {
-            return Err(format!(
-                "{} is not one of {}",
-                self.method,
-                METHODS.join(", ")
-            ));
+            return Err(refused());
         }
 
-        Method::from_bytes(upper.as_bytes()).map_err(|error| error.to_string())
+        Method::from_bytes(upper.as_bytes()).map_err(|_| refused())
     }
 
-    pub(crate) fn check_headers(&self) -> Result<(), String> {
+    pub(crate) fn check_headers(&self) -> Result<(), HttpError> {
         if self.headers.len() + self.secrets.len() > MOST_HEADERS {
-            return Err(format!("a request carries at most {MOST_HEADERS} headers"));
+            return Err(HttpError::TooManyHeaders(MOST_HEADERS));
         }
 
         self.check_reserved()?;
         self.check_secret_clash()
     }
 
-    pub(crate) fn timeout(&self) -> Result<Duration, String> {
+    pub(crate) fn timeout(&self) -> Result<Duration, HttpError> {
         match self.timeout_ms {
             None => Ok(DEFAULT_TIMEOUT),
             Some(milliseconds) if (1..=LONGEST_TIMEOUT_MS).contains(&milliseconds) => {
                 Ok(Duration::from_millis(u64::from(milliseconds)))
             }
-            Some(milliseconds) => Err(format!(
-                "timeout_ms is 1 to {LONGEST_TIMEOUT_MS}, not {milliseconds}"
-            )),
+            Some(asked) => Err(HttpError::Timeout {
+                longest: LONGEST_TIMEOUT_MS,
+                asked,
+            }),
         }
     }
 
-    pub(crate) fn decoded_body(&self) -> Result<Option<Vec<u8>>, String> {
+    pub(crate) fn decoded_body(&self) -> Result<Option<Vec<u8>>, HttpError> {
         self.body
             .as_deref()
             .map(|body| {
                 BASE64
                     .decode(body.as_bytes())
-                    .map_err(|error| format!("the body is not base64: {error}"))
+                    .map_err(HttpError::BodyNotBase64)
             })
             .transpose()
     }
 
-    pub(crate) fn builder(&self, method: Method, revealed: &[Revealed]) -> Result<Builder, String> {
+    pub(crate) fn builder(
+        &self,
+        method: Method,
+        revealed: &[Revealed],
+    ) -> Result<Builder, HttpError> {
         let mut builder = Request::builder().method(method).uri(&self.url);
 
         for header in &self.headers {
-            let name = header_name(&header.name)?;
-            let value = HeaderValue::from_str(&header.value).map_err(|_| {
-                format!("the {} header has a value that cannot be sent", header.name)
-            })?;
+            let value = HeaderValue::from_str(header.value())
+                .map_err(|_| HttpError::HeaderValue(header.name().to_owned()))?;
 
-            builder = builder.header(name, value);
+            builder = builder.header(Self::header_name(header.name())?, value);
         }
 
         for secret in revealed {
             let text = secret.header_value()?;
             let mut value = HeaderValue::from_str(&text)
-                .map_err(|_| format!("the {} header cannot carry this secret", secret.header()))?;
-            value.set_sensitive(true);
+                .map_err(|_| HttpError::SecretHeaderValue(secret.header().to_owned()))?;
 
-            builder = builder.header(header_name(secret.header())?, value);
+            value.set_sensitive(true);
+            builder = builder.header(Self::header_name(secret.header())?, value);
         }
 
         Ok(builder)
     }
 
-    fn check_reserved(&self) -> Result<(), String> {
+    fn check_reserved(&self) -> Result<(), HttpError> {
         let names = self
             .headers
             .iter()
-            .map(|header| &header.name)
-            .chain(self.secrets.iter().map(|secret| &secret.name));
+            .map(Header::name)
+            .chain(self.secrets.iter().map(SecretHeader::name));
 
         for name in names {
             let lower = name.to_ascii_lowercase();
 
             if RESERVED_HEADERS.contains(&lower.as_str()) {
-                return Err(format!("the core sets the {name} header itself"));
+                return Err(HttpError::ReservedHeader(name.to_owned()));
             }
         }
 
         Ok(())
     }
 
-    fn check_secret_clash(&self) -> Result<(), String> {
+    fn check_secret_clash(&self) -> Result<(), HttpError> {
         let secret_names: Vec<String> = self
             .secrets
             .iter()
-            .map(|secret| secret.name.to_ascii_lowercase())
+            .map(|secret| secret.name().to_ascii_lowercase())
             .collect();
 
         let clash = self
             .headers
             .iter()
-            .find(|header| secret_names.contains(&header.name.to_ascii_lowercase()));
+            .find(|header| secret_names.contains(&header.name().to_ascii_lowercase()));
 
         match clash {
-            Some(header) => Err(format!(
-                "the {} header is filled from a secret and cannot be set as well",
-                header.name
-            )),
+            Some(header) => Err(HttpError::SecretClash(header.name().to_owned())),
             None => Ok(()),
         }
     }
-}
 
-fn header_name(name: &str) -> Result<HeaderName, String> {
-    HeaderName::from_bytes(name.as_bytes()).map_err(|_| format!("{name:?} is not a header name"))
+    fn header_name(name: &str) -> Result<HeaderName, HttpError> {
+        HeaderName::from_bytes(name.as_bytes()).map_err(|_| HttpError::HeaderName(name.to_owned()))
+    }
 }

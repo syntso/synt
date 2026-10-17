@@ -1,7 +1,10 @@
+mod contributed;
+
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::contributed::Contributed;
+use contributed::Contributed;
+
 use crate::Extensions;
 
 #[derive(Clone)]
@@ -32,16 +35,11 @@ impl Action for ExtensionContributions {
             .extensions
             .all_loaded()
             .iter()
-            .map(|loaded| loaded.guest.manifest())
-            .filter(|manifest| !manifest.contributes.is_empty())
-            .map(|manifest| Contributed {
-                extension: manifest.id.clone(),
-                name: manifest.name.clone(),
-                contributes: manifest.contributes.clone(),
-            })
+            .filter_map(|loaded| Contributed::of(loaded.guest().manifest()))
             .collect();
 
-        contributed.sort_by(|left, right| left.extension.cmp(&right.extension));
+        contributed.sort_by(|left, right| left.extension().cmp(right.extension()));
+
         Ok(contributed)
     }
 }

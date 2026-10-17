@@ -1,17 +1,16 @@
 use serde::{Deserialize, Serialize};
 
-use crate::ExtensionError;
-use crate::manifest::checks::check_text;
+use crate::manifest::{ActionName, OneLine};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Command {
-    pub title: String,
-    pub action: String,
+    title: OneLine,
+    action: ActionName,
 }
 
 impl Command {
-    pub(crate) fn check(&self) -> Result<(), ExtensionError> {
-        check_text("command title", &self.title)
+    pub(crate) fn action(&self) -> &ActionName {
+        &self.action
     }
 }

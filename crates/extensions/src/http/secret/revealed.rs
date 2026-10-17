@@ -1,6 +1,7 @@
 use zeroize::Zeroizing;
 
 use super::SecretHeader;
+use crate::error::HttpError;
 
 pub(crate) struct Revealed {
     header: String,
@@ -12,9 +13,9 @@ pub(crate) struct Revealed {
 impl Revealed {
     pub(crate) fn new(attached: &SecretHeader, value: Zeroizing<Vec<u8>>) -> Self {
         Self {
-            header: attached.name.clone(),
-            prefix: attached.prefix.clone(),
-            reference: format!("secret://{}", attached.secret),
+            header: attached.name().to_owned(),
+            prefix: attached.prefix().to_owned(),
+            reference: format!("secret://{}", attached.secret()),
             value,
         }
     }
@@ -23,15 +24,12 @@ impl Revealed {
         &self.header
     }
 
-    pub(crate) fn header_value(&self) -> Result<Zeroizing<String>, String> {
+    pub(crate) fn header_value(&self) -> Result<Zeroizing<String>, HttpError> {
         let text = std::str::from_utf8(&self.value)
-            .map_err(|_| format!("{} is not text and cannot go in a header", self.reference))?;
+            .map_err(|_| HttpError::SecretNotText(self.reference.clone()))?;
 
         if text.is_empty() || text.contains(char::is_control) {
-            return Err(format!(
-                "{} is empty or holds control characters and cannot go in a header",
-                self.reference
-            ));
+            return Err(HttpError::SecretNotHeader(self.reference.clone()));
         }
 
         Ok(Zeroizing::new(format!("{}{text}", self.prefix)))
@@ -47,7 +45,7 @@ impl Revealed {
         let mut scrubbed = Vec::with_capacity(bytes.len());
         let mut rest = bytes;
 
-        while let Some(at) = find(rest, needle) {
+        while let Some(at) = Self::find(rest, needle) {
             scrubbed.extend_from_slice(&rest[..at]);
             scrubbed.extend_from_slice(self.reference.as_bytes());
             rest = &rest[at + needle.len()..];
@@ -60,12 +58,12 @@ impl Revealed {
     pub(crate) fn scrub_text(&self, text: &str) -> String {
         String::from_utf8_lossy(&self.scrub(text.as_bytes())).into_owned()
     }
-}
 
-fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack
-        .windows(needle.len())
-        .position(|window| window == needle)
+    fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+        haystack
+            .windows(needle.len())
+            .position(|window| window == needle)
+    }
 }
 
 #[cfg(test)]
@@ -76,11 +74,11 @@ mod tests {
     use crate::http::SecretHeader;
 
     fn attached(secret: &str) -> SecretHeader {
-        SecretHeader {
-            name: "Authorization".to_owned(),
-            secret: secret.to_owned(),
-            prefix: "Bearer ".to_owned(),
-        }
+        SecretHeader::new(
+            "Authorization".to_owned(),
+            secret.to_owned(),
+            "Bearer ".to_owned(),
+        )
     }
 
     fn token() -> Revealed {

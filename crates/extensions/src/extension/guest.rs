@@ -9,13 +9,12 @@ use wasmtime::Store;
 use super::{ActionSpec, Outside, Services, Visit};
 use crate::ExtensionError;
 use crate::background::{Timers, Wake};
-use crate::interface::GuestError;
+use crate::documents::MergeSides;
+use crate::interface::{GuestError, Reply};
 use crate::manifest::Manifest;
 use crate::runtime::{Compiled, Exports, GuestCall, Runtime, Sandbox};
 
 const MOST_ACTIONS: usize = 64;
-
-pub(crate) type Answer<T> = Result<Result<T, GuestError>, ExtensionError>;
 
 pub(crate) struct Guest {
     manifest: Manifest,
@@ -43,6 +42,10 @@ impl Guest {
         }
     }
 
+    pub(crate) fn id(&self) -> &str {
+        self.manifest.id().as_str()
+    }
+
     pub(crate) fn manifest(&self) -> &Manifest {
         &self.manifest
     }
@@ -61,17 +64,23 @@ impl Guest {
             .is_some_and(|actions| actions.contains(action))
     }
 
+    pub(crate) fn require(&self, granted: bool, missing: &str) -> Result<(), GuestError> {
+        if granted {
+            return Ok(());
+        }
+
+        Err(GuestError::missing_capability(self.id(), missing))
+    }
+
     pub(crate) fn check_contributed_actions(&self) -> Result<(), ExtensionError> {
         let missing = self
             .manifest
-            .contributes
+            .contributes()
             .actions()
             .find(|action| !self.owns_action(action));
 
         match missing {
-            Some(action) => Err(ExtensionError::Component(format!(
-                "the manifest contributes {action}, which the extension does not describe"
-            ))),
+            Some(action) => Err(ExtensionError::Undescribed(action.to_owned())),
             None => Ok(()),
         }
     }
@@ -80,21 +89,18 @@ impl Guest {
         let described = self.enter_alone(|store, exports| exports.describe(store))?;
 
         if described.is_empty() || described.len() > MOST_ACTIONS {
-            return Err(ExtensionError::Component(format!(
-                "an extension adds 1 to {MOST_ACTIONS} actions, this one describes {}",
-                described.len()
-            )));
+            return Err(ExtensionError::ActionCount {
+                most: MOST_ACTIONS,
+                found: described.len(),
+            });
         }
 
         let specs = described
             .iter()
-            .map(|action| ActionSpec::from_described(&self.manifest.id, action))
+            .map(|action| ActionSpec::from_described(self.id(), action))
             .collect::<Result<Vec<_>, _>>()?;
 
-        check_unique(&specs)?;
-
-        let ids = specs.iter().map(|spec| spec.id.as_str().to_owned());
-        let _ = self.actions.set(ids.collect());
+        self.remember_actions(&specs)?;
 
         Ok(specs)
     }
@@ -104,8 +110,10 @@ impl Guest {
         call: &GuestCall,
         context: Context,
         runtime: Handle,
-    ) -> Answer<String> {
-        self.enter_for(context, runtime, |store, exports| exports.run(store, call))
+    ) -> Result<Reply, ExtensionError> {
+        let text = self.enter_for(context, runtime, |store, exports| exports.run(store, call))?;
+
+        Ok(Reply::new(text))
     }
 
     pub(crate) fn render(
@@ -114,11 +122,9 @@ impl Guest {
         call: &GuestCall,
         context: Context,
         runtime: Handle,
-    ) -> Answer<String> {
-        let target = call.target.as_deref();
-
+    ) -> Result<String, ExtensionError> {
         self.enter_for(context, runtime, |store, exports| {
-            exports.render(store, view, target, &call.params)
+            exports.render(store, view, call.target(), call.params())
         })
     }
 
@@ -128,10 +134,12 @@ impl Guest {
         message: &str,
         context: Context,
         runtime: Handle,
-    ) -> Answer<String> {
-        self.enter_for(context, runtime, |store, exports| {
+    ) -> Result<Reply, ExtensionError> {
+        let text = self.enter_for(context, runtime, |store, exports| {
             exports.panel_message(store, panel, message)
-        })
+        })?;
+
+        Ok(Reply::new(text))
     }
 
     pub(crate) fn asset(self: &Arc<Self>, path: &str) -> Result<Option<Vec<u8>>, ExtensionError> {
@@ -141,8 +149,8 @@ impl Guest {
     pub(crate) fn merge(
         self: &Arc<Self>,
         kind: &str,
-        sides: (Option<&[u8]>, &[u8], &[u8]),
-    ) -> Answer<Vec<u8>> {
+        sides: MergeSides<'_>,
+    ) -> Result<Vec<u8>, ExtensionError> {
         self.enter_alone(|store, exports| exports.merge(store, kind, sides))
     }
 
@@ -151,29 +159,37 @@ impl Guest {
         wake: &Wake,
         stop: CancellationToken,
         runtime: Handle,
-    ) -> Answer<()> {
+    ) -> Result<(), ExtensionError> {
         let outside = self.outside(None, runtime)?;
 
         self.enter(Some(outside), stop, |store, exports| match wake {
             Wake::Start => exports.start(store),
-            Wake::Timer(name) => exports.on_timer(store, name),
+            Wake::Timer(name) => exports.on_timer(store, &name.to_string()),
             Wake::Event(event) => {
-                let payload = event.payload.to_string();
-                exports.on_event(store, event.topic.as_str(), &payload)
+                let payload = event.payload().to_string();
+                exports.on_event(store, event.topic().as_str(), &payload)
             }
         })
     }
 
-    fn outside(&self, origin: Option<Context>, runtime: Handle) -> Result<Outside, ExtensionError> {
-        let caller = self.services.caller.get().cloned().ok_or_else(|| {
-            ExtensionError::Refused("the core is not ready to run extensions yet".to_owned())
-        })?;
+    fn remember_actions(&self, specs: &[ActionSpec]) -> Result<(), ExtensionError> {
+        let mut ids = BTreeSet::new();
 
-        Ok(Outside {
-            caller,
-            origin,
-            runtime,
-        })
+        for spec in specs {
+            if !ids.insert(spec.id().as_str().to_owned()) {
+                return Err(ExtensionError::DuplicateAction(spec.id().to_string()));
+            }
+        }
+
+        self.actions
+            .set(ids)
+            .map_err(|_| ExtensionError::DescribedTwice(self.id().to_owned()))
+    }
+
+    fn outside(&self, origin: Option<Context>, runtime: Handle) -> Result<Outside, ExtensionError> {
+        let link = self.services.link().ok_or(ExtensionError::NotConnected)?;
+
+        Ok(Outside::new(Arc::clone(link.caller()), origin, runtime))
     }
 
     fn enter_for<T>(
@@ -201,24 +217,9 @@ impl Guest {
         stop: CancellationToken,
         work: impl FnOnce(&mut Store<Sandbox>, &dyn Exports) -> wasmtime::Result<T>,
     ) -> Result<T, ExtensionError> {
-        let visit = Visit::new(Arc::clone(self), outside);
+        let visit = Visit::new(self, outside);
 
         self.runtime
             .enter(&self.compiled, Box::new(visit), stop, work)
     }
-}
-
-fn check_unique(specs: &[ActionSpec]) -> Result<(), ExtensionError> {
-    let mut seen = BTreeSet::new();
-
-    for spec in specs {
-        if !seen.insert(spec.id.as_str()) {
-            return Err(ExtensionError::Component(format!(
-                "action {} is described twice",
-                spec.id
-            )));
-        }
-    }
-
-    Ok(())
 }

@@ -14,38 +14,42 @@ impl HasData for Streams {
     type Data<'a> = &'a mut ResourceTable;
 }
 
-pub(in crate::runtime) fn add_to_linker(linker: &mut Linker<Sandbox>) -> wasmtime::Result<()> {
-    add_io(linker)?;
-    add_cli(linker)?;
-    add_clock_and_random(linker)
-}
+pub(in crate::runtime) struct Wasi;
 
-fn add_io(linker: &mut Linker<Sandbox>) -> wasmtime::Result<()> {
-    io::error::add_to_linker::<Sandbox, Streams>(linker, table)?;
-    io::poll::add_to_linker::<Sandbox, Streams>(linker, table)?;
-    io::streams::add_to_linker::<Sandbox, Streams>(linker, table)
-}
+impl Wasi {
+    pub(in crate::runtime) fn add_to_linker(linker: &mut Linker<Sandbox>) -> wasmtime::Result<()> {
+        Self::add_io(linker)?;
+        Self::add_cli(linker)?;
+        Self::add_clock_and_random(linker)
+    }
 
-fn add_cli(linker: &mut Linker<Sandbox>) -> wasmtime::Result<()> {
-    cli::environment::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
-    cli::exit::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
-    cli::stdin::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
-    cli::stdout::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
-    cli::stderr::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
-    cli::terminal_input::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
-    cli::terminal_output::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
-    cli::terminal_stdin::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
-    cli::terminal_stdout::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
-    cli::terminal_stderr::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)
-}
+    fn add_io(linker: &mut Linker<Sandbox>) -> wasmtime::Result<()> {
+        io::error::add_to_linker::<Sandbox, Streams>(linker, Self::table)?;
+        io::poll::add_to_linker::<Sandbox, Streams>(linker, Self::table)?;
+        io::streams::add_to_linker::<Sandbox, Streams>(linker, Self::table)
+    }
 
-fn add_clock_and_random(linker: &mut Linker<Sandbox>) -> wasmtime::Result<()> {
-    clocks::monotonic_clock::add_to_linker::<Sandbox, WasiClocks>(linker, Sandbox::clocks)?;
-    random::random::add_to_linker::<Sandbox, WasiRandom>(linker, Sandbox::random)?;
-    random::insecure::add_to_linker::<Sandbox, WasiRandom>(linker, Sandbox::random)?;
-    random::insecure_seed::add_to_linker::<Sandbox, WasiRandom>(linker, Sandbox::random)
-}
+    fn add_cli(linker: &mut Linker<Sandbox>) -> wasmtime::Result<()> {
+        cli::environment::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
+        cli::exit::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
+        cli::stdin::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
+        cli::stdout::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
+        cli::stderr::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
+        cli::terminal_input::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
+        cli::terminal_output::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
+        cli::terminal_stdin::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
+        cli::terminal_stdout::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)?;
+        cli::terminal_stderr::add_to_linker::<Sandbox, WasiCli>(linker, Sandbox::cli)
+    }
 
-fn table(sandbox: &mut Sandbox) -> &mut ResourceTable {
-    sandbox.ctx().table
+    fn add_clock_and_random(linker: &mut Linker<Sandbox>) -> wasmtime::Result<()> {
+        clocks::monotonic_clock::add_to_linker::<Sandbox, WasiClocks>(linker, Sandbox::clocks)?;
+        random::random::add_to_linker::<Sandbox, WasiRandom>(linker, Sandbox::random)?;
+        random::insecure::add_to_linker::<Sandbox, WasiRandom>(linker, Sandbox::random)?;
+        random::insecure_seed::add_to_linker::<Sandbox, WasiRandom>(linker, Sandbox::random)
+    }
+
+    fn table(sandbox: &mut Sandbox) -> &mut ResourceTable {
+        sandbox.ctx().table
+    }
 }

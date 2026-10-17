@@ -1,3 +1,5 @@
+mod local;
+
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
@@ -6,8 +8,10 @@ use synt_journal::ResourceRef;
 
 use super::ExtensionInfo;
 use crate::Extensions;
-use crate::builtin::blocking::blocking;
+use crate::blocking::Blocking;
 use crate::extension::Candidate;
+
+pub(crate) use local::ExtensionInstallLocal;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionInstall {
@@ -16,7 +20,7 @@ pub(crate) struct ExtensionInstall {
 
 #[derive(Deserialize, JsonSchema)]
 pub(crate) struct InstallParams {
-    pub id: String,
+    id: String,
 
     #[serde(skip)]
     #[schemars(skip)]
@@ -64,6 +68,6 @@ impl Action for ExtensionInstall {
             .ok_or_else(|| ActionError::failed("the extension was not checked before install"))?;
         let extensions = self.extensions.clone();
 
-        blocking(move || extensions.install(candidate)).await
+        Blocking::run(move || extensions.install(candidate)).await
     }
 }

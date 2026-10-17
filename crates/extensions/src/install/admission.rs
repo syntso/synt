@@ -1,93 +1,62 @@
-use std::collections::{BTreeMap, BTreeSet};
+mod learned;
+
 use std::sync::OnceLock;
 
 use synt_actions::{Registry, Risk};
 
+use learned::Learned;
+
 use crate::ExtensionError;
-use crate::manifest::{FileAccess, Manifest};
+use crate::manifest::{ExtensionId, Manifest};
 
 const RESERVED: [&str; 2] = ["core", "extension"];
-const OWN_NAMESPACE: &str = "extension.";
 
 #[derive(Default)]
 pub(crate) struct Admission {
-    namespaces: OnceLock<BTreeSet<String>>,
-    core_risks: OnceLock<BTreeMap<String, Risk>>,
+    learned: OnceLock<Learned>,
 }
 
 impl Admission {
     pub(crate) fn learn(&self, registry: &Registry) {
-        let _ = self.namespaces.set(namespaces(registry));
-        let _ = self.core_risks.set(callable(registry));
+        if self.learned.set(Learned::of(registry)).is_err() {
+            eprintln!("synt-core: extensions: the core's actions were learned already");
+        }
     }
 
-    pub(crate) fn check_id(&self, id: &str) -> Result<(), ExtensionError> {
+    pub(crate) fn check_id(&self, id: &ExtensionId) -> Result<(), ExtensionError> {
+        let id = id.as_str();
         let taken = RESERVED.contains(&id)
             || self
-                .namespaces
+                .learned
                 .get()
-                .is_some_and(|namespaces| namespaces.contains(id));
+                .is_some_and(|learned| learned.takes_namespace(id));
 
         if taken {
-            return Err(ExtensionError::Refused(format!(
-                "the id {id} is taken by the core's own actions"
-            )));
+            return Err(ExtensionError::IdTaken(id.to_owned()));
         }
 
         Ok(())
     }
 
     pub(crate) fn ceiling(&self, manifest: &Manifest) -> Result<Risk, ExtensionError> {
-        Ok(self.call_ceiling(manifest)?.max(reach_ceiling(manifest)))
+        let capabilities = manifest.capabilities();
+        let calls = self.call_ceiling(manifest)?;
+
+        Ok(calls.max(capabilities.ceiling()))
     }
 
     fn call_ceiling(&self, manifest: &Manifest) -> Result<Risk, ExtensionError> {
-        let callable = self.core_risks.get();
-
         manifest
-            .capabilities
-            .call
-            .iter()
+            .capabilities()
+            .calls()
             .try_fold(Risk::Read, |ceiling, action| {
-                let risk = callable
-                    .and_then(|callable| callable.get(action))
-                    .ok_or_else(|| {
-                        ExtensionError::Refused(format!(
-                            "capabilities.call names {action}, which is not a core action an \
-                             extension may call"
-                        ))
-                    })?;
+                let risk = self
+                    .learned
+                    .get()
+                    .and_then(|learned| learned.risk_of(action.as_str()))
+                    .ok_or_else(|| ExtensionError::NotCallable(action.to_string()))?;
 
-                Ok(ceiling.max(*risk))
+                Ok(ceiling.max(risk))
             })
     }
-}
-
-fn reach_ceiling(manifest: &Manifest) -> Risk {
-    let capabilities = &manifest.capabilities;
-    let writes_files = capabilities.files == Some(FileAccess::ReadWrite);
-
-    if capabilities.http.is_empty() && !capabilities.documents && !writes_files {
-        return Risk::Read;
-    }
-
-    Risk::Write
-}
-
-fn namespaces(registry: &Registry) -> BTreeSet<String> {
-    registry
-        .ids()
-        .filter_map(|id| id.as_str().split_once('.'))
-        .map(|(namespace, _)| namespace.to_owned())
-        .collect()
-}
-
-fn callable(registry: &Registry) -> BTreeMap<String, Risk> {
-    registry
-        .describe()
-        .into_iter()
-        .filter(|description| !description.person_only)
-        .filter(|description| !description.id.as_str().starts_with(OWN_NAMESPACE))
-        .map(|description| (description.id.as_str().to_owned(), description.risk))
-        .collect()
 }

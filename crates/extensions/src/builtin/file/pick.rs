@@ -1,13 +1,11 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
-use synt_journal::ResourceRef;
 
 use super::entry::FileEntry;
-use crate::builtin::blocking::blocking;
-use crate::manifest::FileAccess;
-use crate::picked::Picked;
+use crate::blocking::Blocking;
+use crate::files::{FileAccess, Picked};
 use crate::{ExtensionError, Extensions};
 
 #[derive(Clone)]
@@ -18,9 +16,9 @@ pub(crate) struct ExtensionFilePick {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PickParams {
-    pub extension: String,
-    pub path: String,
-    pub access: String,
+    extension: String,
+    path: String,
+    access: FileAccess,
 }
 
 impl ExtensionFilePick {
@@ -28,36 +26,26 @@ impl ExtensionFilePick {
         Self { extensions }
     }
 
-    fn pick(&self, params: &PickParams, wanted: FileAccess) -> Result<FileEntry, ExtensionError> {
+    fn pick(&self, params: &PickParams) -> Result<FileEntry, ExtensionError> {
         let loaded = self.extensions.loaded(&params.extension)?;
-        let granted = loaded.guest.manifest().capabilities.files;
+        let granted = loaded.guest().manifest().capabilities().files();
 
-        if !granted.is_some_and(|granted| granted.covers(wanted)) {
-            return Err(ExtensionError::Refused(format!(
-                "{} may not {} files the person picks",
-                params.extension,
-                wanted.as_str()
-            )));
+        if !granted.is_some_and(|granted| granted.covers(params.access)) {
+            return Err(ExtensionError::FilesNotGranted {
+                extension: params.extension.clone(),
+                access: params.access,
+            });
         }
 
-        let picked = Picked::pick(&params.path, wanted)?;
-        self.extensions
-            .services()
-            .shelf
-            .put_pick(&params.extension, &picked)?;
+        let picked = Picked::pick(&params.path, params.access)?;
+        let services = self.extensions.services();
 
-        Ok(FileEntry::new(&params.extension, picked))
-    }
-}
+        services
+            .shelf()
+            .picks()
+            .put(&params.extension, &picked, services.now())?;
 
-impl PickParams {
-    fn access(&self) -> Result<FileAccess, ActionError> {
-        FileAccess::parse(&self.access).ok_or_else(|| {
-            ActionError::InvalidParams(format!(
-                "access is read or read-write, not {:?}",
-                self.access
-            ))
-        })
+        Ok(FileEntry::new(&params.extension, &picked))
     }
 }
 
@@ -70,23 +58,13 @@ impl Action for ExtensionFilePick {
     type Params = PickParams;
     type Output = FileEntry;
 
-    fn check(&self, _target: Option<&ResourceRef>, params: &PickParams) -> Result<(), ActionError> {
-        params.access().map(drop)
-    }
-
     fn summary(&self, output: &FileEntry) -> Value {
-        json!({
-            "extension": output.extension,
-            "handle": output.handle,
-            "name": output.name,
-            "access": output.access,
-        })
+        output.summary()
     }
 
     async fn run(&self, _context: &Context, params: PickParams) -> Result<FileEntry, ActionError> {
-        let wanted = params.access()?;
         let action = self.clone();
 
-        blocking(move || action.pick(&params, wanted)).await
+        Blocking::run(move || action.pick(&params)).await
     }
 }

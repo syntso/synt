@@ -3,14 +3,10 @@ use std::sync::Arc;
 use wasmtime::Store;
 use wasmtime::component::InstancePre;
 
-use super::Exports;
+use super::{Exports, Template};
 use crate::bindings::{v1, v2};
 use crate::manifest::Api;
 use crate::runtime::Sandbox;
-
-pub(super) trait Template: Send + Sync {
-    fn instance(&self, store: &mut Store<Sandbox>) -> wasmtime::Result<Box<dyn Exports>>;
-}
 
 #[derive(Clone)]
 pub(crate) struct Compiled {

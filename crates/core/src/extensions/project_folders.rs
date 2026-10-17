@@ -1,14 +1,13 @@
+use std::error::Error;
+
 use synt_extensions::{ProjectFolder, ProjectFolders};
 
 use crate::projects::Projects;
 
 impl ProjectFolders for Projects {
-    fn folder(&self, project: &str) -> Result<ProjectFolder, String> {
-        let place = self.place(project).map_err(|error| error.to_string())?;
+    fn folder(&self, project: &str) -> Result<ProjectFolder, Box<dyn Error + Send + Sync>> {
+        let place = self.place(project)?;
 
-        Ok(ProjectFolder {
-            id: place.id.to_string(),
-            path: place.path,
-        })
+        Ok(ProjectFolder::new(place.id.to_string(), place.path))
     }
 }

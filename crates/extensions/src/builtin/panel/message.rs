@@ -7,9 +7,8 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
 use crate::Extensions;
-use crate::builtin::guard::refuse_extensions;
-use crate::extension::on_guest_thread;
-use crate::manifest::Panel;
+use crate::blocking::Blocking;
+use crate::builtin::CallingActor;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionPanelMessage {
@@ -19,9 +18,9 @@ pub(crate) struct ExtensionPanelMessage {
 #[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MessageParams {
-    pub extension: String,
-    pub panel: String,
-    pub message: Value,
+    extension: String,
+    panel: String,
+    message: Value,
 }
 
 impl ExtensionPanelMessage {
@@ -41,7 +40,7 @@ impl Action for ExtensionPanelMessage {
     fn risk(&self, _target: Option<&ResourceRef>, params: &MessageParams) -> Risk {
         self.extensions
             .loaded(&params.extension)
-            .map_or(Risk::Read, |loaded| loaded.ceiling)
+            .map_or(Risk::Read, |loaded| loaded.ceiling())
     }
 
     fn recorded_params(&self, params: &Value) -> Value {
@@ -57,32 +56,31 @@ impl Action for ExtensionPanelMessage {
     }
 
     async fn run(&self, context: &Context, params: MessageParams) -> Result<Value, ActionError> {
-        refuse_extensions(context)?;
+        context.refuse_extensions("reach the views, panels or actions of an extension")?;
 
         let loaded = self.extensions.loaded(&params.extension)?;
-        let is_web = loaded
-            .guest
-            .manifest()
-            .contributes
-            .panel(&params.panel)
-            .is_some_and(Panel::is_web);
+        let guest = Arc::clone(loaded.guest());
 
-        if !is_web {
+        if guest
+            .manifest()
+            .contributes()
+            .web_panel(&params.panel)
+            .is_none()
+        {
             return Err(ActionError::InvalidParams(format!(
                 "{} contributes no web panel {}",
                 params.extension, params.panel
             )));
         }
 
-        let guest = Arc::clone(&loaded.guest);
         let message = params.message.to_string();
         let context = context.clone();
 
-        let reply = on_guest_thread(move |runtime| {
+        let reply = Blocking::run_with_runtime(move |runtime| {
             guest.panel_message(&params.panel, &message, context, runtime)
         })
         .await?;
 
-        Ok(serde_json::from_str(&reply).unwrap_or(Value::String(reply)))
+        Ok(reply.into_value())
     }
 }

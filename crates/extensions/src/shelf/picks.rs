@@ -1,60 +1,76 @@
+use std::path::PathBuf;
+
 use rusqlite::{OptionalExtension, Row};
+use synt_journal::Timestamp;
 
-use super::Shelf;
-use super::database::signed_number;
+use super::{Count, Sqlite};
 use crate::ExtensionError;
-use crate::clock::now;
-use crate::manifest::FileAccess;
-use crate::picked::Picked;
+use crate::files::Picked;
 
-const MOST_PICKS: i64 = 256;
+const MOST_PICKS: u64 = 256;
 
-impl Shelf {
-    pub(crate) fn picks(&self, extension: &str) -> Result<Vec<Picked>, ExtensionError> {
-        let connection = self.lock();
+#[derive(Debug, Clone)]
+pub(crate) struct Picks {
+    sqlite: Sqlite,
+}
+
+impl Picks {
+    pub(super) fn new(sqlite: Sqlite) -> Self {
+        Self { sqlite }
+    }
+
+    pub(crate) fn all(&self, extension: &str) -> Result<Vec<Picked>, ExtensionError> {
+        let connection = self.sqlite.lock();
         let mut statement = connection.prepare(
             "SELECT handle, path, access FROM extension_files WHERE extension = ?1 \
              ORDER BY picked_at, handle",
         )?;
 
         let picks = statement
-            .query_map([extension], picked)?
+            .query_map([extension], Self::picked)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(picks)
     }
 
-    pub(crate) fn pick(
+    pub(crate) fn find(
         &self,
         extension: &str,
         handle: &str,
     ) -> Result<Option<Picked>, ExtensionError> {
         let found = self
+            .sqlite
             .lock()
             .query_row(
                 "SELECT handle, path, access FROM extension_files \
                  WHERE extension = ?1 AND handle = ?2",
                 [extension, handle],
-                picked,
+                Self::picked,
             )
             .optional()?;
 
         Ok(found)
     }
 
-    pub(crate) fn put_pick(&self, extension: &str, pick: &Picked) -> Result<(), ExtensionError> {
-        let mut connection = self.lock();
+    pub(crate) fn put(
+        &self,
+        extension: &str,
+        pick: &Picked,
+        at: Timestamp,
+    ) -> Result<(), ExtensionError> {
+        let mut connection = self.sqlite.lock();
         let transaction = connection.transaction()?;
 
-        let count: i64 = transaction.query_row(
+        let count: Count = transaction.query_row(
             "SELECT COUNT(*) FROM extension_files WHERE extension = ?1",
             [extension],
             |row| row.get(0),
         )?;
-        if count >= MOST_PICKS {
-            return Err(ExtensionError::Refused(format!(
-                "{extension} already holds {MOST_PICKS} picked files; forget some first"
-            )));
+        if count.get() >= MOST_PICKS {
+            return Err(ExtensionError::TooManyPicks {
+                extension: extension.to_owned(),
+                most: MOST_PICKS,
+            });
         }
 
         transaction.execute(
@@ -62,10 +78,10 @@ impl Shelf {
              VALUES (?1, ?2, ?3, ?4, ?5)",
             (
                 extension,
-                &pick.handle,
-                &pick.path,
-                pick.access.as_str(),
-                signed_number(now()),
+                pick.handle(),
+                pick.path().to_string_lossy(),
+                pick.access(),
+                at.as_millis(),
             ),
         )?;
         transaction.commit()?;
@@ -73,27 +89,22 @@ impl Shelf {
         Ok(())
     }
 
-    pub(crate) fn forget_pick(
-        &self,
-        extension: &str,
-        handle: &str,
-    ) -> Result<bool, ExtensionError> {
-        let removed = self.lock().execute(
+    pub(crate) fn forget(&self, extension: &str, handle: &str) -> Result<bool, ExtensionError> {
+        let removed = self.sqlite.lock().execute(
             "DELETE FROM extension_files WHERE extension = ?1 AND handle = ?2",
             [extension, handle],
         )?;
 
         Ok(removed > 0)
     }
-}
 
-fn picked(row: &Row<'_>) -> rusqlite::Result<Picked> {
-    let path: String = row.get("path")?;
-    let access: String = row.get("access")?;
+    fn picked(row: &Row<'_>) -> rusqlite::Result<Picked> {
+        let path: String = row.get("path")?;
 
-    Ok(Picked::stored(
-        row.get("handle")?,
-        path,
-        FileAccess::parse(&access).unwrap_or(FileAccess::Read),
-    ))
+        Ok(Picked::stored(
+            row.get("handle")?,
+            PathBuf::from(path),
+            row.get("access")?,
+        ))
+    }
 }

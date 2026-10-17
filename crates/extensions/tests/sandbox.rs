@@ -153,10 +153,11 @@ async fn calls_reach_the_core_as_the_extension() {
 
     let calls = harness.caller.calls();
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].extension, Name::new("t").unwrap());
-    assert_eq!(calls[0].action, "ssh.exec");
-    assert_eq!(calls[0].target.as_deref(), Some("synt-test"));
-    assert_eq!(calls[0].params, json!({ "command": "uptime" }));
+    let request = calls[0].request();
+    assert_eq!(calls[0].extension(), &Name::new("t").unwrap());
+    assert_eq!(request.action, "ssh.exec");
+    assert_eq!(request.target.as_deref(), Some("synt-test"));
+    assert_eq!(request.params, json!({ "command": "uptime" }));
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -3,6 +3,7 @@ use wasmtime::{StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 use super::Imports;
+use crate::runtime::Spend;
 use crate::runtime::budget::Budget;
 use crate::runtime::quota::Quota;
 
@@ -24,9 +25,9 @@ pub(crate) struct Sandbox {
 impl Sandbox {
     pub(in crate::runtime) fn new(budget: Budget, imports: Box<dyn Imports>) -> Self {
         Self {
-            wasi: empty_wasi(),
+            wasi: Self::empty_wasi(),
             table: ResourceTable::new(),
-            limits: limits(),
+            limits: Self::store_limits(),
             budget,
             quota: Quota::new(),
             imports,
@@ -41,37 +42,34 @@ impl Sandbox {
         &self.budget
     }
 
-    pub(super) fn reach_out<T>(
+    pub(super) fn spend<T>(
         &mut self,
+        spend: Spend,
         work: impl FnOnce(&mut dyn Imports) -> T,
     ) -> wasmtime::Result<T> {
-        self.quota.take_call()?;
+        self.quota.take(spend)?;
 
         let imports = &mut self.imports;
         Ok(self.budget.outside(|| work(imports.as_mut())))
     }
 
-    pub(super) fn keep<T>(
-        &mut self,
-        work: impl FnOnce(&mut dyn Imports) -> T,
-    ) -> wasmtime::Result<T> {
-        self.quota.take_storage()?;
-
-        let imports = &mut self.imports;
-        Ok(self.budget.outside(|| work(imports.as_mut())))
+    fn store_limits() -> StoreLimits {
+        StoreLimitsBuilder::new()
+            .memory_size(MEMORY_LIMIT)
+            .memories(MEMORIES)
+            .instances(INSTANCES)
+            .tables(TABLES)
+            .table_elements(TABLE_ELEMENTS)
+            .trap_on_grow_failure(true)
+            .build()
     }
 
-    pub(super) fn tell<T>(
-        &mut self,
-        work: impl FnOnce(&mut dyn Imports) -> T,
-    ) -> wasmtime::Result<T> {
-        self.quota.take_message()?;
-
-        Ok(work(self.imports.as_mut()))
-    }
-
-    pub(super) fn quietly<T>(&mut self, work: impl FnOnce(&mut dyn Imports) -> T) -> T {
-        work(self.imports.as_mut())
+    fn empty_wasi() -> WasiCtx {
+        WasiCtxBuilder::new()
+            .allow_tcp(false)
+            .allow_udp(false)
+            .allow_ip_name_lookup(false)
+            .build()
     }
 }
 
@@ -82,23 +80,4 @@ impl WasiView for Sandbox {
             table: &mut self.table,
         }
     }
-}
-
-fn limits() -> StoreLimits {
-    StoreLimitsBuilder::new()
-        .memory_size(MEMORY_LIMIT)
-        .memories(MEMORIES)
-        .instances(INSTANCES)
-        .tables(TABLES)
-        .table_elements(TABLE_ELEMENTS)
-        .trap_on_grow_failure(true)
-        .build()
-}
-
-fn empty_wasi() -> WasiCtx {
-    WasiCtxBuilder::new()
-        .allow_tcp(false)
-        .allow_udp(false)
-        .allow_ip_name_lookup(false)
-        .build()
 }

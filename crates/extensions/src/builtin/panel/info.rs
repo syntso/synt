@@ -1,4 +1,7 @@
 use serde::Serialize;
+use serde_json::{Value, json};
+
+use crate::manifest::{AssetPath, LocalId, OneLine, Panel};
 
 const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self' \
      'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; \
@@ -7,21 +10,25 @@ const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self' \
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct PanelInfo {
-    pub extension: String,
-    pub panel: String,
-    pub title: String,
-    pub entry: String,
-    pub csp: &'static str,
+    extension: String,
+    panel: LocalId,
+    title: OneLine,
+    entry: AssetPath,
+    csp: &'static str,
 }
 
 impl PanelInfo {
-    pub(crate) fn new(extension: String, panel: String, title: String, entry: String) -> Self {
-        Self {
+    pub(crate) fn of(extension: String, panel: &Panel) -> Option<Self> {
+        Some(Self {
             extension,
-            panel,
-            title,
-            entry,
+            panel: panel.id().clone(),
+            title: panel.title().clone(),
+            entry: panel.entry()?.clone(),
             csp: CSP,
-        }
+        })
+    }
+
+    pub(crate) fn summary(&self) -> Value {
+        json!({ "extension": self.extension, "panel": self.panel })
     }
 }

@@ -1,31 +1,69 @@
+mod core_link;
+
 use std::sync::{Arc, OnceLock};
 
-use tokio::runtime::Handle;
+use synt_journal::{Clock, Timestamp};
 
-use crate::call::Caller;
+pub(crate) use core_link::CoreLink;
+
 use crate::documents::ProjectFolders;
 use crate::http::SecretSource;
 use crate::shelf::Shelf;
-use crate::ui::Screen;
 
 pub(crate) struct Services {
-    pub(crate) shelf: Shelf,
-    pub(crate) caller: OnceLock<Arc<dyn Caller>>,
-    pub(crate) screen: OnceLock<Arc<dyn Screen>>,
-    pub(crate) folders: OnceLock<Arc<dyn ProjectFolders>>,
-    pub(crate) secrets: OnceLock<Arc<dyn SecretSource>>,
-    pub(crate) background: OnceLock<Handle>,
+    shelf: Shelf,
+    clock: Arc<dyn Clock>,
+    secrets: OnceLock<Arc<dyn SecretSource>>,
+    folders: OnceLock<Arc<dyn ProjectFolders>>,
+    link: OnceLock<CoreLink>,
 }
 
 impl Services {
-    pub(crate) fn new(shelf: Shelf) -> Self {
+    pub(crate) fn new(shelf: Shelf, clock: Arc<dyn Clock>) -> Self {
         Self {
             shelf,
-            caller: OnceLock::new(),
-            screen: OnceLock::new(),
-            folders: OnceLock::new(),
+            clock,
             secrets: OnceLock::new(),
-            background: OnceLock::new(),
+            folders: OnceLock::new(),
+            link: OnceLock::new(),
+        }
+    }
+
+    pub(crate) fn shelf(&self) -> &Shelf {
+        &self.shelf
+    }
+
+    pub(crate) fn now(&self) -> Timestamp {
+        self.clock.now()
+    }
+
+    pub(crate) fn secrets(&self) -> Option<&Arc<dyn SecretSource>> {
+        self.secrets.get()
+    }
+
+    pub(crate) fn folders(&self) -> Option<&dyn ProjectFolders> {
+        self.folders.get().map(AsRef::as_ref)
+    }
+
+    pub(crate) fn link(&self) -> Option<&CoreLink> {
+        self.link.get()
+    }
+
+    pub(crate) fn give_secrets(&self, secrets: Arc<dyn SecretSource>) {
+        Self::set_once(&self.secrets, secrets, "secrets");
+    }
+
+    pub(crate) fn give_folders(&self, folders: Arc<dyn ProjectFolders>) {
+        Self::set_once(&self.folders, folders, "project folders");
+    }
+
+    pub(crate) fn connect(&self, link: CoreLink) {
+        Self::set_once(&self.link, link, "connection to the core");
+    }
+
+    fn set_once<T>(slot: &OnceLock<T>, value: T, what: &str) {
+        if slot.set(value).is_err() {
+            eprintln!("synt-core: extensions: the {what} were given twice; keeping the first");
         }
     }
 }

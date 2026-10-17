@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use crate::Extensions;
-use crate::builtin::blocking::blocking;
+use crate::blocking::Blocking;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionFileForget {
@@ -14,8 +14,8 @@ pub(crate) struct ExtensionFileForget {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HandleParams {
-    pub extension: String,
-    pub handle: String,
+    extension: String,
+    handle: String,
 }
 
 impl ExtensionFileForget {
@@ -40,11 +40,9 @@ impl Action for ExtensionFileForget {
     async fn run(&self, _context: &Context, params: HandleParams) -> Result<Value, ActionError> {
         let extensions = self.extensions.clone();
 
-        blocking(move || {
-            let forgotten = extensions
-                .services()
-                .shelf
-                .forget_pick(&params.extension, &params.handle)?;
+        Blocking::run(move || {
+            let picks = extensions.services().shelf().picks();
+            let forgotten = picks.forget(&params.extension, &params.handle)?;
 
             Ok(json!({
                 "extension": params.extension,

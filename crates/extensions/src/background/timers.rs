@@ -1,3 +1,6 @@
+mod cadence;
+mod name;
+
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
@@ -5,37 +8,42 @@ use std::time::Duration;
 use tokio::sync::Notify;
 use tokio::time::{self, Instant};
 
-use super::timer::Timer;
+pub(crate) use name::TimerName;
+
+use cadence::Cadence;
+
+use crate::ExtensionError;
 
 const MOST_TIMERS: usize = 16;
 const SHORTEST: u32 = 1;
 const LONGEST: u32 = 24 * 60 * 60;
-const LONGEST_NAME: usize = 64;
 const IDLE: Duration = Duration::from_secs(3600);
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Timers {
-    board: Arc<Mutex<BTreeMap<String, Timer>>>,
+    board: Arc<Mutex<BTreeMap<TimerName, Cadence>>>,
     changed: Arc<Notify>,
 }
 
 impl Timers {
-    pub(crate) fn set(&self, name: &str, every_seconds: u32) -> Result<(), String> {
-        check_name(name)?;
+    pub(crate) fn set(&self, name: &str, every_seconds: u32) -> Result<(), ExtensionError> {
+        let name = TimerName::try_from(name)?;
 
         if !(SHORTEST..=LONGEST).contains(&every_seconds) {
-            return Err(format!(
-                "a timer fires every {SHORTEST} to {LONGEST} seconds, not {every_seconds}"
-            ));
+            return Err(ExtensionError::TimerInterval {
+                shortest: SHORTEST,
+                longest: LONGEST,
+                asked: every_seconds,
+            });
         }
 
         let mut board = self.board();
-        if !board.contains_key(name) && board.len() >= MOST_TIMERS {
-            return Err(format!("an extension keeps at most {MOST_TIMERS} timers"));
+        if !board.contains_key(&name) && board.len() >= MOST_TIMERS {
+            return Err(ExtensionError::TooManyTimers(MOST_TIMERS));
         }
 
         let every = Duration::from_secs(u64::from(every_seconds));
-        board.insert(name.to_owned(), Timer::starting_now(every));
+        board.insert(name, Cadence::starting_now(every));
         drop(board);
 
         self.changed.notify_one();
@@ -47,7 +55,7 @@ impl Timers {
         self.changed.notify_one();
     }
 
-    pub(crate) async fn due(&self) -> Vec<String> {
+    pub(crate) async fn due(&self) -> Vec<TimerName> {
         loop {
             let changed = self.changed.notified();
             let next = self.next_deadline();
@@ -67,48 +75,38 @@ impl Timers {
     fn next_deadline(&self) -> Instant {
         self.board()
             .values()
-            .map(|timer| timer.next)
+            .map(Cadence::next)
             .min()
             .unwrap_or_else(|| Instant::now() + IDLE)
     }
 
-    fn take_due(&self, now: Instant) -> Vec<String> {
+    fn take_due(&self, now: Instant) -> Vec<TimerName> {
         let mut board = self.board();
 
         board
             .iter_mut()
-            .filter(|(_, timer)| timer.is_due(now))
-            .map(|(name, timer)| {
-                timer.advance(now);
+            .filter(|(_, cadence)| cadence.is_due(now))
+            .map(|(name, cadence)| {
+                cadence.advance(now);
                 name.clone()
             })
             .collect()
     }
 
-    fn board(&self) -> MutexGuard<'_, BTreeMap<String, Timer>> {
+    fn board(&self) -> MutexGuard<'_, BTreeMap<TimerName, Cadence>> {
         self.board.lock().unwrap_or_else(PoisonError::into_inner)
     }
-}
-
-fn check_name(name: &str) -> Result<(), String> {
-    let plain = name
-        .chars()
-        .all(|character| character.is_ascii_alphanumeric() || "-_.".contains(character));
-
-    if name.is_empty() || name.len() > LONGEST_NAME || !plain {
-        return Err(format!(
-            "a timer name holds 1 to {LONGEST_NAME} letters, digits, '-', '_' and '.'"
-        ));
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
-    use super::{MOST_TIMERS, Timers};
+    use super::{MOST_TIMERS, TimerName, Timers};
+
+    fn names(due: &[TimerName]) -> Vec<String> {
+        due.iter().map(ToString::to_string).collect()
+    }
 
     #[test]
     fn refuses_odd_names_intervals_and_too_many_timers() {
@@ -132,14 +130,14 @@ mod tests {
         timers.set("slow", 60).unwrap();
 
         let started = tokio::time::Instant::now();
-        assert_eq!(timers.due().await, ["refresh"]);
+        assert_eq!(names(&timers.due().await), ["refresh"]);
         assert_eq!(started.elapsed(), Duration::from_secs(2));
 
-        assert_eq!(timers.due().await, ["refresh"]);
+        assert_eq!(names(&timers.due().await), ["refresh"]);
         assert_eq!(started.elapsed(), Duration::from_secs(4));
 
         timers.clear("refresh");
-        assert_eq!(timers.due().await, ["slow"]);
+        assert_eq!(names(&timers.due().await), ["slow"]);
         assert_eq!(started.elapsed(), Duration::from_secs(60));
     }
 }

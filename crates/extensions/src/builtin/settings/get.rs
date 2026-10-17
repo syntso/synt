@@ -1,10 +1,10 @@
-use serde_json::{Value, json};
+use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::values::SettingsValues;
 use crate::Extensions;
-use crate::builtin::blocking::blocking;
-use crate::builtin::params::ExtensionParams;
+use crate::blocking::Blocking;
+use crate::builtin::extension_params::ExtensionParams;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionSettingsGet {
@@ -26,7 +26,7 @@ impl Action for ExtensionSettingsGet {
     type Output = SettingsValues;
 
     fn summary(&self, output: &SettingsValues) -> Value {
-        json!({ "extension": output.extension })
+        output.summary()
     }
 
     async fn run(
@@ -36,6 +36,6 @@ impl Action for ExtensionSettingsGet {
     ) -> Result<SettingsValues, ActionError> {
         let extensions = self.extensions.clone();
 
-        blocking(move || SettingsValues::current(&extensions, &params.extension)).await
+        Blocking::run(move || SettingsValues::current(&extensions, params.extension())).await
     }
 }

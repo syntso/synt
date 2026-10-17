@@ -1,32 +1,48 @@
+mod stored;
+
 use rusqlite::{OptionalExtension, Row};
 
-use super::{Shelf, StoredRevision};
+pub(crate) use stored::StoredRevision;
+
+use super::Sqlite;
 use crate::ExtensionError;
+use crate::sha256::Sha256;
 
 const KEPT_REVISIONS: i64 = 32;
 
-impl Shelf {
-    pub(crate) fn revision(
+#[derive(Debug, Clone)]
+pub(crate) struct Revisions {
+    sqlite: Sqlite,
+}
+
+impl Revisions {
+    pub(super) fn new(sqlite: Sqlite) -> Self {
+        Self { sqlite }
+    }
+
+    pub(crate) fn find(
         &self,
         project: &str,
         path: &str,
         revision: &str,
     ) -> Result<Option<StoredRevision>, ExtensionError> {
         let found = self
+            .sqlite
             .lock()
             .query_row(
                 "SELECT revision, parents, body FROM extension_revisions \
                  WHERE project = ?1 AND path = ?2 AND revision = ?3",
                 [project, path, revision],
-                stored,
+                Self::stored,
             )
             .optional()?;
 
         Ok(found)
     }
 
-    pub(crate) fn head(&self, project: &str, path: &str) -> Result<Option<String>, ExtensionError> {
+    pub(crate) fn head(&self, project: &str, path: &str) -> Result<Option<Sha256>, ExtensionError> {
         let found = self
+            .sqlite
             .lock()
             .query_row(
                 "SELECT revision FROM extension_revisions WHERE project = ?1 AND path = ?2 \
@@ -39,13 +55,13 @@ impl Shelf {
         Ok(found)
     }
 
-    pub(crate) fn add_revision(
+    pub(crate) fn add(
         &self,
         project: &str,
         path: &str,
         revision: &StoredRevision,
     ) -> Result<(), ExtensionError> {
-        let mut connection = self.lock();
+        let mut connection = self.sqlite.lock();
         let transaction = connection.transaction()?;
 
         let last: i64 = transaction.query_row(
@@ -60,9 +76,9 @@ impl Shelf {
             (
                 project,
                 path,
-                &revision.revision,
-                revision.parents.join(","),
-                &revision.body,
+                revision.revision(),
+                revision.joined_parents(),
+                revision.body(),
                 last + 1,
             ),
         )?;
@@ -75,69 +91,62 @@ impl Shelf {
         Ok(())
     }
 
-    pub(crate) fn forget_revisions(&self, project: &str, path: &str) -> Result<(), ExtensionError> {
-        self.lock().execute(
+    pub(crate) fn forget(&self, project: &str, path: &str) -> Result<(), ExtensionError> {
+        self.sqlite.lock().execute(
             "DELETE FROM extension_revisions WHERE project = ?1 AND path = ?2",
             [project, path],
         )?;
 
         Ok(())
     }
-}
 
-fn stored(row: &Row<'_>) -> rusqlite::Result<StoredRevision> {
-    let parents: String = row.get("parents")?;
+    fn stored(row: &Row<'_>) -> rusqlite::Result<StoredRevision> {
+        let parents: String = row.get("parents")?;
 
-    Ok(StoredRevision {
-        revision: row.get("revision")?,
-        parents: parents
-            .split(',')
-            .filter(|parent| !parent.is_empty())
-            .map(str::to_owned)
-            .collect(),
-        body: row.get("body")?,
-    })
+        Ok(StoredRevision::recorded(
+            row.get("revision")?,
+            &parents,
+            row.get("body")?,
+        ))
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::sha256::Sha256;
     use crate::shelf::{Shelf, StoredRevision};
 
     fn revision(name: &str, parents: &[&str]) -> StoredRevision {
-        StoredRevision {
-            revision: name.to_owned(),
-            parents: parents.iter().map(|parent| (*parent).to_owned()).collect(),
-            body: name.as_bytes().to_vec(),
-        }
+        StoredRevision::recorded(
+            Sha256::recorded(name),
+            &parents.join(","),
+            name.as_bytes().to_vec(),
+        )
     }
 
     #[test]
     fn the_newest_revision_is_the_head_and_old_ones_are_trimmed() {
-        let folder = tempfile::tempdir().unwrap();
-        let shelf = Shelf::open(&folder.path().join("state.sqlite")).unwrap();
+        let (_folder, shelf) = Shelf::scratch();
+        let revisions = shelf.revisions();
 
-        shelf
-            .add_revision("p", "a.uml", &revision("r0", &[]))
-            .unwrap();
+        revisions.add("p", "a.uml", &revision("r0", &[])).unwrap();
         for index in 1..40 {
             let parent = format!("r{}", index - 1);
             let name = format!("r{index}");
-            shelf
-                .add_revision("p", "a.uml", &revision(&name, &[&parent]))
+            revisions
+                .add("p", "a.uml", &revision(&name, &[&parent]))
                 .unwrap();
         }
 
-        assert_eq!(shelf.head("p", "a.uml").unwrap().as_deref(), Some("r39"));
+        let newest = revisions.find("p", "a.uml", "r39").unwrap().unwrap();
+
         assert_eq!(
-            shelf
-                .revision("p", "a.uml", "r39")
-                .unwrap()
-                .unwrap()
-                .parents,
-            ["r38"]
+            revisions.head("p", "a.uml").unwrap(),
+            Some(Sha256::recorded("r39"))
         );
-        assert!(shelf.revision("p", "a.uml", "r0").unwrap().is_none());
-        assert!(shelf.revision("p", "a.uml", "r8").unwrap().is_some());
-        assert_eq!(shelf.head("p", "b.uml").unwrap(), None);
+        assert_eq!(newest.parents(), [Sha256::recorded("r38")]);
+        assert!(revisions.find("p", "a.uml", "r0").unwrap().is_none());
+        assert!(revisions.find("p", "a.uml", "r8").unwrap().is_some());
+        assert_eq!(revisions.head("p", "b.uml").unwrap(), None);
     }
 }

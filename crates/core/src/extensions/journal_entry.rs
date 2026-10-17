@@ -114,7 +114,7 @@ mod tests {
         JournalEntry::new(&appended(kind, action))
             .events()
             .into_iter()
-            .map(|event| event.topic)
+            .map(|event| event.topic())
             .collect()
     }
 
@@ -123,12 +123,12 @@ mod tests {
         let heard = JournalEntry::new(&appended(EventKind::Started, "ssh.exec")).events();
 
         assert_eq!(heard.len(), 1);
-        assert_eq!(heard[0].topic, EventTopic::Journal);
-        assert_eq!(heard[0].payload["seq"], 9);
-        assert_eq!(heard[0].payload["resource"], "@orders/api-1");
+        assert_eq!(heard[0].topic(), EventTopic::Journal);
+        assert_eq!(heard[0].payload()["seq"], 9);
+        assert_eq!(heard[0].payload()["resource"], "@orders/api-1");
         assert_eq!(
-            heard[0].actor,
-            Some(Actor::Agent(Name::new("bot").unwrap()))
+            heard[0].actor(),
+            Some(&Actor::Agent(Name::new("bot").unwrap()))
         );
     }
 
