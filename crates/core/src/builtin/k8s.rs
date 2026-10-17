@@ -106,7 +106,7 @@ impl Kube {
     fn reach(&self, target: Option<&ResourceRef>) -> Result<Reach, K8sError> {
         let target = target.ok_or(ActionError::TargetRequired)?;
 
-        Ok(Reach::resolve(&self.projects, target)?)
+        Reach::resolve(&self.projects, target)
     }
 
     fn destination(&self, target: Option<&ResourceRef>) -> Option<String> {
@@ -155,7 +155,7 @@ impl Kube {
             .ok_or(ActionError::TargetRequired)?;
         let projects = self.projects.clone();
 
-        let reach = blocking(move || Reach::resolve(&projects, &target)).await?;
+        let reach = blocking(move || Ok(Reach::resolve(&projects, &target))).await??;
         reach.check_admitted(context)?;
 
         self.clusters.connect(&reach).await

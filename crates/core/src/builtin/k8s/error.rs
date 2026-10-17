@@ -17,6 +17,12 @@ pub(crate) enum K8sError {
     #[error(transparent)]
     Core(#[from] CoreError),
 
+    #[error("{0} is not a cluster")]
+    NotACluster(ResourceRef),
+
+    #[error("{0}")]
+    Place(KubeError),
+
     #[error("the cluster can only be reached from inside the core")]
     OutsideCore,
 

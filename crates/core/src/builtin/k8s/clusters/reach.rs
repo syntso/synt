@@ -4,7 +4,6 @@ use synt_kube::ClusterSpec;
 use synt_ssh::Target;
 
 use super::ClusterKey;
-use crate::CoreError;
 use crate::builtin::k8s::K8sError;
 use crate::builtin::ssh::is_root;
 use crate::projects::{Projects, Resolved, login_label};
@@ -17,14 +16,12 @@ pub(crate) struct Reach {
 }
 
 impl Reach {
-    pub(crate) fn resolve(projects: &Projects, target: &ResourceRef) -> Result<Self, CoreError> {
+    pub(crate) fn resolve(projects: &Projects, target: &ResourceRef) -> Result<Self, K8sError> {
         let Resolved::Cluster { spec, via } = projects.resolve_cluster(target.as_str())? else {
-            return Err(CoreError::Project(format!("{target} is not a cluster")));
+            return Err(K8sError::NotACluster(target.clone()));
         };
 
-        let place = spec
-            .place()
-            .map_err(|error| CoreError::Project(error.to_string()))?;
+        let place = spec.place().map_err(K8sError::Place)?;
 
         let through = via
             .as_ref()
