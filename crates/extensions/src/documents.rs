@@ -1,7 +1,6 @@
 mod info;
 mod merger;
 mod opened;
-mod path;
 mod pending;
 mod place;
 mod walk;
@@ -13,10 +12,9 @@ pub(crate) use merger::Merger;
 pub(crate) use opened::Opened;
 pub(crate) use written::Written;
 
-use path::DocumentPath;
 use pending::Pending;
 use place::{DocumentPlace, LARGEST_DOCUMENT};
-use synt_sync::{OpenProjects, ProjectFolder};
+use synt_sync::{ExtensionDocumentPath, OpenProjects, ProjectFolder};
 use walk::Walk;
 
 use crate::call::FailureCode;
@@ -211,7 +209,8 @@ impl<'a> DocumentStore<'a> {
     }
 
     fn place(&self, project: ProjectFolder, path: &str) -> Result<DocumentPlace, GuestError> {
-        let path = DocumentPath::parse(path)?;
+        let path = ExtensionDocumentPath::try_from(path.to_owned())
+            .map_err(|reason| GuestError::new(FailureCode::InvalidPath, reason.to_string()))?;
 
         let kind = self.manifest.document_kind(path.suffix()).ok_or_else(|| {
             GuestError::not_allowed(format!(

@@ -17,7 +17,7 @@ mod report;
 mod seal;
 mod syncer;
 
-pub use document::{DocumentKind, DocumentPath};
+pub use document::{DocumentKind, DocumentPath, ExtensionDocumentPath};
 pub use encoding::{Base64, PublicKey};
 pub use error::SyncError;
 pub use id::{DocumentId, Generation, MemberId, ProjectId, RevisionId};

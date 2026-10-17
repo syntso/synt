@@ -68,7 +68,7 @@ mod tests {
     use std::path::Path;
 
     use super::DocumentPath;
-    use crate::document::DocumentKind;
+    use crate::document::{DocumentKind, ExtensionDocumentPath};
 
     fn kind(text: &str) -> String {
         DocumentPath::parse(text).unwrap().kind().to_string()
@@ -91,7 +91,7 @@ mod tests {
             path.kind(),
             &DocumentKind::Extension {
                 extension: "k8s-board".to_owned(),
-                suffix: "board".to_owned()
+                path: ExtensionDocumentPath::try_from("main.board".to_owned()).unwrap()
             }
         );
     }

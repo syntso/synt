@@ -9,7 +9,8 @@ use synt_platform::{read_plain_file, replace_file};
 
 use crate::SyncError;
 use crate::document::{
-    DocumentPath, EXTENSIONS, LARGEST_BODY, MOST_EXTENSION_PARTS, PROJECT_FILE, RESOURCES, RUNBOOKS,
+    DocumentPath, EXTENSIONS, ExtensionDocumentPath, LARGEST_BODY, PROJECT_FILE, RESOURCES,
+    RUNBOOKS,
 };
 use crate::id::ProjectId;
 use entry::Entry;
@@ -61,7 +62,7 @@ impl ProjectFolder {
 
         for extension in self.folders_in(EXTENSIONS)? {
             let folder = format!("{EXTENSIONS}/{extension}");
-            found.extend(self.documents_below(&folder, MOST_EXTENSION_PARTS)?);
+            found.extend(self.documents_below(&folder, ExtensionDocumentPath::MOST_PARTS)?);
         }
 
         Ok(found)

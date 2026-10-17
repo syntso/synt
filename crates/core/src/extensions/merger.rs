@@ -21,9 +21,10 @@ impl DocumentMerger for ExtensionMerger {
         older: &[u8],
         newer: &[u8],
     ) -> Option<Vec<u8>> {
-        let DocumentKind::Extension { extension, suffix } = kind else {
+        let DocumentKind::Extension { extension, path } = kind else {
             return None;
         };
+        let suffix = path.suffix();
 
         let merged =
             self.extensions
