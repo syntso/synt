@@ -1,13 +1,14 @@
 use serde_json::{Value, json};
 use synt_proto::{ActionCall, ApprovalDecision, ErrorCode};
+use synt_testkit::TestError;
 
 use super::Stage;
-use crate::common::{eventually, rejection};
+use synt_testkit::core::{eventually, rejection};
 
-async fn heard(stage: &Stage) -> Vec<Value> {
-    let heard = stage.every("heard", json!({})).await;
+async fn heard(stage: &Stage) -> Result<Vec<Value>, TestError> {
+    let heard = stage.every("heard", json!({})).await?;
 
-    heard["events"].as_array().cloned().unwrap_or_default()
+    Ok(heard["events"].as_array().cloned().unwrap_or_default())
 }
 
 fn by_extension(event: &Value) -> bool {
@@ -15,14 +16,14 @@ fn by_extension(event: &Value) -> bool {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_extension_hears_the_journal_but_not_its_own_calls() {
-    let stage = Stage::start().await;
+async fn the_extension_hears_the_journal_but_not_its_own_calls() -> Result<(), TestError> {
+    let stage = Stage::start().await?;
 
-    stage.call("core.ping", json!({})).await;
-    stage.every("ping", json!({})).await;
+    stage.call("core.ping", json!({})).await?;
+    stage.every("ping", json!({})).await?;
 
     let events = eventually("the ping in the journal", async || {
-        let events = heard(&stage).await;
+        let events = heard(&stage).await.ok()?;
 
         events
             .iter()
@@ -32,13 +33,15 @@ async fn the_extension_hears_the_journal_but_not_its_own_calls() {
     .await;
 
     assert!(events.iter().all(|event| !by_extension(event)));
-    assert!(stage.nested("core.ping").len() >= 2);
+    assert!(stage.nested("core.ping")?.len() >= 2);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_extension_hears_approval_outcomes() {
-    let mut stage = Stage::start().await;
-    let agent = stage.harness.agent("helper").await;
+async fn the_extension_hears_approval_outcomes() -> Result<(), TestError> {
+    let mut stage = Stage::start().await?;
+    let agent = stage.harness.agent("helper").await?;
 
     let (_, outcome) = stage
         .approver
@@ -47,12 +50,13 @@ async fn the_extension_hears_approval_outcomes() {
             ActionCall::new("test.touch"),
             ApprovalDecision::Deny,
         )
-        .await;
+        .await?;
     assert_eq!(rejection(outcome).code, ErrorCode::DENIED);
 
     let denial = eventually("the denial", async || {
         heard(&stage)
             .await
+            .ok()?
             .into_iter()
             .find(|event| event["kind"] == "approval")
     })
@@ -64,4 +68,6 @@ async fn the_extension_hears_approval_outcomes() {
         denial["payload"]["actor"],
         json!({ "type": "agent", "name": "helper" })
     );
+
+    Ok(())
 }

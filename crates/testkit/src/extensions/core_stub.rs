@@ -23,10 +23,10 @@ impl Catalog for CoreStub {
 
                 Some(ActionDescription {
                     id: action,
-                title: format!("Stand in for {id}"),
-                risk: *risk,
-                person_only: false,
-                takes_target: true,
+                    title: format!("Stand in for {id}"),
+                    risk: *risk,
+                    person_only: false,
+                    takes_target: true,
                     params: json!({ "type": "object" }),
                 })
             })

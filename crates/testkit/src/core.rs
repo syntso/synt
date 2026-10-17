@@ -1,5 +1,3 @@
-#![allow(dead_code, unused_imports)]
-
 mod aimed;
 mod approver;
 mod calls;
@@ -7,11 +5,9 @@ mod confused;
 mod eventually;
 mod exec_stub;
 mod failing;
-mod flaky_key_store;
 mod grounds;
 mod guarded;
 mod harness;
-mod memory_vault;
 mod panicking;
 mod raw_connection;
 mod runbook_desk;
@@ -29,11 +25,9 @@ pub use confused::Confused;
 pub use eventually::eventually;
 pub use exec_stub::ExecStub;
 pub use failing::Failing;
-pub use flaky_key_store::FlakyKeyStore;
 pub use grounds::Grounds;
 pub use guarded::Guarded;
 pub use harness::Harness;
-pub use memory_vault::MemoryVault;
 pub use panicking::Panicking;
 pub use raw_connection::RawConnection;
 pub use runbook_desk::RunbookDesk;

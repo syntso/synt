@@ -4,18 +4,19 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use synt_actions::{Action, Registry};
+use synt_actions::{Action, ActionError, Registry};
 use synt_core::{Broker, Core, ProjectOpen, Projects, ResourceGet, ResourcePut, SyncActions};
 use synt_proto::ActionCall;
 use synt_sync::{SyncLoop, Syncer};
 
 use super::{Grounds, Harness};
+use crate::TestError;
 
 pub const PROJECT_ID: &str = "4f2c9a7e1b3d5f60718293a4b5c6d7e8";
 const PROJECT_FILE: &str = "id = \"4f2c9a7e1b3d5f60718293a4b5c6d7e8\"\nname = \"Orders\"\n";
 
-pub fn register_sync(registry: &mut Registry, syncer: &Syncer) {
-    SyncActions::new(syncer.clone()).register(registry).unwrap();
+pub fn register_sync(registry: &mut Registry, syncer: &Syncer) -> Result<(), ActionError> {
+    SyncActions::new(syncer.clone()).register(registry)
 }
 
 pub struct SyncingCore {
@@ -27,41 +28,36 @@ pub struct SyncingCore {
 }
 
 impl SyncingCore {
-    pub fn start(shared: &Path, every: Option<Duration>) -> Self {
-        let grounds = Grounds::new();
+    pub fn start(shared: &Path, every: Option<Duration>) -> Result<Self, TestError> {
+        let grounds = Grounds::new()?;
         let project = grounds.path().join("orders");
-        fs::create_dir_all(project.join("resources")).unwrap();
-        fs::write(project.join("synt.toml"), PROJECT_FILE).unwrap();
+        fs::create_dir_all(project.join("resources"))?;
+        fs::write(project.join("synt.toml"), PROJECT_FILE)?;
 
-        let projects = Projects::start(grounds.state()).unwrap();
+        let projects = Projects::start(grounds.state()?)?;
         let syncer = Syncer::builder(
             &grounds.state_path(),
             grounds.vault(),
             Arc::new(projects.clone()),
         )
         .journal(grounds.journal())
-        .open()
-        .unwrap();
+        .open()?;
 
-        let mut registry = grounds.registry();
-        registry
-            .register(ProjectOpen::new(projects.clone()))
-            .unwrap();
-        registry
-            .register(ResourcePut::new(projects.clone()))
-            .unwrap();
-        registry.register(ResourceGet::new(projects)).unwrap();
-        register_sync(&mut registry, &syncer);
+        let mut registry = grounds.registry()?;
+        registry.register(ProjectOpen::new(projects.clone()))?;
+        registry.register(ResourcePut::new(projects.clone()))?;
+        registry.register(ResourceGet::new(projects))?;
+        register_sync(&mut registry, &syncer)?;
 
         let core = Core::new(registry, grounds.journal(), Broker::new());
 
-        Self {
-            harness: Harness::serve(grounds, core),
+        Ok(Self {
+            harness: Harness::serve(grounds, core)?,
             _every: every.map(|every| syncer.start(every)),
             syncer,
             project,
             shared: shared.to_owned(),
-        }
+        })
     }
 
     pub fn harness(&self) -> &Harness {
@@ -76,23 +72,25 @@ impl SyncingCore {
         self.harness.grounds().vault_items()
     }
 
-    pub async fn call(&self, action: &str, params: Value) -> Value {
+    pub async fn call(&self, action: &str, params: Value) -> Result<Value, TestError> {
         self.send(ActionCall::new(action).params(params)).await
     }
 
-    pub async fn send(&self, call: ActionCall) -> Value {
-        let app = self.harness.app().await;
+    pub async fn send(&self, call: ActionCall) -> Result<Value, TestError> {
+        let app = self.harness.app().await?;
         let action = call.action.clone();
 
-        app.call(call)
+        let outcome = app
+            .call(call)
             .await
-            .unwrap_or_else(|error| panic!("{action} failed: {error}"))
-            .value
+            .map_err(|error| format!("{action} failed: {error}"))?;
+
+        Ok(outcome.value)
     }
 
-    pub async fn open_and_enable(&self) -> Value {
+    pub async fn open_and_enable(&self) -> Result<Value, TestError> {
         self.call(ProjectOpen::ID, json!({ "path": self.project }))
-            .await;
+            .await?;
 
         self.call(
             "sync.enable",
@@ -101,22 +99,27 @@ impl SyncingCore {
         .await
     }
 
-    pub async fn device(&self) -> String {
+    pub async fn device(&self) -> Result<String, TestError> {
         let status = self
             .call("sync.status", json!({ "project": "orders" }))
-            .await;
+            .await?;
+        let device = status["device"]
+            .as_str()
+            .ok_or("the status names no device")?;
 
-        status["device"].as_str().unwrap().to_owned()
+        Ok(device.to_owned())
     }
 
-    pub async fn share_with(&self, other: &SyncingCore) {
-        let member = other.device().await;
+    pub async fn share_with(&self, other: &SyncingCore) -> Result<(), TestError> {
+        let member = other.device().await?;
 
         self.call(
             "sync.share",
             json!({ "project": "orders", "member": member }),
         )
-        .await;
+        .await?;
+
+        Ok(())
     }
 
     pub async fn sync(&self) {
@@ -125,19 +128,21 @@ impl SyncingCore {
         }
     }
 
-    pub async fn put_host(&self, name: &str, address: &str, user: &str) {
+    pub async fn put_host(&self, name: &str, address: &str, user: &str) -> Result<(), TestError> {
         let call = ActionCall::new(ResourcePut::ID)
             .target(format!("@orders/{name}"))
             .params(json!({ "kind": "host", "address": address, "user": user }));
 
-        self.send(call).await;
+        self.send(call).await?;
+
+        Ok(())
     }
 
-    pub async fn host(&self, name: &str) -> Option<Value> {
-        let app = self.harness.app().await;
+    pub async fn host(&self, name: &str) -> Result<Option<Value>, TestError> {
+        let app = self.harness.app().await?;
         let call =
             ActionCall::new(ResourceGet::ID).params(json!({ "project": "orders", "name": name }));
 
-        app.call(call).await.ok().map(|outcome| outcome.value)
+        Ok(app.call(call).await.ok().map(|outcome| outcome.value))
     }
 }

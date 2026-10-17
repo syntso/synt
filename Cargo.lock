@@ -4499,13 +4499,13 @@ dependencies = [
  "synt-ssh",
  "synt-sync",
  "synt-test-servers",
+ "synt-testkit",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",
  "toml",
  "vte",
- "wat",
  "zeroize",
 ]
 

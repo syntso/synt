@@ -1,17 +1,16 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
-use synt_actions::Registry;
+use synt_actions::{ActionError, Registry};
 use synt_core::{AlwaysGrants, GrantSeal, Ping, State};
-use synt_journal::{Journal, JournalWriter};
+use synt_journal::{Journal, JournalWriter, MemoryKeyStore};
 use synt_platform::{Endpoint, Vault};
 use tempfile::TempDir;
 
-use super::{
-    Aimed, Confused, Failing, FlakyKeyStore, Guarded, MemoryVault, Panicking, Secret, Touch,
-    Waiting,
-};
+use super::{Aimed, Confused, Failing, Guarded, Panicking, Secret, Touch, Waiting};
+use crate::journal::FlakyKeyStore;
+use crate::{MemoryVault, TestError};
 
 const STATE_FILE: &str = "state.sqlite";
 const JOURNAL_FILE: &str = "journal.sqlite";
@@ -28,14 +27,14 @@ pub struct Grounds {
 }
 
 impl Grounds {
-    pub fn new() -> Self {
-        let directory = tempfile::tempdir().unwrap();
-        let keys = Arc::new(FlakyKeyStore::new());
+    pub fn new() -> Result<Self, TestError> {
+        let directory = tempfile::tempdir()?;
+        let keys = Arc::new(FlakyKeyStore::new(Arc::new(MemoryKeyStore::new()?)));
 
-        let journal = Journal::create(directory.path().join(JOURNAL_FILE), keys.clone()).unwrap();
-        let journal = JournalWriter::spawn(journal).unwrap();
+        let journal = Journal::create(directory.path().join(JOURNAL_FILE), keys.clone())?;
+        let journal = JournalWriter::spawn(journal)?;
 
-        Self {
+        Ok(Self {
             directory,
             vault: Arc::default(),
             keys,
@@ -44,7 +43,7 @@ impl Grounds {
             runs: Arc::default(),
             waits: Arc::default(),
             aim: Arc::new(Mutex::new("10.0.0.1".to_owned())),
-        }
+        })
     }
 
     pub fn path(&self) -> &Path {
@@ -52,7 +51,11 @@ impl Grounds {
     }
 
     pub fn endpoint(&self) -> Endpoint {
-        let unique = self.path().file_name().unwrap().to_string_lossy();
+        let unique = self
+            .path()
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy();
         Endpoint::named(self.path(), &format!("synt-test-{unique}"))
     }
 
@@ -76,14 +79,14 @@ impl Grounds {
         self.path().join(STATE_FILE)
     }
 
-    pub fn state(&self) -> State {
-        State::open(&self.state_path()).unwrap()
+    pub fn state(&self) -> Result<State, TestError> {
+        Ok(State::open(&self.state_path())?)
     }
 
-    pub fn always(&self) -> AlwaysGrants {
-        let seal = GrantSeal::open(self.vault()).unwrap();
+    pub fn always(&self) -> Result<AlwaysGrants, TestError> {
+        let seal = GrantSeal::open(self.vault())?;
 
-        AlwaysGrants::load(self.state(), seal).unwrap()
+        Ok(AlwaysGrants::load(self.state()?, seal)?)
     }
 
     pub fn touches(&self) -> usize {
@@ -99,30 +102,23 @@ impl Grounds {
     }
 
     pub fn aim_at(&self, place: &str) {
-        place.clone_into(&mut self.aim.lock().unwrap());
+        let mut aim = self.aim.lock().unwrap_or_else(PoisonError::into_inner);
+        place.clone_into(&mut aim);
     }
 
-    pub fn registry(&self) -> Registry {
+    pub fn registry(&self) -> Result<Registry, ActionError> {
         let mut registry = Registry::new();
 
-        registry.register(Ping).unwrap();
-        registry
-            .register(Touch::new(Arc::clone(&self.touches)))
-            .unwrap();
-        registry.register(Failing).unwrap();
-        registry.register(Panicking).unwrap();
-        registry
-            .register(Guarded::new(Arc::clone(&self.runs)))
-            .unwrap();
-        registry
-            .register(Waiting::new(Arc::clone(&self.waits)))
-            .unwrap();
-        registry.register(Secret).unwrap();
-        registry.register(Confused).unwrap();
-        registry
-            .register(Aimed::new(Arc::clone(&self.aim)))
-            .unwrap();
+        registry.register(Ping)?;
+        registry.register(Touch::new(Arc::clone(&self.touches)))?;
+        registry.register(Failing)?;
+        registry.register(Panicking)?;
+        registry.register(Guarded::new(Arc::clone(&self.runs)))?;
+        registry.register(Waiting::new(Arc::clone(&self.waits)))?;
+        registry.register(Secret)?;
+        registry.register(Confused)?;
+        registry.register(Aimed::new(Arc::clone(&self.aim)))?;
 
-        registry
+        Ok(registry)
     }
 }

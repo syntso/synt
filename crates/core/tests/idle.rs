@@ -1,13 +1,10 @@
-#![allow(clippy::unwrap_used)]
-
-mod common;
-
 use std::time::Duration;
 
-use common::{Grounds, Switch, app_hello, eventually};
 use synt_client::{Autostart, Client};
 use synt_core::{Activity, Broker, Core, IdleWatch, Server};
 use synt_platform::AppCheck;
+use synt_testkit::TestError;
+use synt_testkit::core::{Grounds, Switch, app_hello, eventually};
 use tokio::time::{self, Instant};
 
 const LIMIT: Duration = Duration::from_mins(10);
@@ -79,10 +76,10 @@ async fn a_limit_shorter_than_a_look_is_still_kept() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_connected_client_counts_as_activity_until_it_leaves() {
-    let grounds = Grounds::new();
+async fn a_connected_client_counts_as_activity_until_it_leaves() -> Result<(), TestError> {
+    let grounds = Grounds::new()?;
     let endpoint = grounds.endpoint();
-    let core = Core::new(grounds.registry(), grounds.journal(), Broker::new());
+    let core = Core::new(grounds.registry()?, grounds.journal(), Broker::new());
     let server = Server::bind(&endpoint, core, AppCheck::for_this_core().unwrap()).unwrap();
     let activity = server.activity();
     let running = tokio::spawn(server.run(std::future::pending()));
@@ -101,4 +98,6 @@ async fn a_connected_client_counts_as_activity_until_it_leaves() {
     assert!(quiet_at_start);
     assert!(busy_while_connected);
     running.abort();
+
+    Ok(())
 }

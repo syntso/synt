@@ -148,10 +148,10 @@ mod tests {
     use std::sync::Arc;
 
     use synt_extensions::SecretSource;
+    use synt_testkit::MemoryVault;
 
     use super::{SecretName, Secrets};
     use crate::state::State;
-    use crate::vault::MemoryVault;
 
     fn secrets() -> (Secrets, SecretName, tempfile::TempDir) {
         let folder = tempfile::tempdir().unwrap();

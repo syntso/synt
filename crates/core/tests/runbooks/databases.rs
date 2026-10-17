@@ -2,7 +2,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::common::{Grounds, Harness};
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use synt_client::Client;
@@ -12,6 +11,8 @@ use synt_core::{
 use synt_journal::{Actor, Event, EventKind, Name};
 use synt_proto::{ActionCall, ActionOutcome};
 use synt_ssh::Pool;
+use synt_testkit::TestError;
+use synt_testkit::core::{Grounds, Harness};
 
 const PROJECT_ID: &str = "5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d";
 
@@ -53,98 +54,93 @@ struct Shop {
 }
 
 impl Shop {
-    async fn open() -> Self {
-        let grounds = Grounds::new();
-        let core = core(&grounds);
-        let harness = Harness::serve(grounds, core);
-        let folder = project(harness.grounds().path());
+    async fn open() -> Result<Self, TestError> {
+        let grounds = Grounds::new()?;
+        let core = core(&grounds)?;
+        let harness = Harness::serve(grounds, core)?;
+        let folder = project(harness.grounds().path())?;
         let file = folder.join("orders.sqlite");
 
-        Connection::open(&file)
-            .unwrap()
-            .execute_batch(SCHEMA)
-            .unwrap();
-        write_file(&folder, "resources/orders.toml", &sqlite(&file));
-        write_file(&folder, "runbooks/count-new.toml", COUNT_NEW);
-        write_file(&folder, "runbooks/close-new.toml", CLOSE_NEW);
+        Connection::open(&file)?.execute_batch(SCHEMA)?;
+        write_file(&folder, "resources/orders.toml", &sqlite(&file))?;
+        write_file(&folder, "runbooks/count-new.toml", COUNT_NEW)?;
+        write_file(&folder, "runbooks/close-new.toml", CLOSE_NEW)?;
 
         let opening = ActionCall::new("project.open").params(json!({ "path": folder }));
-        harness.app().await.call(opening).await.unwrap();
+        harness.app().await?.call(opening).await?;
 
-        Self { harness, file }
+        Ok(Self { harness, file })
     }
 
-    fn states(&self) -> Vec<String> {
-        let connection = Connection::open(&self.file).unwrap();
-        let mut statement = connection
-            .prepare("SELECT state FROM orders ORDER BY id")
-            .unwrap();
+    fn states(&self) -> Result<Vec<String>, TestError> {
+        let connection = Connection::open(&self.file)?;
+        let mut statement = connection.prepare("SELECT state FROM orders ORDER BY id")?;
 
-        statement
-            .query_map([], |row| row.get(0))
-            .unwrap()
-            .collect::<Result<_, _>>()
-            .unwrap()
+        Ok(statement
+            .query_map([], |row| row.get(0))?
+            .collect::<Result<_, _>>()?)
     }
 
-    async fn run(&self, client: &Client, name: &str, approve_steps: bool) -> ActionOutcome {
+    async fn run(
+        &self,
+        client: &Client,
+        name: &str,
+        approve_steps: bool,
+    ) -> Result<ActionOutcome, TestError> {
         let call = ActionCall::new("runbook.run").params(json!({
             "project": "shop",
             "name": name,
             "approve_steps": approve_steps,
         }));
 
-        client.call(call).await.unwrap()
+        Ok(client.call(call).await?)
     }
 
-    fn step_requests(&self) -> Vec<Event> {
-        self.harness
-            .events()
+    fn step_requests(&self) -> Result<Vec<Event>, TestError> {
+        Ok(self
+            .harness
+            .events()?
             .into_iter()
             .filter(|event| event.kind() == EventKind::Requested)
             .filter(|event| event.action().as_str() == "db.query")
-            .collect()
+            .collect())
     }
 }
 
-fn core(grounds: &Grounds) -> Arc<Core> {
-    let projects = Projects::start(grounds.state()).unwrap();
-    let secrets = Secrets::new(grounds.vault(), grounds.state());
+fn core(grounds: &Grounds) -> Result<Arc<Core>, TestError> {
+    let projects = Projects::start(grounds.state()?)?;
+    let secrets = Secrets::new(grounds.vault(), grounds.state()?);
     let terminals = Terminals::new(grounds.journal());
     let runbooks = Runbooks::new(projects.clone(), grounds.journal(), terminals);
 
-    let mut registry = grounds.registry();
-    registry
-        .register(ProjectOpen::new(projects.clone()))
-        .unwrap();
-    Databases::new(Pool::new(), projects, secrets)
-        .register(&mut registry)
-        .unwrap();
-    RunbookActions::new(runbooks.clone())
-        .register(&mut registry)
-        .unwrap();
+    let mut registry = grounds.registry()?;
+    registry.register(ProjectOpen::new(projects.clone()))?;
+    Databases::new(Pool::new(), projects, secrets).register(&mut registry)?;
+    RunbookActions::new(runbooks.clone()).register(&mut registry)?;
 
     let core = Arc::new(Core::new(registry, grounds.journal(), Broker::new()));
-    runbooks.connect(&core).unwrap();
+    runbooks.connect(&core)?;
 
-    core
+    Ok(core)
 }
 
-fn project(root: &Path) -> PathBuf {
+fn project(root: &Path) -> Result<PathBuf, TestError> {
     let folder = root.join("shop");
     write_file(
         &folder,
         "synt.toml",
         &format!("id = \"{PROJECT_ID}\"\nname = \"Shop\"\n"),
-    );
+    )?;
 
-    folder
+    Ok(folder)
 }
 
-fn write_file(folder: &Path, name: &str, text: &str) {
+fn write_file(folder: &Path, name: &str, text: &str) -> Result<(), TestError> {
     let path = folder.join(name);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(path, text).unwrap();
+    fs::create_dir_all(path.parent().ok_or("the file has no folder")?)?;
+    fs::write(path, text)?;
+
+    Ok(())
 }
 
 fn sqlite(file: &Path) -> String {
@@ -159,13 +155,13 @@ fn sql(event: &Event) -> Value {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_agent_runs_a_reading_database_step_without_asking() {
-    let shop = Shop::open().await;
-    let mut approver = shop.harness.approver().await;
-    let agent = shop.harness.agent("cursor").await;
+async fn an_agent_runs_a_reading_database_step_without_asking() -> Result<(), TestError> {
+    let shop = Shop::open().await?;
+    let mut approver = shop.harness.approver().await?;
+    let agent = shop.harness.agent("cursor").await?;
 
-    let outcome = shop.run(&agent, "count-new", false).await;
-    let steps = shop.step_requests();
+    let outcome = shop.run(&agent, "count-new", false).await?;
+    let steps = shop.step_requests()?;
 
     assert_eq!(outcome.value["state"], json!("completed"));
     assert!(approver.was_not_asked());
@@ -178,20 +174,24 @@ async fn an_agent_runs_a_reading_database_step_without_asking() {
         sql(&steps[0]),
         json!("SELECT count(*) FROM orders WHERE state = ?")
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_writing_database_step_runs_inside_a_run_approved_up_front() {
-    let shop = Shop::open().await;
-    let app = shop.harness.app().await;
+async fn a_writing_database_step_runs_inside_a_run_approved_up_front() -> Result<(), TestError> {
+    let shop = Shop::open().await?;
+    let app = shop.harness.app().await?;
 
-    let outcome = shop.run(&app, "close-new", true).await;
-    let steps = shop.step_requests();
+    let outcome = shop.run(&app, "close-new", true).await?;
+    let steps = shop.step_requests()?;
 
     assert_eq!(outcome.value["state"], json!("completed"));
-    assert_eq!(shop.states(), ["closed", "closed", "paid"]);
+    assert_eq!(shop.states()?, ["closed", "closed", "paid"]);
     assert_eq!(
         sql(&steps[0]),
         json!("UPDATE orders SET state = ? WHERE state = ?")
     );
+
+    Ok(())
 }

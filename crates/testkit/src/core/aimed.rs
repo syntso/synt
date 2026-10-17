@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
@@ -23,7 +23,11 @@ impl Action for Aimed {
     type Output = ();
 
     fn destination(&self, target: Option<&ResourceRef>, (): &()) -> Option<String> {
-        let aim = self.aim.lock().unwrap().clone();
+        let aim = self
+            .aim
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
 
         target.map(|target| format!("{target} = {aim}"))
     }

@@ -1,60 +1,61 @@
-#![allow(clippy::unwrap_used)]
-
-mod common;
-
 use std::time::Duration;
 
-use common::{Guarded, Harness, eventually, kinds, rejection};
 use serde_json::json;
 use synt_actions::Action;
 use synt_core::Broker;
 use synt_journal::{EventKind, Filter};
 use synt_proto::{Actor, ApprovalDecision, ApprovalId, ErrorCode, Name, Risk};
+use synt_testkit::TestError;
+use synt_testkit::core::{Guarded, Harness, eventually, kinds, rejection};
 
 const SHORT_PATIENCE: Duration = Duration::from_millis(300);
 
 #[tokio::test(flavor = "multi_thread")]
-async fn reads_run_for_everyone_without_asking() {
-    let harness = Harness::start();
-    let mut approver = harness.approver().await;
-    let agent = harness.agent("deploy-bot").await;
+async fn reads_run_for_everyone_without_asking() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let mut approver = harness.approver().await?;
+    let agent = harness.agent("deploy-bot").await?;
 
     approver.app().call(Guarded::call("read")).await.unwrap();
     agent.call(Guarded::call("read")).await.unwrap();
 
     assert!(approver.was_not_asked());
     assert_eq!(harness.runs(), 2);
-    assert!(!kinds(&harness.events()).contains(&EventKind::Approved));
+    assert!(!kinds(&harness.events()?).contains(&EventKind::Approved));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_person_writes_without_being_asked() {
-    let harness = Harness::start();
-    let mut approver = harness.approver().await;
+async fn the_person_writes_without_being_asked() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let mut approver = harness.approver().await?;
 
     let outcome = approver.app().call(Guarded::call("write")).await.unwrap();
 
     assert!(approver.was_not_asked());
     assert_eq!(
-        kinds(&harness.trail(outcome.request)),
+        kinds(&harness.trail(outcome.request)?),
         [
             EventKind::Requested,
             EventKind::Started,
             EventKind::Finished
         ]
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_agent_write_waits_for_the_person_and_runs_once_allowed() {
-    let harness = Harness::start();
-    let mut approver = harness.approver().await;
-    let agent = harness.agent("deploy-bot").await;
+async fn an_agent_write_waits_for_the_person_and_runs_once_allowed() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let mut approver = harness.approver().await?;
+    let agent = harness.agent("deploy-bot").await?;
 
     let (question, outcome) = approver
         .decide(&agent, Guarded::call("write"), ApprovalDecision::AllowOnce)
-        .await;
-    let trail = harness.trail(outcome.unwrap().request);
+        .await?;
+    let trail = harness.trail(outcome.unwrap().request)?;
 
     assert_eq!(
         question.actor,
@@ -78,12 +79,14 @@ async fn an_agent_write_waits_for_the_person_and_runs_once_allowed() {
         trail[1].details().value(),
         &json!({ "scope": "once", "by": "person" })
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_person_is_asked_before_a_privileged_call() {
-    let harness = Harness::start();
-    let mut approver = harness.approver().await;
+async fn the_person_is_asked_before_a_privileged_call() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let mut approver = harness.approver().await?;
     let app = approver.app().clone();
 
     let (question, outcome) = approver
@@ -92,25 +95,27 @@ async fn the_person_is_asked_before_a_privileged_call() {
             Guarded::call("privileged"),
             ApprovalDecision::AllowOnce,
         )
-        .await;
+        .await?;
 
     assert_eq!(question.actor, Actor::Person);
     assert_eq!(question.risk, Risk::Privileged);
     assert!(outcome.is_ok());
     assert_eq!(harness.runs(), 1);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_denied_call_is_journaled_and_never_runs() {
-    let harness = Harness::start();
-    let mut approver = harness.approver().await;
-    let agent = harness.agent("deploy-bot").await;
+async fn a_denied_call_is_journaled_and_never_runs() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let mut approver = harness.approver().await?;
+    let agent = harness.agent("deploy-bot").await?;
 
     let (_, outcome) = approver
         .decide(&agent, Guarded::call("write"), ApprovalDecision::Deny)
-        .await;
+        .await?;
     let error = rejection(outcome);
-    let trail = harness.events();
+    let trail = harness.events()?;
 
     assert_eq!(error.code, ErrorCode::DENIED);
     assert_eq!(error.message, "the person denied the request");
@@ -120,41 +125,47 @@ async fn a_denied_call_is_journaled_and_never_runs() {
         trail[1].details().value(),
         &json!({ "reason": "the person denied the request" })
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn without_a_connected_app_an_agent_write_is_denied_at_once() {
-    let harness = Harness::start();
-    let agent = harness.agent("deploy-bot").await;
+async fn without_a_connected_app_an_agent_write_is_denied_at_once() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let agent = harness.agent("deploy-bot").await?;
 
     let error = rejection(agent.call(Guarded::call("write")).await);
 
     assert_eq!(error.code, ErrorCode::DENIED);
     assert_eq!(error.message, "no one is available to approve");
     assert_eq!(harness.runs(), 0);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn agents_are_never_asked_to_approve() {
-    let harness = Harness::start();
-    let watcher = harness.agent("watcher").await;
+async fn agents_are_never_asked_to_approve() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let watcher = harness.agent("watcher").await?;
     let mut seen = watcher.notifications();
-    let agent = harness.agent("deploy-bot").await;
+    let agent = harness.agent("deploy-bot").await?;
 
     let error = rejection(agent.call(Guarded::call("write")).await);
 
     assert_eq!(error.message, "no one is available to approve");
     assert!(seen.try_recv().is_err());
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_unanswered_question_is_denied_when_patience_runs_out() {
-    let harness = Harness::with_broker(Broker::new().with_patience(SHORT_PATIENCE));
-    let mut approver = harness.approver().await;
-    let agent = harness.agent("deploy-bot").await;
+async fn an_unanswered_question_is_denied_when_patience_runs_out() -> Result<(), TestError> {
+    let harness = Harness::with_broker(Broker::new().with_patience(SHORT_PATIENCE))?;
+    let mut approver = harness.approver().await?;
+    let agent = harness.agent("deploy-bot").await?;
 
     let call = tokio::spawn(async move { agent.call(Guarded::call("write")).await });
-    let question = approver.next().await;
+    let question = approver.next().await?;
     let error = rejection(call.await.unwrap());
     let late = rejection(
         approver
@@ -166,18 +177,20 @@ async fn an_unanswered_question_is_denied_when_patience_runs_out() {
     assert_eq!(error.message, "approval timed out");
     assert_eq!(late.code, ErrorCode::APPROVAL_UNKNOWN);
     assert_eq!(harness.runs(), 0);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn every_app_is_asked_and_the_first_answer_wins() {
-    let harness = Harness::start();
-    let mut first = harness.approver().await;
-    let mut second = harness.approver().await;
-    let agent = harness.agent("deploy-bot").await;
+async fn every_app_is_asked_and_the_first_answer_wins() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let mut first = harness.approver().await?;
+    let mut second = harness.approver().await?;
+    let agent = harness.agent("deploy-bot").await?;
 
     let call = tokio::spawn(async move { agent.call(Guarded::call("write")).await });
-    let asked_first = first.next().await;
-    let asked_second = second.next().await;
+    let asked_first = first.next().await?;
+    let asked_second = second.next().await?;
 
     first
         .answer(&asked_first, ApprovalDecision::Deny)
@@ -194,17 +207,19 @@ async fn every_app_is_asked_and_the_first_answer_wins() {
     assert_eq!(overruled.code, ErrorCode::APPROVAL_UNKNOWN);
     assert_eq!(error.message, "the person denied the request");
     assert_eq!(harness.runs(), 0);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_agent_cannot_answer_even_its_own_question() {
-    let harness = Harness::start();
-    let mut approver = harness.approver().await;
-    let agent = harness.agent("deploy-bot").await;
+async fn an_agent_cannot_answer_even_its_own_question() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let mut approver = harness.approver().await?;
+    let agent = harness.agent("deploy-bot").await?;
 
     let caller = agent.clone();
     let call = tokio::spawn(async move { caller.call(Guarded::call("write")).await });
-    let question = approver.next().await;
+    let question = approver.next().await?;
 
     let refused = rejection(
         agent
@@ -220,12 +235,14 @@ async fn an_agent_cannot_answer_even_its_own_question() {
     assert_eq!(refused.code, ErrorCode::DENIED);
     assert_eq!(error.message, "the person denied the request");
     assert_eq!(harness.runs(), 0);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_answer_to_no_question_is_unknown() {
-    let harness = Harness::start();
-    let approver = harness.approver().await;
+async fn an_answer_to_no_question_is_unknown() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let approver = harness.approver().await?;
 
     let refused = rejection(
         approver
@@ -235,22 +252,25 @@ async fn an_answer_to_no_question_is_unknown() {
     );
 
     assert_eq!(refused.code, ErrorCode::APPROVAL_UNKNOWN);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_question_is_withdrawn_when_its_requester_leaves() {
-    let harness = Harness::start();
-    let mut approver = harness.approver().await;
-    let agent = harness.agent("deploy-bot").await;
+async fn a_question_is_withdrawn_when_its_requester_leaves() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let mut approver = harness.approver().await?;
+    let agent = harness.agent("deploy-bot").await?;
 
     let call = tokio::spawn(async move { agent.call(Guarded::call("write")).await });
-    let question = approver.next().await;
+    let question = approver.next().await?;
     call.abort();
     let _ = call.await;
 
     let denied = eventually("the call to be denied", async || {
         harness
             .matching(&Filter::all().kind(EventKind::Denied))
+            .ok()?
             .pop()
     })
     .await;
@@ -266,21 +286,25 @@ async fn a_question_is_withdrawn_when_its_requester_leaves() {
     );
     assert_eq!(late.code, ErrorCode::APPROVAL_UNKNOWN);
     assert_eq!(harness.runs(), 0);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn questions_are_numbered_from_one() {
-    let harness = Harness::start();
-    let mut approver = harness.approver().await;
-    let agent = harness.agent("deploy-bot").await;
+async fn questions_are_numbered_from_one() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let mut approver = harness.approver().await?;
+    let agent = harness.agent("deploy-bot").await?;
 
     let (first, _) = approver
         .decide(&agent, Guarded::call("write"), ApprovalDecision::Deny)
-        .await;
+        .await?;
     let (second, _) = approver
         .decide(&agent, Guarded::call("write"), ApprovalDecision::Deny)
-        .await;
+        .await?;
 
     assert_eq!(first.id, ApprovalId::new(1));
     assert_eq!(second.id, ApprovalId::new(2));
+
+    Ok(())
 }

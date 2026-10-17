@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::common::{Approver, Grounds, Harness, rejection};
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use synt_client::Client;
@@ -11,6 +10,8 @@ use synt_core::{
 use synt_journal::EventKind;
 use synt_proto::{ActionCall, ActionOutcome, ApprovalDecision, ErrorCode, Risk};
 use synt_ssh::Pool;
+use synt_testkit::TestError;
+use synt_testkit::core::{Approver, Grounds, Harness, rejection};
 
 const PROJECT_FILE: &str = "id = \"6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d\"\nname = \"Shop\"\n";
 const SHOP: &str = "@shop/shop";
@@ -33,83 +34,75 @@ struct Shop {
 }
 
 impl Shop {
-    async fn open() -> Self {
-        let grounds = Grounds::new();
-        let core = core(&grounds);
-        let harness = Harness::serve(grounds, core);
-        let folder = project(harness.grounds().path());
+    async fn open() -> Result<Self, TestError> {
+        let grounds = Grounds::new()?;
+        let core = core(&grounds)?;
+        let harness = Harness::serve(grounds, core)?;
+        let folder = project(harness.grounds().path())?;
         let file = folder.join("shop.sqlite");
 
-        Connection::open(&file)
-            .unwrap()
-            .execute_batch(SCHEMA)
-            .unwrap();
-        resource(&folder, "shop", &sqlite_resource(&file));
+        Connection::open(&file)?.execute_batch(SCHEMA)?;
+        resource(&folder, "shop", &sqlite_resource(&file))?;
         harness
             .app()
-            .await
+            .await?
             .call(ActionCall::new("project.open").params(json!({ "path": folder })))
-            .await
-            .unwrap();
+            .await?;
 
-        Self { harness, file }
+        Ok(Self { harness, file })
     }
 
-    fn count(&self, table: &str) -> i64 {
-        Connection::open(&self.file)
-            .unwrap()
-            .query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
-                row.get(0)
-            })
-            .unwrap()
+    fn count(&self, table: &str) -> Result<i64, TestError> {
+        Ok(Connection::open(&self.file)?.query_row(
+            &format!("SELECT count(*) FROM {table}"),
+            [],
+            |row| row.get(0),
+        )?)
     }
 
-    fn journal_text(&self) -> String {
-        format!("{:?}", self.harness.events())
+    fn journal_text(&self) -> Result<String, TestError> {
+        Ok(format!("{:?}", self.harness.events()?))
     }
 
-    fn details(&self, outcome: &ActionOutcome, kind: EventKind) -> Value {
-        self.harness
-            .trail(outcome.request)
+    fn details(&self, outcome: &ActionOutcome, kind: EventKind) -> Result<Value, TestError> {
+        Ok(self
+            .harness
+            .trail(outcome.request)?
             .into_iter()
             .find(|event| event.kind() == kind)
             .unwrap_or_else(|| panic!("no {kind:?} for {:?}", outcome.request))
             .details()
             .value()
-            .clone()
+            .clone())
     }
 }
 
-fn core(grounds: &Grounds) -> Core {
-    let projects = Projects::start(grounds.state()).unwrap();
-    let secrets = Secrets::new(grounds.vault(), grounds.state());
-    let mut registry = grounds.registry();
+fn core(grounds: &Grounds) -> Result<Core, TestError> {
+    let projects = Projects::start(grounds.state()?)?;
+    let secrets = Secrets::new(grounds.vault(), grounds.state()?);
+    let mut registry = grounds.registry()?;
 
-    registry
-        .register(ProjectOpen::new(projects.clone()))
-        .unwrap();
-    registry.register(SecretPut::new(secrets.clone())).unwrap();
-    registry.register(SecretList::new(secrets.clone())).unwrap();
-    registry
-        .register(SecretRemove::new(secrets.clone()))
-        .unwrap();
-    Databases::new(Pool::new(), projects, secrets)
-        .register(&mut registry)
-        .unwrap();
+    registry.register(ProjectOpen::new(projects.clone()))?;
+    registry.register(SecretPut::new(secrets.clone()))?;
+    registry.register(SecretList::new(secrets.clone()))?;
+    registry.register(SecretRemove::new(secrets.clone()))?;
+    Databases::new(Pool::new(), projects, secrets).register(&mut registry)?;
 
-    Core::new(registry, grounds.journal(), Broker::new())
+    Ok(Core::new(registry, grounds.journal(), Broker::new()))
 }
 
-fn project(root: &Path) -> PathBuf {
+fn project(root: &Path) -> Result<PathBuf, TestError> {
     let folder = root.join("shop");
-    fs::create_dir_all(folder.join("resources")).unwrap();
-    fs::write(folder.join("synt.toml"), PROJECT_FILE).unwrap();
+    fs::create_dir_all(folder.join("resources"))?;
+    fs::write(folder.join("synt.toml"), PROJECT_FILE)?;
 
-    folder
+    Ok(folder)
 }
 
-fn resource(folder: &Path, name: &str, text: &str) {
-    fs::write(folder.join(format!("resources/{name}.toml")), text).unwrap();
+fn resource(folder: &Path, name: &str, text: &str) -> Result<(), TestError> {
+    fs::write(folder.join(format!("resources/{name}.toml")), text)?;
+
+    Ok(())
 }
 
 fn sqlite_resource(file: &Path) -> String {
@@ -125,14 +118,14 @@ fn query(sql: &str) -> ActionCall {
         .params(json!({ "sql": sql }))
 }
 
-async fn agent(shop: &Shop) -> Client {
-    shop.harness.agent("cursor").await
+async fn agent(shop: &Shop) -> Result<Client, TestError> {
+    Ok(shop.harness.agent("cursor").await?)
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_agent_reads_without_asking_and_gets_typed_rows() {
-    let shop = Shop::open().await;
-    let agent = agent(&shop).await;
+async fn an_agent_reads_without_asking_and_gets_typed_rows() -> Result<(), TestError> {
+    let shop = Shop::open().await?;
+    let agent = agent(&shop).await?;
 
     let outcome = agent
         .call(query("SELECT id, email FROM customers ORDER BY id"))
@@ -146,21 +139,24 @@ async fn an_agent_reads_without_asking_and_gets_typed_rows() {
     );
     assert_eq!(outcome.value["effect"], json!("read"));
     assert_eq!(outcome.value["kind"], json!("select"));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_journal_keeps_the_masked_statement_and_counts_but_never_the_data() {
-    let shop = Shop::open().await;
-    let agent = agent(&shop).await;
+async fn the_journal_keeps_the_masked_statement_and_counts_but_never_the_data()
+-> Result<(), TestError> {
+    let shop = Shop::open().await?;
+    let agent = agent(&shop).await?;
     let call = ActionCall::new("db.query").target(SHOP).params(json!({
         "sql": "SELECT secret FROM customers WHERE email = 'ann@example.com' OR id = ?1",
         "params": [2],
     }));
 
     let outcome = agent.call(call).await.unwrap();
-    let requested = shop.details(&outcome, EventKind::Requested);
-    let finished = shop.details(&outcome, EventKind::Finished);
-    let journal = shop.journal_text();
+    let requested = shop.details(&outcome, EventKind::Requested)?;
+    let finished = shop.details(&outcome, EventKind::Finished)?;
+    let journal = shop.journal_text()?;
 
     assert_eq!(outcome.value["rows"].as_array().unwrap().len(), 2);
     assert_eq!(
@@ -173,13 +169,16 @@ async fn the_journal_keeps_the_masked_statement_and_counts_but_never_the_data() 
     for private in ["ann@example.com", "ann-private-note", "bob-private-note"] {
         assert!(!journal.contains(private), "the journal holds {private}");
     }
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_write_from_an_agent_waits_for_the_person_and_a_denial_changes_nothing() {
-    let shop = Shop::open().await;
-    let agent = agent(&shop).await;
-    let mut approver = Approver::new(shop.harness.app().await);
+async fn a_write_from_an_agent_waits_for_the_person_and_a_denial_changes_nothing()
+-> Result<(), TestError> {
+    let shop = Shop::open().await?;
+    let agent = agent(&shop).await?;
+    let mut approver = Approver::new(shop.harness.app().await?);
 
     let (question, outcome) = approver
         .decide(
@@ -187,7 +186,7 @@ async fn a_write_from_an_agent_waits_for_the_person_and_a_denial_changes_nothing
             query("DELETE FROM orders WHERE total > 15"),
             ApprovalDecision::Deny,
         )
-        .await;
+        .await?;
 
     assert_eq!(question.risk, Risk::Write);
     assert_eq!(
@@ -196,14 +195,16 @@ async fn a_write_from_an_agent_waits_for_the_person_and_a_denial_changes_nothing
     );
     assert_eq!(question.params["judged"]["kind"], json!("delete"));
     assert_eq!(rejection(outcome).code, ErrorCode::DENIED);
-    assert_eq!(shop.count("orders"), 3);
+    assert_eq!(shop.count("orders")?, 3);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_approved_write_runs_and_reports_the_rows_it_changed() {
-    let shop = Shop::open().await;
-    let agent = agent(&shop).await;
-    let mut approver = Approver::new(shop.harness.app().await);
+async fn an_approved_write_runs_and_reports_the_rows_it_changed() -> Result<(), TestError> {
+    let shop = Shop::open().await?;
+    let agent = agent(&shop).await?;
+    let mut approver = Approver::new(shop.harness.app().await?);
 
     let outcome = approver
         .approve(
@@ -211,19 +212,21 @@ async fn an_approved_write_runs_and_reports_the_rows_it_changed() {
             query("UPDATE orders SET total = total * 2 WHERE customer_id = 1"),
             ApprovalDecision::AllowOnce,
         )
-        .await;
-    let finished = shop.details(&outcome, EventKind::Finished);
+        .await?;
+    let finished = shop.details(&outcome, EventKind::Finished)?;
 
     assert_eq!(outcome.value["affected"], json!(2));
     assert_eq!(finished["affected"], json!(2));
     assert_eq!(finished["effect"], json!("write"));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn schema_changes_and_unreadable_text_are_asked_as_privileged() {
-    let shop = Shop::open().await;
-    let agent = agent(&shop).await;
-    let mut approver = Approver::new(shop.harness.app().await);
+async fn schema_changes_and_unreadable_text_are_asked_as_privileged() -> Result<(), TestError> {
+    let shop = Shop::open().await?;
+    let agent = agent(&shop).await?;
+    let mut approver = Approver::new(shop.harness.app().await?);
 
     for sql in [
         "DROP TABLE orders",
@@ -232,19 +235,21 @@ async fn schema_changes_and_unreadable_text_are_asked_as_privileged() {
     ] {
         let (question, outcome) = approver
             .decide(&agent, query(sql), ApprovalDecision::Deny)
-            .await;
+            .await?;
 
         assert_eq!(question.risk, Risk::Privileged, "{sql}");
         assert_eq!(rejection(outcome).code, ErrorCode::DENIED, "{sql}");
     }
 
-    assert_eq!(shop.count("orders"), 3);
+    assert_eq!(shop.count("orders")?, 3);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn pages_are_fetched_by_offset_until_nothing_is_left() {
-    let shop = Shop::open().await;
-    let agent = agent(&shop).await;
+async fn pages_are_fetched_by_offset_until_nothing_is_left() -> Result<(), TestError> {
+    let shop = Shop::open().await?;
+    let agent = agent(&shop).await?;
     let page = |offset: u64| {
         ActionCall::new("db.query").target(SHOP).params(json!({
             "sql": "SELECT id FROM orders ORDER BY id",
@@ -262,12 +267,14 @@ async fn pages_are_fetched_by_offset_until_nothing_is_left() {
     assert_eq!(second["rows"], json!([[3]]));
     assert_eq!(second["more"], json!(false));
     assert_eq!(second["next_offset"], json!(null));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn schema_tables_explain_and_ping_answer_for_a_database_resource() {
-    let shop = Shop::open().await;
-    let agent = agent(&shop).await;
+async fn schema_tables_explain_and_ping_answer_for_a_database_resource() -> Result<(), TestError> {
+    let shop = Shop::open().await?;
+    let agent = agent(&shop).await?;
     let call = |action: &str, params: Value| ActionCall::new(action).target(SHOP).params(params);
 
     let schema = agent
@@ -308,12 +315,14 @@ async fn schema_tables_explain_and_ping_answer_for_a_database_resource() {
             .is_some_and(|steps| !steps.is_empty())
     );
     assert_eq!(ping["engine"], json!("sqlite"));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn explain_takes_exactly_one_statement() {
-    let shop = Shop::open().await;
-    let agent = agent(&shop).await;
+async fn explain_takes_exactly_one_statement() -> Result<(), TestError> {
+    let shop = Shop::open().await?;
+    let agent = agent(&shop).await?;
     let call = ActionCall::new("db.explain")
         .target(SHOP)
         .params(json!({ "sql": "SELECT 1; DROP TABLE orders" }));
@@ -321,13 +330,15 @@ async fn explain_takes_exactly_one_statement() {
     let error = rejection(agent.call(call).await);
 
     assert_eq!(error.code, ErrorCode::INVALID_PARAMS);
-    assert_eq!(shop.count("orders"), 3);
+    assert_eq!(shop.count("orders")?, 3);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_redis_command_is_refused_for_an_sql_database() {
-    let shop = Shop::open().await;
-    let agent = agent(&shop).await;
+async fn a_redis_command_is_refused_for_an_sql_database() -> Result<(), TestError> {
+    let shop = Shop::open().await?;
+    let agent = agent(&shop).await?;
     let call = ActionCall::new("db.query")
         .target(SHOP)
         .params(json!({ "command": ["GET", "x"] }));
@@ -336,12 +347,14 @@ async fn a_redis_command_is_refused_for_an_sql_database() {
 
     assert_eq!(error.code, ErrorCode::INVALID_PARAMS);
     assert!(error.message.contains("takes sql"), "{}", error.message);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_target_that_is_not_a_database_resource_fails_clearly() {
-    let shop = Shop::open().await;
-    let app = shop.harness.app().await;
+async fn a_target_that_is_not_a_database_resource_fails_clearly() -> Result<(), TestError> {
+    let shop = Shop::open().await?;
+    let app = shop.harness.app().await?;
     let call = ActionCall::new("db.ping").target("@shop/missing");
 
     let error = rejection(app.call(call).await);
@@ -352,12 +365,14 @@ async fn a_target_that_is_not_a_database_resource_fails_clearly() {
         "{}",
         error.message
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn database_actions_are_described_with_their_risks_and_params() {
-    let shop = Shop::open().await;
-    let agent = agent(&shop).await;
+async fn database_actions_are_described_with_their_risks_and_params() -> Result<(), TestError> {
+    let shop = Shop::open().await?;
+    let agent = agent(&shop).await?;
 
     let described = agent.describe().await.unwrap();
     let find = |id: &str| described.iter().find(|action| action.id == id).unwrap();
@@ -370,4 +385,6 @@ async fn database_actions_are_described_with_their_risks_and_params() {
     assert_eq!(find("db.ping").risk, Risk::Read);
     assert!(find("db.ping").takes_target);
     assert!(described.iter().all(|action| action.id != "secret.put"));
+
+    Ok(())
 }

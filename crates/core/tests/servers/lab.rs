@@ -18,10 +18,13 @@ use synt_platform::Endpoint;
 use synt_proto::{ActionCall, ActionOutcome, ClientKind, Hello, RequestSeq};
 use synt_ssh::{Pool, Tunnels};
 use synt_test_servers::{DbServers, SshHome, SshServers};
+use synt_testkit::MemoryVault;
+use synt_testkit::TestError;
+use synt_testkit::core::RunningServer;
 use tempfile::TempDir;
 use tokio::time;
 
-use crate::{MemoryVault, Person, RunningCore};
+use crate::Person;
 
 pub const PROJECT: &str = "lab";
 pub const BASTION: &str = "@lab/bastion";
@@ -43,21 +46,23 @@ pub struct Lab {
     pub keys: SshKeys,
     pub client: Client,
     journal: JournalWriter,
-    running: RunningCore,
+    running: RunningServer,
     _person: Person,
     _directory: TempDir,
 }
 
 impl Lab {
-    pub async fn start() -> Option<Self> {
+    pub async fn start() -> Result<Option<Self>, TestError> {
         Self::build(SshServers::trusting_home, DEFAULT_GRACE).await
     }
 
-    pub async fn knowing(home: impl FnOnce(&SshServers) -> SshHome) -> Option<Self> {
+    pub async fn knowing(
+        home: impl FnOnce(&SshServers) -> SshHome,
+    ) -> Result<Option<Self>, TestError> {
         Self::build(home, DEFAULT_GRACE).await
     }
 
-    pub async fn with_grace(grace: Duration) -> Option<Self> {
+    pub async fn with_grace(grace: Duration) -> Result<Option<Self>, TestError> {
         Self::build(SshServers::trusting_home, grace).await
     }
 
@@ -77,34 +82,40 @@ impl Lab {
         self.client.call(call).await
     }
 
-    pub async fn client_port(&self, host: &str) -> String {
-        let outcome = self.exec(host, "printenv SSH_CLIENT").await.unwrap();
-        let line = outcome.value["stdout"].as_str().unwrap().to_owned();
+    pub async fn client_port(&self, host: &str) -> Result<String, TestError> {
+        let outcome = self.exec(host, "printenv SSH_CLIENT").await?;
+        let line = outcome.value["stdout"]
+            .as_str()
+            .ok_or("ssh.exec gave no stdout")?;
+        let port = line
+            .split_whitespace()
+            .nth(1)
+            .ok_or("SSH_CLIENT names no port")?;
 
-        line.split_whitespace().nth(1).unwrap().to_owned()
+        Ok(port.to_owned())
     }
 
-    pub fn trail(&self, request: RequestSeq) -> Vec<Event> {
+    pub fn trail(&self, request: RequestSeq) -> Result<Vec<Event>, TestError> {
         self.events(&Filter::all().call(Seq::new(request.get())))
     }
 
-    pub fn kinds(&self, request: RequestSeq) -> Vec<EventKind> {
-        self.trail(request).iter().map(Event::kind).collect()
+    pub fn kinds(&self, request: RequestSeq) -> Result<Vec<EventKind>, TestError> {
+        Ok(self.trail(request)?.iter().map(Event::kind).collect())
     }
 
-    pub async fn finished(&self, request: RequestSeq) -> Value {
+    pub async fn finished(&self, request: RequestSeq) -> Result<Value, TestError> {
         self.settled(request, EventKind::Finished).await
     }
 
-    pub fn last_failure(&self, action: &str) -> Value {
+    pub fn last_failure(&self, action: &str) -> Result<Value, TestError> {
         self.last_of(action, EventKind::Failed)
     }
 
-    pub fn last_approval(&self, action: &str) -> Value {
+    pub fn last_approval(&self, action: &str) -> Result<Value, TestError> {
         self.last_of(action, EventKind::Approved)
     }
 
-    pub async fn stop(self) {
+    pub async fn stop(self) -> Result<(), TestError> {
         let Self {
             client,
             running,
@@ -115,54 +126,61 @@ impl Lab {
         drop(person);
         drop(client);
 
-        running.stop().await;
+        running.stop().await?;
+
+        Ok(())
     }
 
-    async fn settled(&self, request: RequestSeq, kind: EventKind) -> Value {
+    async fn settled(&self, request: RequestSeq, kind: EventKind) -> Result<Value, TestError> {
         time::timeout(WAIT, async {
             loop {
                 let found = self
-                    .trail(request)
+                    .trail(request)?
                     .into_iter()
                     .find(|event| event.kind() == kind);
 
                 if let Some(event) = found {
-                    return event.details().value().clone();
+                    return Ok(event.details().value().clone());
                 }
 
                 time::sleep(Duration::from_millis(20)).await;
             }
         })
         .await
-        .unwrap_or_else(|_| panic!("the journal never recorded {kind:?} for {request:?}"))
+        .map_err(|_| format!("the journal never recorded {kind:?} for {request:?}"))?
     }
 
-    fn last_of(&self, action: &str, kind: EventKind) -> Value {
-        let events = self.events(&Filter::all());
+    fn last_of(&self, action: &str, kind: EventKind) -> Result<Value, TestError> {
+        let events = self.events(&Filter::all())?;
 
         let last = events
             .iter()
             .rev()
             .find(|event| event.kind() == kind && event.action().as_str() == action)
-            .unwrap_or_else(|| panic!("the journal holds no {kind:?} event of {action}"));
+            .ok_or_else(|| format!("the journal holds no {kind:?} event of {action}"))?;
 
-        last.details().value().clone()
+        Ok(last.details().value().clone())
     }
 
-    fn events(&self, filter: &Filter) -> Vec<Event> {
-        let reader = self.journal.reader().unwrap();
+    fn events(&self, filter: &Filter) -> Result<Vec<Event>, TestError> {
+        let reader = self.journal.reader()?;
 
-        reader.page(filter, None, PAGE).unwrap()
+        Ok(reader.page(filter, None, PAGE)?)
     }
 
-    async fn build(home: impl FnOnce(&SshServers) -> SshHome, grace: Duration) -> Option<Self> {
-        let servers = SshServers::running()?;
+    async fn build(
+        home: impl FnOnce(&SshServers) -> SshHome,
+        grace: Duration,
+    ) -> Result<Option<Self>, TestError> {
+        let Some(servers) = SshServers::running() else {
+            return Ok(None);
+        };
         let home = home(&servers);
-        let directory = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir()?;
 
-        let journal = journal(directory.path());
-        let state = State::open(&directory.path().join("state.sqlite")).unwrap();
-        let projects = Projects::start(state.clone()).unwrap();
+        let journal = journal(directory.path())?;
+        let state = State::open(&directory.path().join("state.sqlite"))?;
+        let projects = Projects::start(state.clone())?;
         let vault = Arc::new(MemoryVault::default());
         let keys = SshKeys::new(vault.clone(), state.clone());
         let secrets = Secrets::new(vault, state);
@@ -174,25 +192,21 @@ impl Lab {
             .build();
         let terminals = Terminals::new(journal.clone());
         let runbooks = Runbooks::new(projects.clone(), journal.clone(), terminals.clone());
-        let mut registry = registry(&pool, &projects, &terminals, &secrets);
-        RunbookActions::new(runbooks.clone())
-            .register(&mut registry)
-            .unwrap();
+        let mut registry = registry(&pool, &projects, &terminals, &secrets)?;
+        RunbookActions::new(runbooks.clone()).register(&mut registry)?;
 
         let endpoint = endpoint(directory.path());
         let core = Arc::new(Core::new(registry, journal.clone(), Broker::new()));
-        runbooks.connect(&core).unwrap();
-        let running = RunningCore::spawn(&endpoint, core);
-        let client = Client::connect(&endpoint, app_hello(), &Autostart::off())
-            .await
-            .unwrap();
+        runbooks.connect(&core)?;
+        let running = RunningServer::spawn(&endpoint, core)?;
+        let client = Client::connect(&endpoint, app_hello(), &Autostart::off()).await?;
         let person = Person::approving_once(&client);
 
-        let project = write_project(directory.path(), &servers);
+        let project = write_project(directory.path(), &servers)?;
         let opening = ActionCall::new("project.open").params(json!({ "path": project }));
-        client.call(opening).await.unwrap();
+        client.call(opening).await?;
 
-        Some(Self {
+        Ok(Some(Self {
             servers,
             _home: home,
             keys,
@@ -201,7 +215,7 @@ impl Lab {
             running,
             _person: person,
             _directory: directory,
-        })
+        }))
     }
 }
 
@@ -210,80 +224,60 @@ fn registry(
     projects: &Projects,
     terminals: &Terminals,
     secrets: &Secrets,
-) -> Registry {
+) -> Result<Registry, TestError> {
     let mut registry = Registry::new();
     let tunnels = Tunnels::new(pool.clone());
 
-    registry
-        .register(ProjectOpen::new(projects.clone()))
-        .unwrap();
-    registry
-        .register(SshExec::new(pool.clone(), projects.clone()))
-        .unwrap();
-    registry
-        .register(SshConnections::new(pool.clone()))
-        .unwrap();
-    registry
-        .register(TunnelOpen::new(tunnels.clone(), projects.clone()))
-        .unwrap();
-    registry.register(TunnelClose::new(tunnels)).unwrap();
-    registry
-        .register(SshSessionOpen::new(
-            pool.clone(),
-            terminals.clone(),
-            projects.clone(),
-        ))
-        .unwrap();
-    registry
-        .register(SessionBlocks::new(terminals.clone()))
-        .unwrap();
-    registry
-        .register(SessionClose::new(terminals.clone()))
-        .unwrap();
-    registry
-        .register(SessionList::new(terminals.clone()))
-        .unwrap();
-    Files::new(pool.clone(), projects.clone())
-        .register(&mut registry)
-        .unwrap();
-    registry.register(SecretPut::new(secrets.clone())).unwrap();
-    Databases::new(pool.clone(), projects.clone(), secrets.clone())
-        .register(&mut registry)
-        .unwrap();
+    registry.register(ProjectOpen::new(projects.clone()))?;
+    registry.register(SshExec::new(pool.clone(), projects.clone()))?;
+    registry.register(SshConnections::new(pool.clone()))?;
+    registry.register(TunnelOpen::new(tunnels.clone(), projects.clone()))?;
+    registry.register(TunnelClose::new(tunnels))?;
+    registry.register(SshSessionOpen::new(
+        pool.clone(),
+        terminals.clone(),
+        projects.clone(),
+    ))?;
+    registry.register(SessionBlocks::new(terminals.clone()))?;
+    registry.register(SessionClose::new(terminals.clone()))?;
+    registry.register(SessionList::new(terminals.clone()))?;
+    Files::new(pool.clone(), projects.clone()).register(&mut registry)?;
+    registry.register(SecretPut::new(secrets.clone()))?;
+    Databases::new(pool.clone(), projects.clone(), secrets.clone()).register(&mut registry)?;
 
-    registry
+    Ok(registry)
 }
 
 fn app_hello() -> Hello {
     Hello::new(ClientKind::App, "synt-servers-tests")
 }
 
-fn journal(directory: &Path) -> JournalWriter {
-    let keys = Arc::new(MemoryKeyStore::new().unwrap());
-    let journal = Journal::create(directory.join("journal.sqlite"), keys).unwrap();
+fn journal(directory: &Path) -> Result<JournalWriter, TestError> {
+    let keys = Arc::new(MemoryKeyStore::new()?);
+    let journal = Journal::create(directory.join("journal.sqlite"), keys)?;
 
-    JournalWriter::spawn(journal).unwrap()
+    Ok(JournalWriter::spawn(journal)?)
 }
 
 fn endpoint(directory: &Path) -> Endpoint {
-    let unique = directory.file_name().unwrap().to_string_lossy();
+    let unique = directory.file_name().unwrap_or_default().to_string_lossy();
 
     Endpoint::named(directory, &format!("synt-servers-{unique}"))
 }
 
-fn write_project(directory: &Path, servers: &SshServers) -> PathBuf {
+fn write_project(directory: &Path, servers: &SshServers) -> Result<PathBuf, TestError> {
     let project = directory.join(PROJECT);
-    fs::create_dir_all(project.join("resources")).unwrap();
+    fs::create_dir_all(project.join("resources"))?;
 
     let synt_toml = format!("id = \"{PROJECT_ID}\"\nname = \"Lab\"\n");
-    fs::write(project.join("synt.toml"), synt_toml).unwrap();
+    fs::write(project.join("synt.toml"), synt_toml)?;
 
     for (name, resource) in resources(servers) {
-        let text = toml::to_string(&resource).unwrap();
-        fs::write(project.join(format!("resources/{name}.toml")), text).unwrap();
+        let text = toml::to_string(&resource)?;
+        fs::write(project.join(format!("resources/{name}.toml")), text)?;
     }
 
-    project
+    Ok(project)
 }
 
 fn resources(servers: &SshServers) -> [(&'static str, Resource); 5] {

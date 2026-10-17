@@ -2,13 +2,14 @@ use std::fs;
 
 use serde_json::json;
 use synt_proto::ErrorCode;
+use synt_testkit::TestError;
 
 use super::Stage;
-use crate::common::rejection;
+use synt_testkit::core::rejection;
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_picked_file_is_read_and_written_by_handle() {
-    let stage = Stage::start().await;
+async fn a_picked_file_is_read_and_written_by_handle() -> Result<(), TestError> {
+    let stage = Stage::start().await?;
     let path = stage.harness.grounds().path().join("diagram.txt");
     fs::write(&path, "first draft").unwrap();
 
@@ -17,17 +18,19 @@ async fn a_picked_file_is_read_and_written_by_handle() {
             "extension.file.pick",
             json!({ "extension": "every", "path": path, "access": "read-write" }),
         )
-        .await;
+        .await?;
     let handle = picked["handle"].as_str().unwrap();
 
-    let chosen = stage.every("files", json!({})).await;
-    let read = stage.every("read_file", json!({ "handle": handle })).await;
+    let chosen = stage.every("files", json!({})).await?;
+    let read = stage
+        .every("read_file", json!({ "handle": handle }))
+        .await?;
     stage
         .every(
             "write_file",
             json!({ "handle": handle, "text": "second draft" }),
         )
-        .await;
+        .await?;
 
     assert_eq!(picked["name"], "diagram.txt");
     assert_eq!(
@@ -36,11 +39,14 @@ async fn a_picked_file_is_read_and_written_by_handle() {
     );
     assert_eq!(read["text"], "first draft");
     assert_eq!(fs::read_to_string(&path).unwrap(), "second draft");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_file_picked_for_reading_cannot_be_written_or_used_after_it_is_taken_back() {
-    let stage = Stage::start().await;
+async fn a_file_picked_for_reading_cannot_be_written_or_used_after_it_is_taken_back()
+-> Result<(), TestError> {
+    let stage = Stage::start().await?;
     let path = stage.harness.grounds().path().join("readme.txt");
     fs::write(&path, "read me").unwrap();
 
@@ -49,7 +55,7 @@ async fn a_file_picked_for_reading_cannot_be_written_or_used_after_it_is_taken_b
             "extension.file.pick",
             json!({ "extension": "every", "path": path, "access": "read" }),
         )
-        .await;
+        .await?;
     let handle = picked["handle"].as_str().unwrap();
 
     let write = stage
@@ -60,7 +66,7 @@ async fn a_file_picked_for_reading_cannot_be_written_or_used_after_it_is_taken_b
             "extension.file.forget",
             json!({ "extension": "every", "handle": handle }),
         )
-        .await;
+        .await?;
     let read = stage
         .try_every("read_file", json!({ "handle": handle }))
         .await;
@@ -68,12 +74,14 @@ async fn a_file_picked_for_reading_cannot_be_written_or_used_after_it_is_taken_b
     assert!(rejection(write).message.starts_with("not_allowed"));
     assert!(rejection(read).message.starts_with("unknown_file"));
     assert_eq!(fs::read_to_string(&path).unwrap(), "read me");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn only_the_person_picks_files() {
-    let stage = Stage::start().await;
-    let agent = stage.harness.agent("helper").await;
+async fn only_the_person_picks_files() -> Result<(), TestError> {
+    let stage = Stage::start().await?;
+    let agent = stage.harness.agent("helper").await?;
     let call = synt_proto::ActionCall::new("extension.file.pick").params(json!({
         "extension": "every",
         "path": "/etc/hosts",
@@ -83,4 +91,6 @@ async fn only_the_person_picks_files() {
     let error = rejection(agent.call(call).await);
 
     assert_eq!(error.code, ErrorCode::DENIED);
+
+    Ok(())
 }

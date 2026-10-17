@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use synt_proto::Risk;
+use synt_testkit::TestError;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time;
@@ -11,46 +12,47 @@ use crate::lab::{DIRECT, INSIDE, ticker};
 
 const PATIENCE: Duration = Duration::from_secs(180);
 
-pub async fn running_pod(lab: &Lab, app: &str) -> String {
+pub async fn running_pod(lab: &Lab, app: &str) -> Result<String, TestError> {
     let params = json!({ "kind": "pods", "selector": format!("app={app}") });
 
     time::timeout(PATIENCE, async {
         loop {
-            let listed = lab
-                .person(DIRECT, "k8s.list", params.clone())
-                .await
-                .unwrap();
-            let running = listed.value["items"]
+            let listed = lab.person(DIRECT, "k8s.list", params.clone()).await?;
+            let items = listed.value["items"]
                 .as_array()
-                .unwrap()
-                .iter()
-                .find(|pod| {
-                    pod["status"]["phase"] == "Running"
-                        && pod["metadata"]["deletionTimestamp"].is_null()
-                });
+                .ok_or("the listing has no items")?;
+            let running = items.iter().find(|pod| {
+                pod["status"]["phase"] == "Running"
+                    && pod["metadata"]["deletionTimestamp"].is_null()
+            });
 
             if let Some(pod) = running {
-                return pod["metadata"]["name"].as_str().unwrap().to_owned();
+                let name = pod["metadata"]["name"]
+                    .as_str()
+                    .ok_or("the pod has no name")?;
+
+                return Ok(name.to_owned());
             }
 
             time::sleep(Duration::from_millis(500)).await;
         }
     })
     .await
-    .unwrap_or_else(|_| panic!("no pod of {app} ran within {PATIENCE:?}"))
+    .map_err(|_| format!("no pod of {app} ran within {PATIENCE:?}"))?
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn a_command_in_a_pod_is_asked_like_ssh_exec_and_its_output_is_not_journaled() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn a_command_in_a_pod_is_asked_like_ssh_exec_and_its_output_is_not_journaled()
+-> Result<(), TestError> {
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
     lab.person(DIRECT, "k8s.apply", json!({ "manifest": ticker("worker") }))
         .await
         .unwrap();
-    let pod = running_pod(&lab, "worker").await;
+    let pod = running_pod(&lab, "worker").await?;
 
     let (plain_question, plain) = lab
         .agent_asking(
@@ -58,14 +60,14 @@ async fn a_command_in_a_pod_is_asked_like_ssh_exec_and_its_output_is_not_journal
             "k8s.exec",
             json!({ "pod": pod, "command": ["cat", "/www/index.html"] }),
         )
-        .await;
+        .await?;
     let (shell_question, shell) = lab
         .agent_asking(
             DIRECT,
             "k8s.exec",
             json!({ "pod": pod, "command": ["sh", "-c", "exit 3"] }),
         )
-        .await;
+        .await?;
 
     let plain = plain.unwrap();
     let shell = shell.unwrap();
@@ -77,28 +79,30 @@ async fn a_command_in_a_pod_is_asked_like_ssh_exec_and_its_output_is_not_journal
     assert_eq!(shell.value["exit"], 3);
     assert_eq!(journaled["exit"], 0);
     assert_eq!(journaled["stdout_bytes"], 18);
-    assert!(!lab.journal_text().contains("hello from worker"));
+    assert!(!lab.journal_text()?.contains("hello from worker"));
 
-    lab.finish().await;
+    lab.finish().await?;
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn logs_are_returned_to_the_caller_and_only_counted_in_the_journal() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn logs_are_returned_to_the_caller_and_only_counted_in_the_journal() -> Result<(), TestError>
+{
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
     lab.person(DIRECT, "k8s.apply", json!({ "manifest": ticker("talker") }))
         .await
         .unwrap();
-    let pod = running_pod(&lab, "talker").await;
+    let pod = running_pod(&lab, "talker").await?;
     time::sleep(Duration::from_secs(2)).await;
 
     let logs = lab
         .agent(INSIDE, "k8s.logs", json!({ "pod": pod, "tail": 2 }))
-        .await
-        .unwrap();
+        .await?;
     let journaled = lab.finished(logs.request).await;
     let text = logs.value["text"].as_str().unwrap();
 
@@ -108,22 +112,24 @@ async fn logs_are_returned_to_the_caller_and_only_counted_in_the_journal() {
         journaled,
         json!({ "bytes": text.len(), "lines": 2, "truncated": false })
     );
-    assert!(!lab.journal_text().contains(text.lines().next().unwrap()));
+    assert!(!lab.journal_text()?.contains(text.lines().next().unwrap()));
 
-    lab.finish().await;
+    lab.finish().await?;
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn a_port_forward_is_held_until_it_is_closed() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn a_port_forward_is_held_until_it_is_closed() -> Result<(), TestError> {
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
     lab.person(DIRECT, "k8s.apply", json!({ "manifest": ticker("web") }))
         .await
         .unwrap();
-    running_pod(&lab, "web").await;
+    running_pod(&lab, "web").await?;
 
     let (question, opened) = lab
         .agent_asking(
@@ -131,19 +137,16 @@ async fn a_port_forward_is_held_until_it_is_closed() {
             "k8s.port_forward",
             json!({ "service": "web", "port": 80 }),
         )
-        .await;
+        .await?;
     let opened = opened.unwrap();
     let port = u16::try_from(opened.value["local_port"].as_u64().unwrap()).unwrap();
 
-    let page = get(port).await;
-    let listed = lab
-        .agent("", "k8s.port_forward.list", json!({}))
-        .await
-        .unwrap();
+    let page = get(port).await?;
+    let listed = lab.agent("", "k8s.port_forward.list", json!({})).await?;
     let id = opened.value["id"].clone();
     let (_, closed) = lab
         .agent_asking("", "k8s.port_forward.close", json!({ "id": id }))
-        .await;
+        .await?;
     let closed = closed.unwrap();
     let after = TcpStream::connect(("127.0.0.1", port)).await;
 
@@ -159,23 +162,21 @@ async fn a_port_forward_is_held_until_it_is_closed() {
     let closing: Value = lab.finished(closed.request).await;
     assert_eq!(closing["connections"], 1);
     assert!(closing["received_bytes"].as_u64().unwrap() > 0);
-    assert!(!lab.journal_text().contains("hello from web"));
+    assert!(!lab.journal_text()?.contains("hello from web"));
 
-    lab.finish().await;
+    lab.finish().await?;
+
+    Ok(())
 }
 
-async fn get(port: u16) -> String {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+async fn get(port: u16) -> Result<String, TestError> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).await?;
     stream
         .write_all(b"GET /index.html HTTP/1.0\r\nHost: web\r\n\r\n")
-        .await
-        .unwrap();
+        .await?;
 
     let mut answer = String::new();
-    time::timeout(Duration::from_secs(30), stream.read_to_string(&mut answer))
-        .await
-        .unwrap()
-        .unwrap();
+    time::timeout(Duration::from_secs(30), stream.read_to_string(&mut answer)).await??;
 
-    answer
+    Ok(answer)
 }

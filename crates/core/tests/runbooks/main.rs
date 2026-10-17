@@ -1,20 +1,12 @@
-#![allow(clippy::unwrap_used)]
-
-#[path = ".."]
-mod shared {
-    pub mod common;
-}
-
 mod databases;
 
-use shared::common;
-
-use common::{RunbookDesk, eventually, kinds, rejection};
 use serde_json::{Value, json};
 use synt_journal::{Actor, Event, EventKind, Filter, Name, Seq};
 use synt_proto::{
     ActionCall, ApprovalDecision, ErrorCode, RequestSeq, Risk, RunPhase, RunbookStep, StepState,
 };
+use synt_testkit::TestError;
+use synt_testkit::core::{RunbookDesk, eventually, kinds, rejection};
 
 const DEPLOY: &str = r#"
 name = "Deploy"
@@ -97,48 +89,46 @@ action = "test.aim"
 target = "web-1"
 "#;
 
-fn runbook_actor(name: &str) -> Actor {
-    Actor::Runbook(Name::new(RunbookDesk::reference(name)).unwrap())
+fn runbook_actor(name: &str) -> Result<Actor, TestError> {
+    Ok(Actor::Runbook(Name::new(RunbookDesk::reference(name))?))
 }
 
-fn step_requests(desk: &RunbookDesk, run: RequestSeq) -> Vec<Event> {
-    desk.harness()
-        .matching(&Filter::all().kind(EventKind::Requested))
+fn step_requests(desk: &RunbookDesk, run: RequestSeq) -> Result<Vec<Event>, TestError> {
+    Ok(desk
+        .harness()
+        .matching(&Filter::all().kind(EventKind::Requested))?
         .into_iter()
         .filter(|event| event.details().value()["parent"] == json!(run.get()))
-        .collect()
+        .collect())
 }
 
-fn finished(desk: &RunbookDesk, request: RequestSeq) -> Value {
-    let trail = desk.harness().trail(request);
-    let last = trail.last().unwrap();
+fn finished(desk: &RunbookDesk, request: RequestSeq) -> Result<Value, TestError> {
+    let trail = desk.harness().trail(request)?;
+    let last = trail.last().ok_or("the call left no trail")?;
 
     assert_eq!(last.kind(), EventKind::Finished);
-    last.details().value().clone()
+    Ok(last.details().value().clone())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_run_approved_up_front_journals_each_step_under_the_runbook() {
-    let desk = RunbookDesk::start().await;
-    desk.write("deploy", DEPLOY);
-    let mut approver = desk.harness().approver().await;
+async fn a_run_approved_up_front_journals_each_step_under_the_runbook() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    desk.write("deploy", DEPLOY)?;
+    let mut approver = desk.harness().approver().await?;
     let app = approver.app().clone();
 
     let outcome = desk
         .run(&app, "deploy", &json!({ "tag": "v7" }), true)
         .await
         .unwrap();
-    let steps = step_requests(&desk, outcome.request);
+    let steps = step_requests(&desk, outcome.request)?;
+    let runbook = runbook_actor("deploy")?;
 
     assert_eq!(outcome.value["state"], json!("completed"));
     assert!(approver.was_not_asked());
     assert_eq!(desk.harness().touches(), 1);
     assert_eq!(steps.len(), 2);
-    assert!(
-        steps
-            .iter()
-            .all(|step| step.actor() == &runbook_actor("deploy"))
-    );
+    assert!(steps.iter().all(|step| step.actor() == &runbook));
     assert_eq!(steps[0].action().as_str(), "ssh.exec");
     assert_eq!(steps[0].resource().unwrap().as_str(), "web-1");
     assert_eq!(
@@ -146,7 +136,9 @@ async fn a_run_approved_up_front_journals_each_step_under_the_runbook() {
         &json!({ "params": { "command": "docker pull app:v7" }, "parent": outcome.request.get() })
     );
 
-    let pulled = desk.harness().matching(&Filter::all().call(steps[0].seq()));
+    let pulled = desk
+        .harness()
+        .matching(&Filter::all().call(steps[0].seq()))?;
     assert_eq!(
         kinds(&pulled),
         [
@@ -160,13 +152,15 @@ async fn a_run_approved_up_front_journals_each_step_under_the_runbook() {
         pulled[1].details().value(),
         &json!({ "scope": "run", "by": "person" })
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn without_approval_up_front_every_write_step_asks_the_person() {
-    let desk = RunbookDesk::start().await;
-    desk.write("deploy", DEPLOY);
-    let mut approver = desk.harness().approver().await;
+async fn without_approval_up_front_every_write_step_asks_the_person() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    desk.write("deploy", DEPLOY)?;
+    let mut approver = desk.harness().approver().await?;
     let app = approver.app().clone();
 
     let running = tokio::spawn({
@@ -181,12 +175,12 @@ async fn without_approval_up_front_every_write_step_asks_the_person() {
         }
     });
 
-    let pull = approver.next().await;
+    let pull = approver.next().await?;
     approver
         .answer(&pull, ApprovalDecision::AllowOnce)
         .await
         .unwrap();
-    let count = approver.next().await;
+    let count = approver.next().await?;
     approver
         .answer(&count, ApprovalDecision::AllowOnce)
         .await
@@ -202,13 +196,16 @@ async fn without_approval_up_front_every_write_step_asks_the_person() {
     assert_eq!(pull.params, json!({ "command": "docker pull app:v7" }));
     assert_eq!(count.action, "test.touch");
     assert_eq!(outcome.value["state"], json!("completed"));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_privileged_step_asks_every_time_even_in_a_run_approved_up_front() {
-    let desk = RunbookDesk::start().await;
-    desk.write("escalating", ESCALATING);
-    let mut approver = desk.harness().approver().await;
+async fn a_privileged_step_asks_every_time_even_in_a_run_approved_up_front() -> Result<(), TestError>
+{
+    let desk = RunbookDesk::start().await?;
+    desk.write("escalating", ESCALATING)?;
+    let mut approver = desk.harness().approver().await?;
     let app = approver.app().clone();
 
     let (question, outcome) = approver
@@ -217,10 +214,10 @@ async fn a_privileged_step_asks_every_time_even_in_a_run_approved_up_front() {
             RunbookDesk::run_call("escalating", &json!({}), true),
             ApprovalDecision::AllowUntilRestart,
         )
-        .await;
+        .await?;
     let outcome = outcome.unwrap();
-    let step = &step_requests(&desk, outcome.request)[0];
-    let approval = &desk.harness().matching(&Filter::all().call(step.seq()))[1];
+    let step = &step_requests(&desk, outcome.request)?[0];
+    let approval = &desk.harness().matching(&Filter::all().call(step.seq()))?[1];
 
     assert_eq!(question.risk, Risk::Privileged);
     assert_eq!(
@@ -232,18 +229,20 @@ async fn a_privileged_step_asks_every_time_even_in_a_run_approved_up_front() {
         &json!({ "scope": "once", "by": "person" })
     );
     assert_eq!(outcome.value["state"], json!("completed"));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_failing_step_rolls_back_in_reverse_and_skips_the_rest() {
-    let desk = RunbookDesk::start().await;
-    desk.write("breaking", BREAKING);
-    let app = desk.harness().app().await;
+async fn a_failing_step_rolls_back_in_reverse_and_skips_the_rest() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    desk.write("breaking", BREAKING)?;
+    let app = desk.harness().app().await?;
     let mut notifications = app.notifications();
 
     let outcome = desk.run(&app, "breaking", &json!({}), true).await.unwrap();
     let report = &outcome.value;
-    let steps = step_requests(&desk, outcome.request);
+    let steps = step_requests(&desk, outcome.request)?;
     let actions: Vec<&str> = steps.iter().map(|step| step.action().as_str()).collect();
 
     assert_eq!(report["state"], json!("rolled_back"));
@@ -265,7 +264,7 @@ async fn a_failing_step_rolls_back_in_reverse_and_skips_the_rest() {
     );
     assert_eq!(desk.harness().touches(), 2);
 
-    let heard = RunbookDesk::hear(&mut notifications, 8).await;
+    let heard = RunbookDesk::hear(&mut notifications, 8).await?;
     let rollback: Vec<(usize, StepState)> = heard
         .iter()
         .filter(|step| step.phase == RunPhase::Rollback)
@@ -280,16 +279,18 @@ async fn a_failing_step_rolls_back_in_reverse_and_skips_the_rest() {
             (1, StepState::Succeeded)
         ]
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_finished_run_lists_every_outcome_without_output() {
-    let desk = RunbookDesk::start().await;
-    desk.write("breaking", BREAKING);
-    let app = desk.harness().app().await;
+async fn the_finished_run_lists_every_outcome_without_output() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    desk.write("breaking", BREAKING)?;
+    let app = desk.harness().app().await?;
 
     let outcome = desk.run(&app, "breaking", &json!({}), true).await.unwrap();
-    let summary = finished(&desk, outcome.request);
+    let summary = finished(&desk, outcome.request)?;
 
     assert_eq!(
         summary["runbook"],
@@ -309,20 +310,22 @@ async fn the_finished_run_lists_every_outcome_without_output() {
     );
     assert_eq!(summary["rollback"].as_array().unwrap().len(), 2);
     assert!(!summary.to_string().contains("disk is full"));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn progress_reaches_the_caller_step_by_step() {
-    let desk = RunbookDesk::start().await;
-    desk.write("deploy", DEPLOY);
-    let app = desk.harness().app().await;
+async fn progress_reaches_the_caller_step_by_step() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    desk.write("deploy", DEPLOY)?;
+    let app = desk.harness().app().await?;
     let mut notifications = app.notifications();
 
     let outcome = desk
         .run(&app, "deploy", &json!({ "tag": "v7" }), true)
         .await
         .unwrap();
-    let heard: Vec<RunbookStep> = RunbookDesk::hear(&mut notifications, 4).await;
+    let heard: Vec<RunbookStep> = RunbookDesk::hear(&mut notifications, 4).await?;
 
     assert!(heard.iter().all(|step| step.run == outcome.request.get()));
     assert_eq!(
@@ -342,14 +345,16 @@ async fn progress_reaches_the_caller_step_by_step() {
         heard[1].request,
         outcome.value["steps"][0]["request"].as_u64()
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_agent_asks_once_for_the_whole_run_and_shows_its_steps() {
-    let desk = RunbookDesk::start().await;
-    desk.write("deploy", DEPLOY);
-    let mut approver = desk.harness().approver().await;
-    let agent = desk.harness().agent("deploy-bot").await;
+async fn an_agent_asks_once_for_the_whole_run_and_shows_its_steps() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    desk.write("deploy", DEPLOY)?;
+    let mut approver = desk.harness().approver().await?;
+    let agent = desk.harness().agent("deploy-bot").await?;
 
     let (question, outcome) = approver
         .decide(
@@ -357,7 +362,7 @@ async fn an_agent_asks_once_for_the_whole_run_and_shows_its_steps() {
             RunbookDesk::run_call("deploy", &json!({ "tag": "v8" }), true),
             ApprovalDecision::AllowOnce,
         )
-        .await;
+        .await?;
 
     assert_eq!(question.action, "runbook.run");
     assert_eq!(question.risk, Risk::Write);
@@ -369,26 +374,28 @@ async fn an_agent_asks_once_for_the_whole_run_and_shows_its_steps() {
     assert_eq!(question.params["steps"][0]["risk"], json!("write"));
     assert_eq!(outcome.unwrap().value["state"], json!("completed"));
     assert!(approver.was_not_asked());
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_standing_grant_never_approves_the_steps_of_a_later_run() {
-    let desk = RunbookDesk::start().await;
-    desk.write("deploy", DEPLOY);
-    let mut approver = desk.harness().approver().await;
-    let agent = desk.harness().agent("deploy-bot").await;
+async fn a_standing_grant_never_approves_the_steps_of_a_later_run() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    desk.write("deploy", DEPLOY)?;
+    let mut approver = desk.harness().approver().await?;
+    let agent = desk.harness().agent("deploy-bot").await?;
     let call = || RunbookDesk::run_call("deploy", &json!({ "tag": "v8" }), true);
 
     let (_, first) = approver
         .decide(&agent, call(), ApprovalDecision::AllowUntilRestart)
-        .await;
+        .await?;
     desk.write(
         "deploy",
         &DEPLOY.replace("docker pull", "rm -rf /srv; docker pull"),
-    );
+    )?;
     let (question, second) = approver
         .decide(&agent, call(), ApprovalDecision::AllowOnce)
-        .await;
+        .await?;
 
     assert_eq!(first.unwrap().value["state"], json!("completed"));
     assert_eq!(
@@ -396,14 +403,16 @@ async fn a_standing_grant_never_approves_the_steps_of_a_later_run() {
         json!({ "command": "rm -rf /srv; docker pull app:v8" })
     );
     assert_eq!(second.unwrap().value["state"], json!("completed"));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_step_that_moved_after_the_run_was_approved_is_asked_again() {
-    let desk = RunbookDesk::start().await;
-    desk.write("aiming", AIMING);
-    let mut approver = desk.harness().approver().await;
-    let agent = desk.harness().agent("deploy-bot").await;
+async fn a_step_that_moved_after_the_run_was_approved_is_asked_again() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    desk.write("aiming", AIMING)?;
+    let mut approver = desk.harness().approver().await?;
+    let agent = desk.harness().agent("deploy-bot").await?;
 
     let running = tokio::spawn({
         let agent = agent.clone();
@@ -413,13 +422,13 @@ async fn a_step_that_moved_after_the_run_was_approved_is_asked_again() {
                 .await
         }
     });
-    let run_question = approver.next().await;
+    let run_question = approver.next().await?;
     desk.harness().grounds().aim_at("10.6.6.6");
     approver
         .answer(&run_question, ApprovalDecision::AllowOnce)
         .await
         .unwrap();
-    let step_question = approver.next().await;
+    let step_question = approver.next().await?;
     approver
         .answer(&step_question, ApprovalDecision::AllowOnce)
         .await
@@ -436,13 +445,15 @@ async fn a_step_that_moved_after_the_run_was_approved_is_asked_again() {
         Some("web-1 = 10.6.6.6")
     );
     assert_eq!(outcome.value["state"], json!("completed"));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_run_can_be_stopped_while_a_step_is_running() {
-    let desk = RunbookDesk::start().await;
-    desk.write("waiting", WAITING);
-    let app = desk.harness().app().await;
+async fn a_run_can_be_stopped_while_a_step_is_running() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    desk.write("waiting", WAITING)?;
+    let app = desk.harness().app().await?;
     let mut notifications = app.notifications();
 
     let running = tokio::spawn({
@@ -454,6 +465,7 @@ async fn a_run_can_be_stopped_while_a_step_is_running() {
     });
     let run = eventually("the first step starts", async || {
         RunbookDesk::steps_heard(&mut notifications)
+            .ok()?
             .first()
             .map(|step| step.run)
     })
@@ -480,12 +492,14 @@ async fn a_run_can_be_stopped_while_a_step_is_running() {
     );
     assert_eq!(outcome.value["steps"][1]["state"], json!("skipped"));
     assert_eq!(desk.harness().touches(), 0);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn stopping_an_unknown_run_fails() {
-    let desk = RunbookDesk::start().await;
-    let app = desk.harness().app().await;
+async fn stopping_an_unknown_run_fails() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    let app = desk.harness().app().await?;
 
     let error = rejection(
         app.call(ActionCall::new("runbook.stop").params(json!({ "run": 999 })))
@@ -494,13 +508,15 @@ async fn stopping_an_unknown_run_fails() {
 
     assert_eq!(error.code, ErrorCode::ACTION_FAILED);
     assert_eq!(error.message, "there is no running run 999");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn params_are_checked_before_any_step_runs() {
-    let desk = RunbookDesk::start().await;
-    desk.write("deploy", DEPLOY);
-    let app = desk.harness().app().await;
+async fn params_are_checked_before_any_step_runs() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    desk.write("deploy", DEPLOY)?;
+    let app = desk.harness().app().await?;
 
     let missing = rejection(desk.run(&app, "deploy", &json!({}), true).await);
     let malformed = rejection(
@@ -526,16 +542,18 @@ async fn params_are_checked_before_any_step_runs() {
     );
     assert!(unknown.message.ends_with("the runbook has no param force"));
     assert_eq!(desk.harness().touches(), 0);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_runbook_that_calls_a_missing_action_is_refused_whole() {
-    let desk = RunbookDesk::start().await;
+async fn a_runbook_that_calls_a_missing_action_is_refused_whole() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
     desk.write(
         "typo",
         "name = \"Typo\"\n[[steps]]\ntitle = \"a\"\naction = \"test.touch\"\n[[steps]]\ntitle = \"b\"\naction = \"test.tuch\"\n",
-    );
-    let app = desk.harness().app().await;
+    )?;
+    let app = desk.harness().app().await?;
 
     let error = rejection(desk.run(&app, "typo", &json!({}), true).await);
 
@@ -544,12 +562,14 @@ async fn a_runbook_that_calls_a_missing_action_is_refused_whole() {
         "invalid parameters: runbook typo: step 2: there is no action test.tuch"
     );
     assert_eq!(desk.harness().touches(), 0);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_runbook_is_put_listed_read_and_exported() {
-    let desk = RunbookDesk::start().await;
-    let app = desk.harness().app().await;
+async fn a_runbook_is_put_listed_read_and_exported() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    let app = desk.harness().app().await?;
     let runbook: Value = json!({
         "name": "Deploy",
         "params": [{ "name": "tag", "kind": "word", "default": "v1" }],
@@ -589,7 +609,7 @@ async fn a_runbook_is_put_listed_read_and_exported() {
         .unwrap();
 
     assert_eq!(put.value["runbook"], runbook);
-    assert!(desk.file("deploy").contains("docker pull app:{tag}"));
+    assert!(desk.file("deploy")?.contains("docker pull app:{tag}"));
     assert_eq!(listed.value["runbooks"][0]["name"], json!("deploy"));
     assert_eq!(listed.value["runbooks"][0]["steps"], json!(1));
     assert_eq!(read.value["runbook"], runbook);
@@ -603,31 +623,37 @@ async fn a_runbook_is_put_listed_read_and_exported() {
             .unwrap()
             .contains("ssh -- 'web-1' 'docker pull app:'\"${tag}\" || exit 1")
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_agent_is_asked_before_it_writes_a_runbook() {
-    let desk = RunbookDesk::start().await;
-    let mut approver = desk.harness().approver().await;
-    let agent = desk.harness().agent("deploy-bot").await;
+async fn an_agent_is_asked_before_it_writes_a_runbook() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    let mut approver = desk.harness().approver().await?;
+    let agent = desk.harness().agent("deploy-bot").await?;
     let call = ActionCall::new("runbook.put").params(json!({
         "project": RunbookDesk::PROJECT,
         "name": "noop",
         "runbook": { "name": "Noop", "steps": [{ "title": "t", "action": "test.touch" }] },
     }));
 
-    let (question, outcome) = approver.decide(&agent, call, ApprovalDecision::Deny).await;
+    let (question, outcome) = approver
+        .decide(&agent, call, ApprovalDecision::Deny)
+        .await?;
 
     assert_eq!(question.destination, Some(RunbookDesk::reference("noop")));
     assert_eq!(rejection(outcome).code, ErrorCode::DENIED);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn broken_runbook_files_are_listed_as_problems() {
-    let desk = RunbookDesk::start().await;
-    desk.write("broken", "name = \"Broken\"\n");
-    desk.write("deploy", DEPLOY);
-    let app = desk.harness().app().await;
+async fn broken_runbook_files_are_listed_as_problems() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    desk.write("broken", "name = \"Broken\"\n")?;
+    desk.write("deploy", DEPLOY)?;
+    let app = desk.harness().app().await?;
 
     let listed = app
         .call(ActionCall::new("runbook.list").params(json!({ "project": RunbookDesk::PROJECT })))
@@ -639,12 +665,15 @@ async fn broken_runbook_files_are_listed_as_problems() {
         listed.value["problems"][0]["file"],
         json!("runbooks/broken.toml")
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn calls_in_the_journal_become_a_runbook_with_their_shared_values_as_params() {
-    let desk = RunbookDesk::start().await;
-    let app = desk.harness().app().await;
+async fn calls_in_the_journal_become_a_runbook_with_their_shared_values_as_params()
+-> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    let app = desk.harness().app().await?;
     let exec = |command: &str| {
         ActionCall::new("ssh.exec")
             .target("web-1")
@@ -653,7 +682,7 @@ async fn calls_in_the_journal_become_a_runbook_with_their_shared_values_as_param
 
     let uptime = app.call(exec("uptime")).await.unwrap();
     let disks = app.call(exec("df -h")).await.unwrap();
-    let disks_finished = desk.harness().trail(disks.request).last().unwrap().seq();
+    let disks_finished = desk.harness().trail(disks.request)?.last().unwrap().seq();
 
     let drafted = app
         .call(ActionCall::new("runbook.from_journal").params(json!({
@@ -686,12 +715,14 @@ async fn calls_in_the_journal_become_a_runbook_with_their_shared_values_as_param
             .unwrap()
             .contains("target = \"{host}\"")
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_draft_from_an_unknown_event_is_refused() {
-    let desk = RunbookDesk::start().await;
-    let app = desk.harness().app().await;
+async fn a_draft_from_an_unknown_event_is_refused() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    let app = desk.harness().app().await?;
 
     let error = rejection(
         app.call(
@@ -707,12 +738,14 @@ async fn a_draft_from_an_unknown_event_is_refused() {
         "{}",
         error.message
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn runbook_actions_describe_their_risk_and_params() {
-    let desk = RunbookDesk::start().await;
-    let agent = desk.harness().agent("deploy-bot").await;
+async fn runbook_actions_describe_their_risk_and_params() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    let agent = desk.harness().agent("deploy-bot").await?;
 
     let described = agent.describe().await.unwrap();
     let find = |id: &str| described.iter().find(|action| action.id == id);
@@ -728,12 +761,14 @@ async fn runbook_actions_describe_their_risk_and_params() {
     assert!(find("runbook.export").is_some());
     assert!(find("runbook.from_journal").is_some());
     assert!(find("runbook.from_blocks").is_none());
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn commands_of_a_local_shell_cannot_become_runbook_steps() {
-    let desk = RunbookDesk::start().await;
-    let app = desk.harness().app().await;
+async fn commands_of_a_local_shell_cannot_become_runbook_steps() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    let app = desk.harness().app().await?;
     let opening = ActionCall::new("local.session.open").params(json!({ "cols": 80, "rows": 24 }));
     let session = app.call(opening).await.unwrap().value["session"].clone();
 
@@ -754,16 +789,20 @@ async fn commands_of_a_local_shell_cannot_become_runbook_steps() {
 
     let closing = ActionCall::new("session.close").params(json!({ "session": session }));
     app.call(closing).await.unwrap();
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn only_the_person_drafts_from_terminal_blocks() {
-    let desk = RunbookDesk::start().await;
-    let agent = desk.harness().agent("deploy-bot").await;
+async fn only_the_person_drafts_from_terminal_blocks() -> Result<(), TestError> {
+    let desk = RunbookDesk::start().await?;
+    let agent = desk.harness().agent("deploy-bot").await?;
     let drafting =
         ActionCall::new("runbook.from_blocks").params(json!({ "session": 1, "blocks": [1] }));
 
     let error = rejection(agent.call(drafting).await);
 
     assert_eq!(error.code, ErrorCode::DENIED);
+
+    Ok(())
 }

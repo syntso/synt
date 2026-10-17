@@ -1,10 +1,3 @@
-#![allow(clippy::unwrap_used)]
-
-#[path = ".."]
-mod shared {
-    pub mod common;
-}
-
 mod documents;
 mod echo_server;
 mod events;
@@ -17,5 +10,4 @@ mod timers;
 mod views;
 
 use echo_server::EchoServer;
-use shared::common;
 use stage::Stage;

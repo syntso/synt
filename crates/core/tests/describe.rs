@@ -1,21 +1,18 @@
-#![allow(clippy::unwrap_used)]
-
-mod common;
-
-use common::{Guarded, Harness, Secret, kinds, rejection};
 use serde_json::json;
 use synt_actions::Action;
 use synt_journal::EventKind;
 use synt_proto::{ActionCall, ActionDescription, ErrorCode, Risk};
+use synt_testkit::TestError;
+use synt_testkit::core::{Guarded, Harness, Secret, kinds, rejection};
 
 fn find<'a>(descriptions: &'a [ActionDescription], id: &str) -> Option<&'a ActionDescription> {
     descriptions.iter().find(|description| description.id == id)
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_person_is_shown_every_action_with_its_rules() {
-    let harness = Harness::start();
-    let app = harness.app().await;
+async fn the_person_is_shown_every_action_with_its_rules() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let app = harness.app().await?;
 
     let described = app.describe().await.unwrap();
     let secret = find(&described, Secret::ID).unwrap();
@@ -28,13 +25,15 @@ async fn the_person_is_shown_every_action_with_its_rules() {
     assert!(!guarded.takes_target);
     assert_eq!(guarded.params["type"], json!("object"));
     assert!(guarded.params["properties"]["risk"].is_object());
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn agents_are_not_shown_actions_for_the_person_only() {
-    let harness = Harness::start();
-    let app = harness.app().await;
-    let agent = harness.agent("deploy-bot").await;
+async fn agents_are_not_shown_actions_for_the_person_only() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let app = harness.app().await?;
+    let agent = harness.agent("deploy-bot").await?;
 
     let for_person = app.describe().await.unwrap();
     let for_agent = agent.describe().await.unwrap();
@@ -48,35 +47,41 @@ async fn agents_are_not_shown_actions_for_the_person_only() {
             .filter(|description| !description.person_only)
             .count()
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn describing_leaves_no_trace_in_the_journal() {
-    let harness = Harness::start();
-    let app = harness.app().await;
+async fn describing_leaves_no_trace_in_the_journal() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let app = harness.app().await?;
 
     app.describe().await.unwrap();
 
-    assert!(harness.events().is_empty());
+    assert!(harness.events()?.is_empty());
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_agent_calling_a_hidden_action_is_denied_and_journaled() {
-    let harness = Harness::start();
-    let agent = harness.agent("deploy-bot").await;
+async fn an_agent_calling_a_hidden_action_is_denied_and_journaled() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let agent = harness.agent("deploy-bot").await?;
 
     let error = rejection(agent.call(ActionCall::new(Secret::ID)).await);
-    let trail = harness.events();
+    let trail = harness.events()?;
 
     assert_eq!(error.code, ErrorCode::DENIED);
     assert_eq!(error.message, "test.secret is for the person only");
     assert_eq!(kinds(&trail), [EventKind::Requested, EventKind::Denied]);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_person_calls_a_person_only_action_without_being_asked() {
-    let harness = Harness::start();
-    let mut approver = harness.approver().await;
+async fn the_person_calls_a_person_only_action_without_being_asked() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let mut approver = harness.approver().await?;
 
     approver
         .app()
@@ -85,4 +90,6 @@ async fn the_person_calls_a_person_only_action_without_being_asked() {
         .unwrap();
 
     assert!(approver.was_not_asked());
+
+    Ok(())
 }

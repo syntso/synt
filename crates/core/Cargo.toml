@@ -42,10 +42,10 @@ zeroize.workspace = true
 [dev-dependencies]
 synt-client.workspace = true
 synt-test-servers.workspace = true
+synt-testkit = { workspace = true, features = ["core", "extensions"] }
 rusqlite.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
-wat.workspace = true
 
 [[test]]
 name = "approvals"

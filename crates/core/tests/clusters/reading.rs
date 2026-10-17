@@ -1,22 +1,24 @@
 use serde_json::json;
 use synt_proto::Risk;
 use synt_test_servers::KubeServers;
+use synt_testkit::TestError;
 
 use crate::Lab;
 use crate::lab::{DIRECT, INSIDE};
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn the_personal_project_lists_every_kubeconfig_context_as_a_cluster() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn the_personal_project_lists_every_kubeconfig_context_as_a_cluster() -> Result<(), TestError>
+{
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
     let listed = lab
         .person("", "resource.list", json!({ "project": "personal" }))
         .await
         .unwrap();
-    let contexts = lab.agent("", "k8s.contexts", json!({})).await.unwrap();
+    let contexts = lab.agent("", "k8s.contexts", json!({})).await?;
 
     let clusters: Vec<&str> = listed.value["resources"]
         .as_array()
@@ -44,14 +46,17 @@ async fn the_personal_project_lists_every_kubeconfig_context_as_a_cluster() {
     assert_eq!(names, clusters);
     assert!(!contexts.value.to_string().contains("token"));
 
-    lab.finish().await;
+    lab.finish().await?;
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn an_agent_reads_without_asking_and_the_journal_keeps_only_counts() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn an_agent_reads_without_asking_and_the_journal_keeps_only_counts() -> Result<(), TestError>
+{
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
     let by_context = lab
@@ -60,17 +65,15 @@ async fn an_agent_reads_without_asking_and_the_journal_keeps_only_counts() {
             "k8s.list",
             json!({ "kind": "namespaces" }),
         )
-        .await
-        .unwrap();
+        .await?;
     let personal = lab
         .agent(
             "@personal/direct",
             "k8s.get",
             json!({ "kind": "ns", "name": lab.namespace }),
         )
-        .await
-        .unwrap();
-    let events = lab.agent(DIRECT, "k8s.events", json!({})).await.unwrap();
+        .await?;
+    let events = lab.agent(DIRECT, "k8s.events", json!({})).await?;
 
     let summary = lab.finished(by_context.request).await;
     let requested = lab.requested(personal.request);
@@ -88,20 +91,21 @@ async fn an_agent_reads_without_asking_and_the_journal_keeps_only_counts() {
     assert_eq!(requested["params"]["name"], lab.namespace.as_str());
     assert!(events.value.is_array());
 
-    lab.finish().await;
+    lab.finish().await?;
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn a_cluster_behind_a_bastion_is_reached_through_an_ssh_tunnel() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn a_cluster_behind_a_bastion_is_reached_through_an_ssh_tunnel() -> Result<(), TestError> {
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
     let listed = lab
         .agent(INSIDE, "k8s.list", json!({ "kind": "namespaces" }))
-        .await
-        .unwrap();
+        .await?;
     let journaled = lab.finished(listed.request).await;
     let unreachable = lab
         .agent("@lab/bastion", "k8s.list", json!({ "kind": "pods" }))
@@ -123,14 +127,17 @@ async fn a_cluster_behind_a_bastion_is_reached_through_an_ssh_tunnel() {
         "{no_logs}"
     );
 
-    lab.finish().await;
+    lab.finish().await?;
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn secrets_are_privileged_and_their_values_never_reach_the_journal() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn secrets_are_privileged_and_their_values_never_reach_the_journal() -> Result<(), TestError>
+{
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
     let manifest = format!(
@@ -147,17 +154,17 @@ async fn secrets_are_privileged_and_their_values_never_reach_the_journal() {
             "k8s.get",
             json!({ "kind": "secret", "name": "login" }),
         )
-        .await;
+        .await?;
     let read = read.unwrap();
     let (listed_question, listed) = lab
         .agent_asking(DIRECT, "k8s.list", json!({ "kind": "secrets" }))
-        .await;
+        .await?;
     listed.unwrap();
     let configmaps = lab
         .agent(DIRECT, "k8s.list", json!({ "kind": "configmaps" }))
         .await;
 
-    let text = lab.journal_text();
+    let text = lab.journal_text()?;
 
     assert_eq!(asked.risk, Risk::Privileged);
     assert_eq!(listed_question.risk, Risk::Privileged);
@@ -169,5 +176,7 @@ async fn secrets_are_privileged_and_their_values_never_reach_the_journal() {
     assert!(!text.contains("correct-horse-battery"));
     assert!(!text.contains("Y29ycmVjdC1ob3JzZS1iYXR0ZXJ5"));
 
-    lab.finish().await;
+    lab.finish().await?;
+
+    Ok(())
 }

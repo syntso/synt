@@ -95,10 +95,10 @@ mod tests {
     use std::thread;
 
     use synt_ssh::{KeyVault, StoredKey};
+    use synt_testkit::MemoryVault;
 
     use super::{KeyName, SshKeys};
     use crate::state::State;
-    use crate::vault::MemoryVault;
 
     fn keys() -> (SshKeys, tempfile::TempDir) {
         let folder = tempfile::tempdir().expect("folder");

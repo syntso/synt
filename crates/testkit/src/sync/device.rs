@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use synt_sync::{
-    DocumentMerger, DocumentPath, MemberId, Place, RevisionInfo, RoundReport, StatusReport, SyncError, Syncer,
+    DocumentMerger, DocumentPath, MemberId, Place, RevisionInfo, RoundReport, StatusReport,
+    SyncError, Syncer,
 };
 use tempfile::TempDir;
 

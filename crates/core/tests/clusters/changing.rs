@@ -1,14 +1,15 @@
 use serde_json::json;
 use synt_proto::Risk;
+use synt_testkit::TestError;
 
 use crate::Lab;
 use crate::lab::{DIRECT, INSIDE, ticker};
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn an_apply_asks_with_the_dry_run_diff_and_journals_no_manifest() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn an_apply_asks_with_the_dry_run_diff_and_journals_no_manifest() -> Result<(), TestError> {
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
     let manifest = |mode: &str| {
@@ -23,7 +24,7 @@ async fn an_apply_asks_with_the_dry_run_diff_and_journals_no_manifest() {
 
     let (question, applied) = lab
         .agent_asking(INSIDE, "k8s.apply", json!({ "manifest": manifest("fast") }))
-        .await;
+        .await?;
     let applied = applied.unwrap();
     let requested = lab.requested(applied.request);
     let finished = lab.finished(applied.request).await;
@@ -55,16 +56,19 @@ async fn an_apply_asks_with_the_dry_run_diff_and_journals_no_manifest() {
 
     assert_eq!(applied.value["objects"][0]["change"], "update");
     assert_eq!(finished["updated"], 1);
-    assert!(!lab.journal_text().contains("mode: fast"));
+    assert!(!lab.journal_text()?.contains("mode: fast"));
 
-    lab.finish().await;
+    lab.finish().await?;
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn scaling_restarting_and_deleting_ask_an_agent_and_record_names_only() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn scaling_restarting_and_deleting_ask_an_agent_and_record_names_only()
+-> Result<(), TestError> {
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
     lab.person(DIRECT, "k8s.apply", json!({ "manifest": ticker("api") }))
@@ -78,11 +82,11 @@ async fn scaling_restarting_and_deleting_ask_an_agent_and_record_names_only() {
             "k8s.scale",
             json!({ "kind": "deploy", "name": "api", "replicas": 2 }),
         )
-        .await;
+        .await?;
     let (_, restarted) = lab
         .agent_asking(DIRECT, "k8s.rollout_restart", object.clone())
-        .await;
-    let (delete_question, deleted) = lab.agent_asking(DIRECT, "k8s.delete", object).await;
+        .await?;
+    let (delete_question, deleted) = lab.agent_asking(DIRECT, "k8s.delete", object).await?;
     let (namespace_question, refused) = lab
         .desk
         .decide(
@@ -94,7 +98,7 @@ async fn scaling_restarting_and_deleting_ask_an_agent_and_record_names_only() {
             ),
             synt_proto::ApprovalDecision::Deny,
         )
-        .await;
+        .await?;
 
     let scaled = scaled.unwrap();
     assert_eq!(scale_question.risk, Risk::Write);
@@ -109,5 +113,7 @@ async fn scaling_restarting_and_deleting_ask_an_agent_and_record_names_only() {
     assert_eq!(namespace_question.risk, Risk::Privileged);
     assert!(refused.is_err());
 
-    lab.finish().await;
+    lab.finish().await?;
+
+    Ok(())
 }

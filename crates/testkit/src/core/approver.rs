@@ -7,6 +7,8 @@ use synt_proto::{
 use tokio::sync::broadcast::{self, error::TryRecvError};
 use tokio::time;
 
+use crate::TestError;
+
 const PATIENCE: Duration = Duration::from_secs(10);
 
 pub struct Approver {
@@ -25,11 +27,10 @@ impl Approver {
         &self.app
     }
 
-    pub async fn next(&mut self) -> ApprovalRequest {
-        let Ok(question) = time::timeout(PATIENCE, self.next_question()).await else {
-            panic!("the core did not ask the app in time");
-        };
-        question
+    pub async fn next(&mut self) -> Result<ApprovalRequest, TestError> {
+        time::timeout(PATIENCE, self.next_question())
+            .await
+            .map_err(|_| "the core did not ask the app in time")?
     }
 
     pub fn was_not_asked(&mut self) -> bool {
@@ -56,14 +57,14 @@ impl Approver {
         caller: &Client,
         call: ActionCall,
         decision: ApprovalDecision,
-    ) -> (ApprovalRequest, Result<ActionOutcome, ClientError>) {
+    ) -> Result<(ApprovalRequest, Result<ActionOutcome, ClientError>), TestError> {
         let caller = caller.clone();
         let running = tokio::spawn(async move { caller.call(call).await });
 
-        let question = self.next().await;
-        self.answer(&question, decision).await.unwrap();
+        let question = self.next().await?;
+        self.answer(&question, decision).await?;
 
-        (question, running.await.unwrap())
+        Ok((question, running.await?))
     }
 
     pub async fn approve(
@@ -71,18 +72,18 @@ impl Approver {
         caller: &Client,
         call: ActionCall,
         decision: ApprovalDecision,
-    ) -> ActionOutcome {
-        let (_, outcome) = self.decide(caller, call, decision).await;
+    ) -> Result<ActionOutcome, TestError> {
+        let (_, outcome) = self.decide(caller, call, decision).await?;
 
-        outcome.unwrap_or_else(|error| panic!("the approved call did not run: {error}"))
+        outcome.map_err(|error| format!("the approved call did not run: {error}").into())
     }
 
-    async fn next_question(&mut self) -> ApprovalRequest {
+    async fn next_question(&mut self) -> Result<ApprovalRequest, TestError> {
         loop {
-            let notification = self.questions.recv().await.unwrap();
+            let notification = self.questions.recv().await?;
 
             if let Some(question) = notification.read::<ApprovalRequest>() {
-                return question.unwrap();
+                return Ok(question?);
             }
         }
     }
