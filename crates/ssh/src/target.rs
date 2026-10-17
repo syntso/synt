@@ -89,6 +89,18 @@ impl Target {
         format!("{}@{}", self.user, self.address())
     }
 
+    pub fn route(&self) -> String {
+        let place = format!("{}@{}:{}", self.user, self.host, self.port);
+
+        if self.jumps.is_empty() {
+            return place;
+        }
+
+        let jumps: Vec<String> = self.jumps.iter().map(Target::route).collect();
+
+        format!("{place} via [{}]", jumps.join(", "))
+    }
+
     pub(crate) fn hops(&self) -> Vec<&Target> {
         let mut hops: Vec<&Target> = self.jumps.iter().flat_map(Target::hops).collect();
         hops.push(self);
@@ -188,5 +200,28 @@ impl Target {
             vault_key: None,
             jumps,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Target;
+
+    #[test]
+    fn a_route_names_every_hop_with_its_port() {
+        let bastion = Target::new("bastion", 2222, "ops");
+        let target = Target::new("db", 22, "app").through(vec![bastion]);
+
+        assert_eq!(target.route(), "app@db:22 via [ops@bastion:2222]");
+    }
+
+    #[test]
+    fn hops_run_from_the_first_jump_to_the_target() {
+        let bastion = Target::new("bastion", 22, "ops");
+        let target = Target::new("db", 22, "app").through(vec![bastion]);
+
+        let hosts: Vec<&str> = target.hops().into_iter().map(Target::host).collect();
+
+        assert_eq!(hosts, ["bastion", "db"]);
     }
 }
