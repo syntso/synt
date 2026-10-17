@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
@@ -11,19 +11,19 @@ pub struct FileServer {
 }
 
 impl FileServer {
-    pub fn start() -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = format!("http://{}", listener.local_addr().unwrap());
+    pub fn start() -> io::Result<Self> {
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        let address = format!("http://{}", listener.local_addr()?);
         let files: Arc<Mutex<HashMap<String, Vec<u8>>>> = Arc::default();
 
         let serving = Arc::clone(&files);
         thread::spawn(move || {
             for stream in listener.incoming().flatten() {
-                answer(stream, &serving);
+                let _ = answer(stream, &serving);
             }
         });
 
-        Self { address, files }
+        Ok(Self { address, files })
     }
 
     pub fn address(&self) -> &str {
@@ -38,14 +38,14 @@ impl FileServer {
     }
 }
 
-fn answer(mut stream: TcpStream, files: &Mutex<HashMap<String, Vec<u8>>>) {
-    let mut reader = BufReader::new(stream.try_clone().unwrap());
+fn answer(mut stream: TcpStream, files: &Mutex<HashMap<String, Vec<u8>>>) -> io::Result<()> {
+    let mut reader = BufReader::new(stream.try_clone()?);
     let mut request = String::new();
-    reader.read_line(&mut request).unwrap();
+    reader.read_line(&mut request)?;
 
     loop {
         let mut header = String::new();
-        if reader.read_line(&mut header).unwrap() <= 2 {
+        if reader.read_line(&mut header)? <= 2 {
             break;
         }
     }
@@ -72,5 +72,5 @@ fn answer(mut stream: TcpStream, files: &Mutex<HashMap<String, Vec<u8>>>) {
         }
     };
 
-    let _ = stream.write_all(&response);
+    stream.write_all(&response)
 }

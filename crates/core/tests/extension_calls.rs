@@ -13,7 +13,7 @@ use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Actor, EventKind, Filter, Name, ResourceRef, Seq};
 use synt_proto::{ActionCall, ApprovalDecision, ErrorCode, Risk};
 
-const SAMPLE: &str = include_str!("../../extensions/tests/fixtures/sample.wat");
+const SAMPLE: &str = include_str!("../../testkit/fixtures/sample.wat");
 const MANIFEST: &str = r#"
 id = "t"
 name = "Test"

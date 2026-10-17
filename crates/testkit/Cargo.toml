@@ -25,24 +25,29 @@ core = [
     "dep:tokio",
 ]
 extensions = [
+    "dep:data-encoding",
     "dep:minisign",
     "dep:serde_json",
     "dep:synt-actions",
     "dep:synt-extensions",
+    "dep:sha2",
     "dep:synt-journal",
     "dep:tempfile",
+    "dep:wat",
 ]
 journal = ["dep:rusqlite", "dep:serde_json", "dep:synt-journal", "dep:tempfile"]
 sync = ["dep:synt-sync", "dep:tempfile"]
 
 [dependencies]
 bytes = { workspace = true, optional = true }
+data-encoding = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
 minisign = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
 synt-actions = { workspace = true, optional = true }
 synt-client = { workspace = true, optional = true }
 synt-core = { workspace = true, optional = true }
@@ -53,4 +58,5 @@ synt-proto = { workspace = true, optional = true }
 synt-sync = { workspace = true, optional = true }
 tempfile = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+wat = { workspace = true, optional = true }
 zeroize.workspace = true

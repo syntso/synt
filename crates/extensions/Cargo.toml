@@ -39,6 +39,7 @@ zeroize.workspace = true
 
 [dev-dependencies]
 minisign.workspace = true
+synt-testkit = { workspace = true, features = ["extensions"] }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 wat.workspace = true

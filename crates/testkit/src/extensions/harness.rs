@@ -11,6 +11,7 @@ use synt_journal::{ActionId, Actor, ResourceRef, Seq};
 use tempfile::TempDir;
 
 use super::{CoreStub, FakeCaller, RecordingScreen};
+use crate::TestError;
 
 pub const SAMPLE_MANIFEST: &str = r#"
 id = "t"
@@ -23,6 +24,8 @@ description = "Exercises the extension host."
 call = ["ssh.exec"]
 storage = true
 "#;
+
+pub const SAMPLE_WAT: &str = include_str!("../../fixtures/sample.wat");
 
 const UNUSED_REGISTRY: &str = "http://127.0.0.1:9";
 const BUILT_FIXTURE: &str = "SYNT_EVERYTHING_WASM";
@@ -37,33 +40,31 @@ pub struct Harness {
 }
 
 impl Harness {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, TestError> {
+        Self::with(Runtime::new()?, Self::unused_remote()?)
+    }
+
+    pub fn with_limits(fuel: u64, time: Duration) -> Result<Self, TestError> {
         Self::with(
-            Runtime::new().unwrap(),
-            Remote::new(UNUSED_REGISTRY, UNUSED_KEY).unwrap(),
+            Runtime::new()?.with_limits(fuel, time),
+            Self::unused_remote()?,
         )
     }
 
-    pub fn with_limits(fuel: u64, time: Duration) -> Self {
-        Self::with(
-            Runtime::new().unwrap().with_limits(fuel, time),
-            Remote::new(UNUSED_REGISTRY, UNUSED_KEY).unwrap(),
-        )
+    pub fn with_remote(remote: Remote) -> Result<Self, TestError> {
+        Self::with(Runtime::new()?, remote)
     }
 
-    pub fn with_remote(remote: Remote) -> Self {
-        Self::with(Runtime::new().unwrap(), remote)
-    }
+    pub fn with(runtime: Runtime, remote: Remote) -> Result<Self, TestError> {
+        let folder = tempfile::tempdir()?;
 
-    pub fn with(runtime: Runtime, remote: Remote) -> Self {
-        let folder = tempfile::tempdir().unwrap();
         Self::in_folder(folder, runtime, remote)
     }
 
-    pub fn in_folder(folder: TempDir, runtime: Runtime, remote: Remote) -> Self {
+    pub fn in_folder(folder: TempDir, runtime: Runtime, remote: Remote) -> Result<Self, TestError> {
         let data = folder.path().join("data");
         let state = folder.path().join("state.sqlite");
-        let extensions = Extensions::open(&data, &state, runtime, remote).unwrap();
+        let extensions = Extensions::open(&data, &state, runtime, remote)?;
 
         let caller = Arc::new(FakeCaller::default());
         let screen = Arc::new(RecordingScreen::default());
@@ -71,29 +72,31 @@ impl Harness {
 
         let mut registry = Registry::new();
         registry.attach(Arc::new(CoreStub));
-        extensions.register(&mut registry).unwrap();
+        extensions.register(&mut registry)?;
 
-        Self {
+        Ok(Self {
             folder,
             extensions,
             registry,
             caller,
             screen,
-        }
+        })
     }
 
-    pub fn build(&self, name: &str, manifest: &str) -> PathBuf {
+    pub fn build(&self, name: &str, manifest: &str) -> Result<PathBuf, TestError> {
         let build = self.folder.path().join(name);
-        fs::create_dir_all(&build).unwrap();
+        fs::create_dir_all(&build)?;
 
-        fs::write(build.join("extension.toml"), manifest).unwrap();
-        fs::write(build.join("extension.wasm"), sample_component()).unwrap();
+        fs::write(build.join("extension.toml"), manifest)?;
+        fs::write(build.join("extension.wasm"), sample_component()?)?;
 
-        build
+        Ok(build)
     }
 
     pub fn handle(&self, action: &str) -> Option<Handle> {
-        self.registry.get(&ActionId::new(action).unwrap())
+        let id = ActionId::new(action).ok()?;
+
+        self.registry.get(&id)
     }
 
     pub fn prepare(
@@ -102,7 +105,7 @@ impl Harness {
         target: Option<&str>,
         params: Value,
     ) -> Result<Prepared, ActionError> {
-        let target = target.map(|target| ResourceRef::new(target).unwrap());
+        let target = Self::target(target)?;
         let handle = self
             .handle(action)
             .unwrap_or_else(|| panic!("no action {action}"));
@@ -117,7 +120,7 @@ impl Harness {
         params: Value,
     ) -> Result<Value, ActionError> {
         let prepared = self.prepare(action, target, params)?;
-        let target = target.map(|target| ResourceRef::new(target).unwrap());
+        let target = Self::target(target)?;
         let context = Context::new(Actor::Person, Seq::FIRST, target);
 
         prepared
@@ -132,15 +135,26 @@ impl Harness {
         self.call("extension.install_local", None, params).await
     }
 
-    pub async fn install_sample(&self) -> Value {
-        let build = self.build("sample", SAMPLE_MANIFEST);
+    pub async fn install_sample(&self) -> Result<Value, TestError> {
+        let build = self.build("sample", SAMPLE_MANIFEST)?;
 
-        self.install_local(&build).await.unwrap()
+        Ok(self.install_local(&build).await?)
+    }
+
+    fn unused_remote() -> Result<Remote, TestError> {
+        Ok(Remote::new(UNUSED_REGISTRY, UNUSED_KEY)?)
+    }
+
+    fn target(target: Option<&str>) -> Result<Option<ResourceRef>, ActionError> {
+        target
+            .map(ResourceRef::new)
+            .transpose()
+            .map_err(|error| ActionError::InvalidParams(error.to_string()))
     }
 }
 
-pub fn sample_component() -> Vec<u8> {
-    wat::parse_str(include_str!("../fixtures/sample.wat")).unwrap()
+pub fn sample_component() -> Result<Vec<u8>, wat::Error> {
+    wat::parse_str(SAMPLE_WAT)
 }
 
 pub fn everything_component() -> Vec<u8> {

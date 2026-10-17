@@ -18,13 +18,17 @@ impl Catalog for CoreStub {
     fn describe(&self) -> Vec<ActionDescription> {
         ACTIONS
             .iter()
-            .map(|(id, risk)| ActionDescription {
-                id: ActionId::new(*id).unwrap(),
+            .filter_map(|(id, risk)| {
+                let action = ActionId::new(*id).ok()?;
+
+                Some(ActionDescription {
+                    id: action,
                 title: format!("Stand in for {id}"),
                 risk: *risk,
                 person_only: false,
                 takes_target: true,
-                params: json!({ "type": "object" }),
+                    params: json!({ "type": "object" }),
+                })
             })
             .collect()
     }

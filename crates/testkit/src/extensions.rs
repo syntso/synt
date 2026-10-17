@@ -1,5 +1,3 @@
-#![allow(dead_code, unused_imports)]
-
 mod core_stub;
 mod fake_caller;
 mod file_server;
