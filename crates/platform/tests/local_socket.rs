@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used)]
-
 #[cfg(unix)]
 use std::fs;
 #[cfg(unix)]
@@ -12,7 +10,11 @@ use tempfile::TempDir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 fn endpoint(directory: &TempDir) -> Endpoint {
-    let unique = directory.path().file_name().unwrap().to_string_lossy();
+    let unique = directory
+        .path()
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy();
     Endpoint::named(directory.path(), &format!("synt-test-{unique}"))
 }
 

@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used)]
-
 mod exec;
 mod files;
 mod host_keys;

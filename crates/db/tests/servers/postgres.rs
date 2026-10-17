@@ -4,6 +4,7 @@ use synt_db::{
     TlsMode,
 };
 use synt_test_servers::DbServers;
+use synt_testkit::TestError;
 use zeroize::Zeroizing;
 
 use crate::lab::{connect, read, run, server, write};
@@ -14,11 +15,11 @@ fn postgres(servers: &DbServers) -> Server {
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
-async fn values_keep_their_types_on_the_way_out() {
+async fn values_keep_their_types_on_the_way_out() -> Result<(), TestError> {
     let Some(servers) = DbServers::running() else {
-        return;
+        return Ok(());
     };
-    let mut database = connect(&postgres(&servers)).await;
+    let mut database = connect(&postgres(&servers)).await?;
 
     let rows = read(
         &mut database,
@@ -50,15 +51,17 @@ async fn values_keep_their_types_on_the_way_out() {
             json!("6f1c0a52-4d5e-4f8a-9b1c-2d3e4f5a6b7c"),
         ]
     );
+
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
-async fn json_parameters_reach_typed_columns() {
+async fn json_parameters_reach_typed_columns() -> Result<(), TestError> {
     let Some(servers) = DbServers::running() else {
-        return;
+        return Ok(());
     };
-    let mut database = connect(&postgres(&servers)).await;
+    let mut database = connect(&postgres(&servers)).await?;
     let params = [json!(7), json!("seven"), json!(null)];
 
     let rows = run(
@@ -70,15 +73,18 @@ async fn json_parameters_reach_typed_columns() {
     .await;
 
     assert_eq!(rows.rows[0], vec![json!(8), json!("SEVEN"), json!(true)]);
+
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
-async fn a_write_the_classifier_takes_for_a_read_is_refused_by_the_server() {
+async fn a_write_the_classifier_takes_for_a_read_is_refused_by_the_server() -> Result<(), TestError>
+{
     let Some(servers) = DbServers::running() else {
-        return;
+        return Ok(());
     };
-    let mut database = connect(&postgres(&servers)).await;
+    let mut database = connect(&postgres(&servers)).await?;
     write(&mut database, "DROP TABLE IF EXISTS sneaked").await;
     write(&mut database, "CREATE TABLE sneaked (id int)").await;
     write(
@@ -107,15 +113,17 @@ async fn a_write_the_classifier_takes_for_a_read_is_refused_by_the_server() {
         "{refused:?}"
     );
     assert_eq!(left.rows[0], vec![json!(0)]);
+
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
-async fn a_write_counts_every_row_it_changed_while_returning_one_page() {
+async fn a_write_counts_every_row_it_changed_while_returning_one_page() -> Result<(), TestError> {
     let Some(servers) = DbServers::running() else {
-        return;
+        return Ok(());
     };
-    let mut database = connect(&postgres(&servers)).await;
+    let mut database = connect(&postgres(&servers)).await?;
     write(&mut database, "DROP TABLE IF EXISTS counted").await;
     write(&mut database, "CREATE TABLE counted (id int)").await;
 
@@ -134,15 +142,17 @@ async fn a_write_counts_every_row_it_changed_while_returning_one_page() {
     assert!(rows.more);
     assert_eq!(rows.affected, Some(25));
     assert_eq!(stored.rows[0], vec![json!(25)]);
+
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
-async fn the_schema_holds_keys_indexes_and_references() {
+async fn the_schema_holds_keys_indexes_and_references() -> Result<(), TestError> {
     let Some(servers) = DbServers::running() else {
-        return;
+        return Ok(());
     };
-    let mut database = connect(&postgres(&servers)).await;
+    let mut database = connect(&postgres(&servers)).await?;
     write(&mut database, "DROP SCHEMA IF EXISTS shop CASCADE").await;
     write(&mut database, "CREATE SCHEMA shop").await;
     write(
@@ -195,15 +205,17 @@ async fn the_schema_holds_keys_indexes_and_references() {
             .iter()
             .any(|table| table.name == "lines" && table.kind == TableKind::Table)
     );
+
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
-async fn explain_returns_the_plan_as_json_and_changes_nothing() {
+async fn explain_returns_the_plan_as_json_and_changes_nothing() -> Result<(), TestError> {
     let Some(servers) = DbServers::running() else {
-        return;
+        return Ok(());
     };
-    let mut database = connect(&postgres(&servers)).await;
+    let mut database = connect(&postgres(&servers)).await?;
     write(&mut database, "DROP TABLE IF EXISTS planned").await;
     write(&mut database, "CREATE TABLE planned (id int)").await;
     write(&mut database, "INSERT INTO planned VALUES (1)").await;
@@ -216,17 +228,20 @@ async fn explain_returns_the_plan_as_json_and_changes_nothing() {
 
     assert!(plan[0]["Plan"]["Node Type"].is_string(), "{plan}");
     assert_eq!(left.rows[0], vec![json!(1)]);
+
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
-async fn tls_modes_encrypt_and_verify_full_refuses_an_untrusted_certificate() {
+async fn tls_modes_encrypt_and_verify_full_refuses_an_untrusted_certificate()
+-> Result<(), TestError> {
     let Some(servers) = DbServers::running() else {
-        return;
+        return Ok(());
     };
 
     for tls in [TlsMode::Disable, TlsMode::Prefer, TlsMode::Require] {
-        let mut database = connect(&postgres(&servers).with_tls(tls)).await;
+        let mut database = connect(&postgres(&servers).with_tls(tls)).await?;
         let ssl = read(
             &mut database,
             "SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
@@ -239,13 +254,16 @@ async fn tls_modes_encrypt_and_verify_full_refuses_an_untrusted_certificate() {
     let refused = Database::connect(&postgres(&servers).with_tls(TlsMode::VerifyFull)).await;
 
     assert!(refused.is_err());
+
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
-async fn a_server_reached_through_a_local_port_is_still_named_by_its_host() {
+async fn a_server_reached_through_a_local_port_is_still_named_by_its_host() -> Result<(), TestError>
+{
     let Some(servers) = DbServers::running() else {
-        return;
+        return Ok(());
     };
     let address = format!("127.0.0.1:{}", servers.postgres_port());
     let through = Server::network(Engine::Postgres, "orders-db.internal", 5432)
@@ -255,9 +273,11 @@ async fn a_server_reached_through_a_local_port_is_still_named_by_its_host() {
         .with_password(Some(Zeroizing::new(DbServers::PASSWORD.to_owned())))
         .with_tls(TlsMode::Require);
 
-    let mut database = connect(&through).await;
+    let mut database = connect(&through).await?;
 
     assert!(!database.ping().await.unwrap().is_empty());
+
+    Ok(())
 }
 
 #[tokio::test]

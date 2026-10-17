@@ -3,6 +3,7 @@ use std::sync::Arc;
 use data_encoding::HEXLOWER;
 use sha2::{Digest, Sha256};
 use synt_ssh::{FileEntry, FileSessions, Sftp, SshError, WriteMode};
+use synt_testkit::TestError;
 
 use crate::Setup;
 
@@ -11,12 +12,14 @@ const CHUNK: usize = 100_000;
 
 #[tokio::test]
 #[ignore = "needs the ssh test servers: tests/ssh/up.sh, then SYNT_SSH_TESTS=1"]
-async fn an_uploaded_file_downloads_back_with_the_same_sha256() {
-    let Some(setup) = Setup::start() else { return };
+async fn an_uploaded_file_downloads_back_with_the_same_sha256() -> Result<(), TestError> {
+    let Some(setup) = Setup::start() else {
+        return Ok(());
+    };
     let target = setup.target();
     let files = FileSessions::new(setup.pool.clone());
-    let path = format!("/tmp/{}.bin", unique_name());
-    let data = random_bytes(SIZE);
+    let path = format!("/tmp/{}.bin", unique_name()?);
+    let data = random_bytes(SIZE)?;
 
     files
         .with(&target, |sftp| upload(sftp, &path, &data))
@@ -34,14 +37,18 @@ async fn an_uploaded_file_downloads_back_with_the_same_sha256() {
     assert_eq!(downloaded.len(), SIZE);
     assert_eq!(sha256(&downloaded), sha256(&data));
     assert!(on_server.stdout.starts_with(&sha256(&data)));
+
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs the ssh test servers: tests/ssh/up.sh, then SYNT_SSH_TESTS=1"]
-async fn a_missing_file_is_reported_with_its_path() {
-    let Some(setup) = Setup::start() else { return };
+async fn a_missing_file_is_reported_with_its_path() -> Result<(), TestError> {
+    let Some(setup) = Setup::start() else {
+        return Ok(());
+    };
     let files = FileSessions::new(setup.pool.clone());
-    let path = format!("/tmp/{}-missing", unique_name());
+    let path = format!("/tmp/{}-missing", unique_name()?);
 
     let missing = files.with(&setup.bastion(), |sftp| stat(sftp, &path)).await;
 
@@ -52,6 +59,8 @@ async fn a_missing_file_is_reported_with_its_path() {
             ..
         })
     ));
+
+    Ok(())
 }
 
 async fn stat(sftp: Arc<Sftp>, path: &str) -> Result<FileEntry, SshError> {
@@ -83,15 +92,15 @@ async fn download(sftp: Arc<Sftp>, path: &str) -> Result<Vec<u8>, SshError> {
     Ok(data)
 }
 
-fn random_bytes(size: usize) -> Vec<u8> {
+fn random_bytes(size: usize) -> Result<Vec<u8>, TestError> {
     let mut data = vec![0; size];
-    getrandom::fill(&mut data).unwrap();
+    getrandom::fill(&mut data)?;
 
-    data
+    Ok(data)
 }
 
-fn unique_name() -> String {
-    HEXLOWER.encode(&random_bytes(8))
+fn unique_name() -> Result<String, TestError> {
+    Ok(HEXLOWER.encode(&random_bytes(8)?))
 }
 
 fn sha256(data: &[u8]) -> String {

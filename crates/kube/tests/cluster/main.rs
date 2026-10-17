@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used)]
-
 mod applying;
 mod connecting;
 mod lab;

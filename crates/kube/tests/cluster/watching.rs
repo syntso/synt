@@ -1,15 +1,16 @@
 use std::time::Duration;
 
 use synt_kube::{NoticeKind, WatchNotice, WatchRequest};
+use synt_testkit::TestError;
 use tokio::time;
 
 use crate::Lab;
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn a_watch_reports_what_exists_then_every_change() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn a_watch_reports_what_exists_then_every_change() -> Result<(), TestError> {
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
     let manifest = |name: &str| {
@@ -18,23 +19,23 @@ async fn a_watch_reports_what_exists_then_every_change() {
             lab.namespace
         )
     };
-    lab.apply(&manifest("before")).await;
+    lab.apply(&manifest("before")).await?;
 
-    let maps = lab.kind("configmaps").await;
+    let maps = lab.kind("configmaps").await?;
     let request = WatchRequest {
         selector: Some("watched=yes".to_owned()),
         ..WatchRequest::default()
     };
     let mut watch = request.open(&lab.cluster, &maps);
 
-    let existing = next(&mut watch).await;
-    let synced = next(&mut watch).await;
+    let existing = next(&mut watch).await?;
+    let synced = next(&mut watch).await?;
 
-    lab.apply(&manifest("after")).await;
-    let added = next(&mut watch).await;
+    lab.apply(&manifest("after")).await?;
+    let added = next(&mut watch).await?;
 
-    let deleted_name = lab.object(&maps, "before").delete().await.unwrap();
-    let deleted = next(&mut watch).await;
+    let deleted_name = lab.object(&maps, "before")?.delete().await.unwrap();
+    let deleted = next(&mut watch).await?;
 
     assert_eq!(
         (existing.kind, existing.name.as_deref()),
@@ -49,12 +50,15 @@ async fn a_watch_reports_what_exists_then_every_change() {
     assert_eq!(deleted.kind, NoticeKind::Deleted);
     assert_eq!(deleted.name, Some(deleted_name.object.name));
 
-    lab.finish().await;
+    lab.finish().await?;
+
+    Ok(())
 }
 
-async fn next(watch: &mut synt_kube::Watch) -> WatchNotice {
-    let Ok(notice) = time::timeout(Duration::from_secs(30), watch.next()).await else {
-        panic!("no notice within 30 s");
-    };
-    notice.unwrap()
+async fn next(watch: &mut synt_kube::Watch) -> Result<WatchNotice, TestError> {
+    let notice = time::timeout(Duration::from_secs(30), watch.next())
+        .await
+        .map_err(|_| "no notice within 30 s")?;
+
+    Ok(notice?)
 }

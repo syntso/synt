@@ -1,5 +1,6 @@
 use synt_ssh::ConnectionState;
 use synt_test_servers::SshServers;
+use synt_testkit::TestError;
 
 use crate::Setup;
 
@@ -27,13 +28,17 @@ async fn a_host_behind_the_bastion_is_reached_through_it() {
 
 #[tokio::test]
 #[ignore = "needs the ssh test servers: tests/ssh/up.sh, then SYNT_SSH_TESTS=1"]
-async fn the_jump_shares_the_bastion_connection_with_direct_commands() {
-    let Some(setup) = Setup::start() else { return };
+async fn the_jump_shares_the_bastion_connection_with_direct_commands() -> Result<(), TestError> {
+    let Some(setup) = Setup::start() else {
+        return Ok(());
+    };
     let bastion = setup.bastion();
 
-    let before = setup.client_port(&bastion).await;
+    let before = setup.client_port(&bastion).await?;
     setup.run(&setup.target(), "true").await.unwrap();
-    let after = setup.client_port(&bastion).await;
+    let after = setup.client_port(&bastion).await?;
 
     assert_eq!(before, after);
+
+    Ok(())
 }
