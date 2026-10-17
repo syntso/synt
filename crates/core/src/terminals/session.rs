@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
+use synt_actions::Context;
 use synt_proto::EndReason;
 use synt_ssh::{ShellEnd, TerminalSize};
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
@@ -138,6 +139,25 @@ impl Session {
 
     pub(super) async fn discard(&self) {
         self.console.close().await;
+    }
+
+    pub(crate) fn close_when_revoked(self: &Arc<Self>, context: &Context) {
+        let Some(hold) = context.hold() else {
+            return;
+        };
+        let stop = context.stop().clone();
+        let session = Arc::clone(self);
+
+        tokio::spawn(async move {
+            tokio::select! {
+                () = stop.cancelled() => {
+                    session.close(EndReason::Closed).await;
+                }
+                () = session.finished() => {}
+            }
+
+            drop(hold);
+        });
     }
 
     pub(crate) async fn finished(&self) {

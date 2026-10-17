@@ -4,7 +4,6 @@ use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_proto::EndReason;
 
-use super::checks::find;
 use crate::terminals::{Ending, SessionId, Terminals};
 
 #[derive(Debug, Clone)]
@@ -41,7 +40,7 @@ impl Action for SessionClose {
         _context: &Context,
         params: SessionCloseParams,
     ) -> Result<Ending, ActionError> {
-        let session = find(&self.terminals, params.session)?;
+        let session = self.terminals.find(params.session)?;
 
         session
             .close(EndReason::Closed)

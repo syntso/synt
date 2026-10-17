@@ -8,9 +8,10 @@ use synt_journal::ResourceRef;
 use synt_proto::StreamId;
 use synt_ssh::{Upload, WriteMode};
 
-use super::files::{failed, link};
+use super::files::failed;
 use super::{Files, RemotePath};
 use crate::link::Inbound;
+use crate::link::Link;
 
 #[derive(Debug, Clone)]
 pub(crate) struct SftpUpload {
@@ -114,7 +115,7 @@ impl Action for SftpUpload {
 
     async fn run(&self, context: &Context, params: UploadParams) -> Result<Uploaded, ActionError> {
         let _slot = self.files.transfer_slot().await?;
-        let link = link(context)?;
+        let link = Link::of_call(context, "the file")?;
 
         let mut inbound = Inbound::open(&link, params.stream).await?;
         let mut upload = self.open(context, &params).await?;

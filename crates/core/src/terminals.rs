@@ -22,6 +22,7 @@ use synt_proto::EndReason;
 use synt_ssh::TerminalSize;
 use tokio::sync::mpsc;
 
+use crate::CoreError;
 use crate::locked::locked;
 use crate::log::log;
 use crate::recorder::{Call, Recorder};
@@ -80,6 +81,10 @@ impl Terminals {
 
     pub(crate) fn get(&self, id: SessionId) -> Option<Arc<Session>> {
         self.lock().get(&id).map(Arc::clone)
+    }
+
+    pub(crate) fn find(&self, id: SessionId) -> Result<Arc<Session>, CoreError> {
+        self.get(id).ok_or(CoreError::NoSession(id))
     }
 
     pub(crate) fn all(&self) -> Vec<Arc<Session>> {

@@ -9,6 +9,7 @@ use thiserror::Error;
 
 use crate::secrets::SecretName;
 use crate::ssh_keys::KeyName;
+use crate::terminals::SessionId;
 
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -56,6 +57,12 @@ pub enum CoreError {
 
     #[error("endpoint: {0}")]
     Endpoint(#[source] io::Error),
+
+    #[error("this call has no connection to carry {0}")]
+    NoConnection(&'static str),
+
+    #[error("there is no open session {0}")]
+    NoSession(SessionId),
 
     #[error("unknown argument {0}")]
     UnknownArgument(String),
@@ -360,6 +367,12 @@ pub enum CoreError {
 
     #[error("{0:?} must be an absolute path or a path starting with ~/")]
     NotAbsolute(String),
+
+    #[error("the path is empty")]
+    EmptyPath,
+
+    #[error("the path contains a NUL character")]
+    NulInPath,
 
     #[error("a sqlite database is a file: give its path, not {0}")]
     SqliteTakesPath(&'static str),

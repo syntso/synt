@@ -1,20 +1,19 @@
 mod attach;
 mod blocks;
-mod checks;
 mod close;
+mod dimensions;
 mod info;
 mod integration;
 mod list;
 mod local_open;
 mod open;
 mod resize;
-mod revocation;
 mod size;
 
-pub(crate) use crate::terminals::AttachedSession;
 pub use attach::SessionAttach;
 pub use blocks::SessionBlocks;
 pub use close::SessionClose;
+use dimensions::Dimensions;
 pub(crate) use info::SessionInfo;
 pub use integration::SessionIntegration;
 pub use list::SessionList;
@@ -28,7 +27,7 @@ use synt_actions::{ActionError, Registry};
 use synt_ssh::Pool;
 
 use crate::projects::Projects;
-use crate::terminals::Terminals;
+use crate::terminals::{AttachedSession, Terminals};
 
 #[derive(Debug, Clone)]
 pub struct SessionActions {

@@ -3,8 +3,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::SessionSize;
-use super::checks::{find, terminal_size};
+use super::{Dimensions, SessionSize};
 use crate::terminals::{SessionId, Terminals};
 
 #[derive(Debug, Clone)]
@@ -44,8 +43,8 @@ impl Action for SessionResize {
         _context: &Context,
         params: SessionResizeParams,
     ) -> Result<SessionSize, ActionError> {
-        let size = terminal_size(params.columns, params.rows)?;
-        let session = find(&self.terminals, params.session)?;
+        let size = params.size()?;
+        let session = self.terminals.find(params.session)?;
 
         session.resize(size).await?;
 
@@ -54,5 +53,15 @@ impl Action for SessionResize {
             columns: size.columns,
             rows: size.rows,
         })
+    }
+}
+
+impl Dimensions for SessionResizeParams {
+    fn columns(&self) -> u16 {
+        self.columns
+    }
+
+    fn rows(&self) -> u16 {
+        self.rows
     }
 }

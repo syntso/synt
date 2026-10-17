@@ -3,7 +3,6 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::checks::find;
 use crate::terminals::{Block, SessionId, Terminals};
 
 #[derive(Debug, Clone)]
@@ -40,7 +39,7 @@ impl Action for SessionBlocks {
         _context: &Context,
         params: SessionBlocksParams,
     ) -> Result<Vec<Block>, ActionError> {
-        let session = find(&self.terminals, params.session)?;
+        let session = self.terminals.find(params.session)?;
 
         Ok(session.blocks().await)
     }

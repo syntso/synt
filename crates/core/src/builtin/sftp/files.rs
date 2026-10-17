@@ -11,7 +11,6 @@ use super::{
     SftpWrite,
 };
 use crate::builtin::ssh::failure;
-use crate::link::Link;
 use crate::projects::Projects;
 
 const CONCURRENT_CALLS: usize = 8;
@@ -97,10 +96,4 @@ pub(super) fn failed(error: SshError) -> ActionError {
         )),
         other => failure(other),
     }
-}
-
-pub(super) fn link(context: &Context) -> Result<Arc<Link>, ActionError> {
-    context
-        .connection::<Link>()
-        .ok_or_else(|| ActionError::failed("this call has no connection to carry the file"))
 }

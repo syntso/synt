@@ -5,7 +5,8 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
 use super::AttachedSession;
-use super::checks::{connection, find};
+use super::open::CARRIED;
+use crate::link::Link;
 use crate::terminals::{SessionId, Terminals};
 
 #[derive(Debug, Clone)]
@@ -52,8 +53,8 @@ impl Action for SessionAttach {
         context: &Context,
         params: SessionAttachParams,
     ) -> Result<AttachedSession, ActionError> {
-        let link = connection(context)?;
-        let session = find(&self.terminals, params.session)?;
+        let link = Link::of_call(context, CARRIED)?;
+        let session = self.terminals.find(params.session)?;
         let attached = session.attach(&link).await;
 
         Ok(attached)
