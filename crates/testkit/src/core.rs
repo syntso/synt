@@ -14,7 +14,7 @@ mod runbook_desk;
 mod running_server;
 mod secret;
 mod switch;
-mod syncing_core;
+mod syncing;
 mod touch;
 mod waiting;
 
@@ -34,6 +34,6 @@ pub use runbook_desk::RunbookDesk;
 pub use running_server::RunningServer;
 pub use secret::Secret;
 pub use switch::Switch;
-pub use syncing_core::{PROJECT_ID, SyncingCore, register_sync};
+pub use syncing::{PROJECT_ID, SyncingCore, register_sync};
 pub use touch::Touch;
 pub use waiting::Waiting;
