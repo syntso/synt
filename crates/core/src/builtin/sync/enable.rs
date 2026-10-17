@@ -7,6 +7,8 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_sync::{Place, StatusReport, Syncer};
 
+use crate::projects::ProjectSlug;
+
 pub struct SyncEnable {
     syncer: Syncer,
 }
@@ -14,7 +16,7 @@ pub struct SyncEnable {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EnableParams {
-    pub project: String,
+    pub(crate) project: ProjectSlug,
     pub folder: PathBuf,
 }
 
@@ -63,6 +65,6 @@ impl Action for SyncEnable {
     ) -> Result<StatusReport, ActionError> {
         let place = Place::Folder(params.folder);
 
-        Ok(self.syncer.enable(&params.project, place).await?)
+        Ok(self.syncer.enable(params.project.as_str(), place).await?)
     }
 }

@@ -30,7 +30,7 @@ use synt_journal::JournalWriter;
 use crate::CoreError;
 use crate::core::Core;
 use crate::link::Link;
-use crate::projects::Projects;
+use crate::projects::{ProjectSlug, Projects};
 use crate::terminals::Terminals;
 use run::{CoreSteps, LinkProgress, Run};
 
@@ -64,10 +64,11 @@ impl Runbooks {
         self.runs.clone()
     }
 
-    pub(crate) fn folder(&self, project: &str) -> Result<RunbookFolder, CoreError> {
+    pub(crate) fn folder(&self, project: &ProjectSlug) -> Result<RunbookFolder, CoreError> {
         let place = self.projects.place(project)?;
+        let slug = self.projects.slug(project)?;
 
-        Ok(RunbookFolder::new(place))
+        Ok(RunbookFolder::new(place, slug))
     }
 
     pub(crate) fn journal(&self) -> &JournalWriter {
@@ -80,7 +81,7 @@ impl Runbooks {
 
     pub(crate) fn plan(
         &self,
-        project: &str,
+        project: &ProjectSlug,
         name: &RunbookName,
         given: &Map<String, Value>,
     ) -> Result<Plan, CoreError> {

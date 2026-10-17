@@ -4,6 +4,8 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_sync::{DocumentPath, RevisionId, RevisionInfo, Syncer};
 
+use crate::projects::ProjectSlug;
+
 pub struct DocumentResolve {
     syncer: Syncer,
 }
@@ -11,7 +13,7 @@ pub struct DocumentResolve {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ResolveParams {
-    pub project: String,
+    pub(crate) project: ProjectSlug,
     #[schemars(with = "String")]
     pub path: DocumentPath,
     #[schemars(with = "String")]
@@ -44,7 +46,7 @@ impl Action for DocumentResolve {
     ) -> Result<RevisionInfo, ActionError> {
         let resolved = self
             .syncer
-            .resolve(&params.project, params.path, params.revision)
+            .resolve(params.project.as_str(), params.path, params.revision)
             .await?;
 
         Ok(resolved)

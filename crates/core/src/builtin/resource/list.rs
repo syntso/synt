@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use crate::blocking::blocking;
-use crate::projects::{Projects, ResourceListing};
+use crate::projects::{ProjectSlug, Projects, ResourceListing};
 
 #[derive(Debug, Clone)]
 pub struct ResourceList {
@@ -13,7 +13,7 @@ pub struct ResourceList {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct ResourceListParams {
-    pub project: String,
+    pub(crate) project: ProjectSlug,
 }
 
 impl ResourceList {

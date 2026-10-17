@@ -11,11 +11,12 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use synt_platform::{Found, read_plain_file, replace_file};
+use synt_sync::ProjectFolder;
 
 use super::document::RunbookDocument;
 use super::{RunbookError, RunbookName};
 use crate::CoreError;
-use crate::projects::{Problem, ProjectPlace};
+use crate::projects::{Problem, ProjectSlug};
 
 const FOLDER: &str = "runbooks";
 const EXTENSION: &str = "toml";
@@ -23,20 +24,21 @@ const LARGEST_FILE: u64 = 256 * 1024;
 
 #[derive(Debug, Clone)]
 pub(crate) struct RunbookFolder {
-    place: ProjectPlace,
+    place: ProjectFolder,
+    slug: ProjectSlug,
 }
 
 impl RunbookFolder {
-    pub(crate) fn new(place: ProjectPlace) -> Self {
-        Self { place }
+    pub(crate) fn new(place: ProjectFolder, slug: ProjectSlug) -> Self {
+        Self { place, slug }
     }
 
     pub(crate) fn reference(&self, name: &RunbookName) -> String {
-        format!("@{}/{name}", self.place.id)
+        format!("@{}/{name}", self.place.id())
     }
 
     pub(crate) fn listing(&self) -> Result<RunbookListing, CoreError> {
-        let mut listing = RunbookListing::new(self.place.slug.as_str());
+        let mut listing = RunbookListing::new(self.slug.as_str());
 
         for name in self.names()? {
             match Self::read_file(&self.path(&name)) {
@@ -53,7 +55,7 @@ impl RunbookFolder {
 
     pub(crate) fn read(&self, name: &RunbookName) -> Result<RunbookDocument, RunbookError> {
         Self::read_file(&self.path(name))
-            .map_err(|error| error.in_project(name, self.place.slug.as_str()))
+            .map_err(|error| error.in_project(name, self.slug.as_str()))
     }
 
     pub(crate) fn put(
@@ -90,7 +92,7 @@ impl RunbookFolder {
 
         Err(RunbookError::Moved {
             name: name.clone(),
-            project: self.place.slug.to_string(),
+            project: self.slug.to_string(),
             actual,
         })
     }
@@ -102,11 +104,11 @@ impl RunbookFolder {
     }
 
     fn path(&self, name: &RunbookName) -> PathBuf {
-        self.place.path.join(Self::file_name(name))
+        self.place.root().join(Self::file_name(name))
     }
 
     fn names(&self) -> Result<Vec<RunbookName>, CoreError> {
-        let folder = self.place.path.join(FOLDER);
+        let folder = self.place.root().join(FOLDER);
 
         let Some(entries) = fs::read_dir(&folder).found()? else {
             return Ok(Vec::new());
@@ -123,7 +125,7 @@ impl RunbookFolder {
     }
 
     fn prepare(&self) -> io::Result<()> {
-        let folder = self.place.path.join(FOLDER);
+        let folder = self.place.root().join(FOLDER);
 
         match fs::create_dir(&folder) {
             Err(error) if error.kind() != io::ErrorKind::AlreadyExists => return Err(error),

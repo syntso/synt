@@ -1,11 +1,11 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
 use crate::blocking::blocking;
-use crate::projects::{Projects, Resource, ResourceEntry};
+use crate::projects::{Projects, Resource, ResourceEntry, TargetRef};
 
 const SECRET_SCHEME: &str = "secret://";
 const HIDDEN: &str = "?";
@@ -17,9 +17,10 @@ pub struct ResourcePut {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(transparent)]
 pub struct ResourcePutParams {
-    #[serde(flatten)]
-    pub resource: Resource,
+    #[schemars(with = "Resource")]
+    fields: Map<String, Value>,
 }
 
 impl ResourcePut {
@@ -62,7 +63,13 @@ impl Action for ResourcePut {
         let admitted = context.destination().map(str::to_owned);
         let projects = self.projects.clone();
 
-        blocking(move || projects.put(target.as_str(), admitted.as_deref(), params.resource)).await
+        blocking(move || {
+            let target = TargetRef::require(target.as_str())?;
+            let resource = Resource::from_fields(params.fields)?;
+
+            projects.put(&target, admitted.as_deref(), resource)
+        })
+        .await
     }
 }
 

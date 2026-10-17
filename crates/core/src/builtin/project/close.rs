@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use crate::blocking::blocking;
-use crate::projects::{ProjectInfo, Projects};
+use crate::projects::{ProjectInfo, ProjectSlug, Projects};
 
 #[derive(Debug, Clone)]
 pub struct ProjectClose {
@@ -13,7 +13,7 @@ pub struct ProjectClose {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct ProjectIdParams {
-    pub id: String,
+    pub(crate) id: ProjectSlug,
 }
 
 impl ProjectClose {
