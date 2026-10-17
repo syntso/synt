@@ -1,6 +1,6 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::info::PanelInfo;
@@ -15,8 +15,8 @@ pub(crate) struct ExtensionPanelOpen {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PanelParams {
-    pub extension: String,
-    pub panel: String,
+    extension: String,
+    panel: String,
 }
 
 impl ExtensionPanelOpen {
@@ -34,27 +34,23 @@ impl Action for ExtensionPanelOpen {
     type Output = PanelInfo;
 
     fn summary(&self, output: &PanelInfo) -> Value {
-        json!({ "extension": output.extension, "panel": output.panel })
+        output.summary()
     }
 
     async fn run(&self, context: &Context, params: PanelParams) -> Result<PanelInfo, ActionError> {
         context.refuse_extensions("reach the views, panels or actions of an extension")?;
 
         let loaded = self.extensions.loaded(&params.extension)?;
-        let web_panel = loaded
-            .guest
-            .manifest()
-            .contributes
-            .panel(&params.panel)
-            .and_then(|panel| Some((panel.title.clone(), panel.entry.clone()?)));
+        let contributes = loaded.guest().manifest().contributes();
 
-        let Some((title, entry)) = web_panel else {
-            return Err(ActionError::InvalidParams(format!(
-                "{} contributes no web panel {}",
-                params.extension, params.panel
-            )));
-        };
-
-        Ok(PanelInfo::new(params.extension, params.panel, title, entry))
+        contributes
+            .web_panel(&params.panel)
+            .and_then(|panel| PanelInfo::of(params.extension.clone(), panel))
+            .ok_or_else(|| {
+                ActionError::InvalidParams(format!(
+                    "{} contributes no web panel {}",
+                    params.extension, params.panel
+                ))
+            })
     }
 }

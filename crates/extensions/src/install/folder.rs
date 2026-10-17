@@ -23,16 +23,17 @@ impl InstallFolder {
     }
 
     pub(crate) fn store(&self, package: &Package) -> Result<Sha256, ExtensionError> {
-        let staging = self.root.join(STAGING).join(&package.manifest.id);
-        clear(&staging)?;
+        let id = package.manifest().id().as_str();
+        let staging = self.root.join(STAGING).join(id);
+        Self::clear(&staging)?;
         fs::create_dir_all(&staging)?;
 
-        let manifest = package.manifest.to_toml()?;
+        let manifest = package.manifest().to_toml()?;
         fs::write(staging.join(MANIFEST_FILE), &manifest)?;
-        fs::write(staging.join(COMPONENT_FILE), &package.wasm)?;
+        fs::write(staging.join(COMPONENT_FILE), package.wasm())?;
 
-        let place = self.place(&package.manifest.id);
-        clear(&place)?;
+        let place = self.place(id);
+        Self::clear(&place)?;
         fs::rename(&staging, &place)?;
 
         Ok(Sha256::of(manifest.as_bytes()))
@@ -45,25 +46,25 @@ impl InstallFolder {
         let manifest = Manifest::parse(&text)?;
         let wasm = fs::read(place.join(COMPONENT_FILE))?;
 
-        Ok(InstalledFiles {
+        Ok(InstalledFiles::new(
             manifest,
-            manifest_sha256: Sha256::of(text.as_bytes()),
+            Sha256::of(text.as_bytes()),
             wasm,
-        })
+        ))
     }
 
     pub(crate) fn remove(&self, id: &str) -> Result<(), ExtensionError> {
-        clear(&self.place(id))
+        Self::clear(&self.place(id))
     }
 
     fn place(&self, id: &str) -> PathBuf {
         self.root.join(id)
     }
-}
 
-fn clear(path: &Path) -> Result<(), ExtensionError> {
-    match fs::remove_dir_all(path) {
-        Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error.into()),
-        _ => Ok(()),
+    fn clear(path: &Path) -> Result<(), ExtensionError> {
+        match fs::remove_dir_all(path) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error.into()),
+            _ => Ok(()),
+        }
     }
 }

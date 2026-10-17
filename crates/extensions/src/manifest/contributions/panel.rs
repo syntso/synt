@@ -1,41 +1,69 @@
+mod fields;
+mod kind;
+
 use serde::{Deserialize, Serialize};
 
-use crate::ExtensionError;
-use crate::manifest::checks::{check_local_id, check_text, is_asset_path, refused};
+use fields::PanelFields;
+use kind::PanelKind;
+
+use crate::ManifestError;
+use crate::manifest::{AssetPath, LocalId, OneLine};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "PanelFields")]
 pub struct Panel {
-    pub id: String,
-    pub title: String,
+    id: LocalId,
+    title: OneLine,
 
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub view: Option<String>,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub entry: Option<String>,
+    #[serde(flatten)]
+    kind: PanelKind,
 }
 
 impl Panel {
-    pub(crate) fn check(&self) -> Result<(), ExtensionError> {
-        check_local_id("panel id", &self.id)?;
-        check_text("panel title", &self.title)?;
+    pub(crate) fn id(&self) -> &LocalId {
+        &self.id
+    }
 
-        match (&self.view, &self.entry) {
-            (Some(view), None) => check_local_id("panel view", view),
-            (None, Some(entry)) if is_asset_path(entry) => Ok(()),
-            (None, Some(entry)) => Err(refused(format!(
-                "panel {} has the entry {entry:?}, which is not a plain path inside the bundle",
-                self.id
-            ))),
-            _ => Err(refused(format!(
-                "panel {} needs either a native view or a web entry, not both",
-                self.id
-            ))),
+    pub(crate) fn title(&self) -> &OneLine {
+        &self.title
+    }
+
+    pub(crate) fn view(&self) -> Option<&LocalId> {
+        match &self.kind {
+            PanelKind::View(view) => Some(view),
+            PanelKind::Entry(_) => None,
         }
     }
 
-    pub fn is_web(&self) -> bool {
-        self.entry.is_some()
+    pub(crate) fn entry(&self) -> Option<&AssetPath> {
+        match &self.kind {
+            PanelKind::Entry(entry) => Some(entry),
+            PanelKind::View(_) => None,
+        }
+    }
+
+    pub(crate) fn is_web(&self) -> bool {
+        self.entry().is_some()
+    }
+}
+
+impl TryFrom<PanelFields> for Panel {
+    type Error = ManifestError;
+
+    fn try_from(fields: PanelFields) -> Result<Self, ManifestError> {
+        let PanelFields {
+            id,
+            title,
+            view,
+            entry,
+        } = fields;
+
+        let kind = match (view, entry) {
+            (Some(view), None) => PanelKind::View(view),
+            (None, Some(entry)) => PanelKind::Entry(entry),
+            _ => return Err(ManifestError::PanelKind(id)),
+        };
+
+        Ok(Self { id, title, kind })
     }
 }

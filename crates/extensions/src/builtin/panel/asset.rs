@@ -1,16 +1,19 @@
+mod file;
+
 use std::sync::Arc;
 
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::asset_file::AssetFile;
+use file::AssetFile;
+
 use super::mime::mime_of;
 use crate::Extensions;
+use crate::blocking::Blocking;
 use crate::builtin::CallingActor;
-use crate::extension::on_guest_thread;
-use crate::manifest::is_asset_path;
+use crate::manifest::AssetPath;
 
 const LARGEST_ASSET: usize = 8 * 1024 * 1024;
 
@@ -22,8 +25,8 @@ pub(crate) struct ExtensionPanelAsset {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AssetParams {
-    pub extension: String,
-    pub path: String,
+    extension: String,
+    path: String,
 }
 
 impl ExtensionPanelAsset {
@@ -33,15 +36,18 @@ impl ExtensionPanelAsset {
 }
 
 impl AssetParams {
-    fn mime(&self) -> Result<&'static str, ActionError> {
-        mime_of(&self.path)
-            .filter(|_| is_asset_path(&self.path))
-            .ok_or_else(|| {
-                ActionError::InvalidParams(format!(
-                    "{:?} is not a file a web panel may load",
-                    self.path
-                ))
-            })
+    fn checked(&self) -> Result<(AssetPath, &'static str), ActionError> {
+        let refused = || {
+            ActionError::InvalidParams(format!(
+                "{:?} is not a file a web panel may load",
+                self.path
+            ))
+        };
+
+        let path = AssetPath::try_from(self.path.clone()).map_err(|_| refused())?;
+        let mime = mime_of(path.as_str()).ok_or_else(refused)?;
+
+        Ok((path, mime))
     }
 }
 
@@ -54,26 +60,26 @@ impl Action for ExtensionPanelAsset {
     type Output = AssetFile;
 
     fn summary(&self, output: &AssetFile) -> Value {
-        json!({ "path": output.path, "mime": output.mime, "bytes": output.bytes })
+        output.summary()
     }
 
     async fn run(&self, context: &Context, params: AssetParams) -> Result<AssetFile, ActionError> {
         context.refuse_extensions("reach the views, panels or actions of an extension")?;
 
-        let mime = params.mime()?;
-        let guest = Arc::clone(&self.extensions.loaded(&params.extension)?.guest);
-        let path = params.path.clone();
+        let (path, mime) = params.checked()?;
+        let guest = Arc::clone(self.extensions.loaded(&params.extension)?.guest());
+        let wanted = path.as_str().to_owned();
 
-        let found = on_guest_thread(move |_| guest.asset(&path).map(Ok)).await?;
+        let found = Blocking::run(move || guest.asset(&wanted)).await?;
         let data = found
             .filter(|data| data.len() <= LARGEST_ASSET)
             .ok_or_else(|| {
                 ActionError::failed(format!(
-                    "{} has no panel file {} of at most {LARGEST_ASSET} bytes",
-                    params.extension, params.path
+                    "{} has no panel file {path} of at most {LARGEST_ASSET} bytes",
+                    params.extension
                 ))
             })?;
 
-        Ok(AssetFile::new(params.path, mime, &data))
+        Ok(AssetFile::new(path, mime, &data))
     }
 }

@@ -5,11 +5,9 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
 use super::CallingActor;
+use crate::Extensions;
 use crate::blocking::Blocking;
 use crate::http::{Exchange, HttpRequest, HttpResponse, RecordedParams, SecretAccess};
-use crate::{ExtensionError, Extensions};
-
-const READING_METHODS: [&str; 3] = ["GET", "HEAD", "OPTIONS"];
 
 #[derive(Clone)]
 pub(crate) struct ExtensionHttp {
@@ -35,9 +33,7 @@ impl Action for ExtensionHttp {
     type Output = HttpResponse;
 
     fn risk(&self, _target: Option<&ResourceRef>, params: &HttpRequest) -> Risk {
-        let method = params.method.to_ascii_uppercase();
-
-        if READING_METHODS.contains(&method.as_str()) {
+        if params.only_reads() {
             return Risk::Read;
         }
 
@@ -49,7 +45,7 @@ impl Action for ExtensionHttp {
     }
 
     fn summary(&self, output: &HttpResponse) -> Value {
-        json!({ "status": output.status, "body_bytes": output.body_size() })
+        json!({ "status": output.status(), "body_bytes": output.body_size() })
     }
 
     async fn run(
@@ -67,11 +63,11 @@ impl Action for ExtensionHttp {
         let capabilities = self
             .extensions
             .loaded(&extension)?
-            .guest
+            .guest()
             .manifest()
-            .capabilities
+            .capabilities()
             .clone();
-        let secrets = self.extensions.services().secrets.get().cloned();
+        let secrets = self.extensions.services().secrets().cloned();
         let exchange = Arc::clone(&self.exchange);
 
         Blocking::run(move || {
@@ -79,10 +75,13 @@ impl Action for ExtensionHttp {
                 .as_deref()
                 .map(|source| SecretAccess::new(source, &extension));
 
-            exchange
-                .get_or_init(Exchange::new)
-                .send(&params, &capabilities, access.as_ref())
-                .map_err(ExtensionError::Refused)
+            let response = exchange.get_or_init(Exchange::new).send(
+                &params,
+                &capabilities,
+                access.as_ref(),
+            )?;
+
+            Ok(response)
         })
         .await
     }

@@ -1,4 +1,5 @@
 use super::{Revealed, SecretHeader, SecretSource};
+use crate::error::HttpError;
 use crate::http::Destination;
 use crate::manifest::Capabilities;
 
@@ -17,12 +18,9 @@ impl<'a> SecretAccess<'a> {
         attached: &[SecretHeader],
         destination: &Destination,
         capabilities: &Capabilities,
-    ) -> Result<Vec<Revealed>, String> {
+    ) -> Result<Vec<Revealed>, HttpError> {
         if !destination.keeps_secrets_private() {
-            return Err(format!(
-                "secrets go only over https or to this computer, not to http://{}",
-                destination.listed()
-            ));
+            return Err(HttpError::SecretOverPlainHttp(destination.listed()));
         }
 
         attached
@@ -36,19 +34,21 @@ impl<'a> SecretAccess<'a> {
         attached: &SecretHeader,
         destination: &Destination,
         capabilities: &Capabilities,
-    ) -> Result<Revealed, String> {
-        if !destination.may_carry(&attached.secret, capabilities) {
-            return Err(format!(
-                "capabilities.secrets does not let secret://{} go to {}",
-                attached.secret,
-                destination.listed()
-            ));
+    ) -> Result<Revealed, HttpError> {
+        let secret = attached.secret();
+
+        if !destination.may_carry(secret, capabilities) {
+            return Err(HttpError::SecretNotAllowed {
+                secret: secret.to_owned(),
+                destination: destination.listed(),
+            });
         }
 
         let value = self
             .source
-            .reveal(&attached.secret, self.extension)?
-            .ok_or_else(|| format!("there is no secret secret://{}", attached.secret))?;
+            .reveal(secret, self.extension)
+            .map_err(HttpError::SecretUnreadable)?
+            .ok_or_else(|| HttpError::NoSuchSecret(secret.to_owned()))?;
 
         Ok(Revealed::new(attached, value))
     }

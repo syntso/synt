@@ -38,11 +38,12 @@ impl Action for ExtensionFileList {
         let extensions = self.extensions.clone();
 
         Blocking::run(move || {
-            let picks = extensions.services().shelf.picks(&params.extension)?;
+            let extension = params.extension();
+            let picks = extensions.services().shelf().picks().all(extension)?;
 
             Ok(picks
-                .into_iter()
-                .map(|picked| FileEntry::new(&params.extension, picked))
+                .iter()
+                .map(|picked| FileEntry::new(extension, picked))
                 .collect())
         })
         .await

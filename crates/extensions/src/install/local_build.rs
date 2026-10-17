@@ -24,7 +24,7 @@ impl LocalBuild {
         let manifest = self.manifest()?;
         let component = self.component()?;
 
-        check_size(&component)?;
+        Self::check_size(&component)?;
         let wasm = fs::read(&component)?;
 
         Ok(Package::new(manifest, wasm, false))
@@ -33,7 +33,7 @@ impl LocalBuild {
     fn manifest(&self) -> Result<Manifest, ExtensionError> {
         let path = self.folder.join(MANIFEST_FILE);
         let text = fs::read_to_string(&path)
-            .map_err(|error| ExtensionError::Refused(format!("{}: {error}", path.display())))?;
+            .map_err(|source| ExtensionError::BuildManifest { path, source })?;
 
         Manifest::parse(&text)
     }
@@ -48,44 +48,41 @@ impl LocalBuild {
             .iter()
             .fold(self.folder.clone(), |path, part| path.join(part));
 
-        match wasm_files(&output).as_slice() {
+        match Self::wasm_files(&output).as_slice() {
             [only] => Ok(only.clone()),
-            [] => Err(ExtensionError::Refused(format!(
-                "no {COMPONENT_FILE} in {} and no build in {}; run cargo build --release --target \
-                 wasm32-wasip2 first",
-                self.folder.display(),
-                output.display()
-            ))),
-            _ => Err(ExtensionError::Refused(format!(
-                "{} holds several .wasm files; put the one to install at {}",
-                output.display(),
-                beside.display()
-            ))),
+            [] => Err(ExtensionError::NoComponent {
+                folder: self.folder.clone(),
+                output,
+            }),
+            _ => Err(ExtensionError::SeveralComponents { output, beside }),
         }
     }
-}
 
-fn check_size(component: &Path) -> Result<(), ExtensionError> {
-    let size = fs::metadata(component)?.len();
+    fn check_size(component: &Path) -> Result<(), ExtensionError> {
+        let size = fs::metadata(component)?.len();
 
-    if size > LARGEST_COMPONENT {
-        return Err(ExtensionError::Refused(format!(
-            "{} is {size} bytes; the limit is {LARGEST_COMPONENT}",
-            component.display()
-        )));
+        if size > LARGEST_COMPONENT {
+            return Err(ExtensionError::ComponentTooLarge {
+                path: component.to_owned(),
+                size,
+                limit: LARGEST_COMPONENT,
+            });
+        }
+
+        Ok(())
     }
 
-    Ok(())
-}
+    fn wasm_files(folder: &Path) -> Vec<PathBuf> {
+        let Ok(entries) = fs::read_dir(folder) else {
+            return Vec::new();
+        };
 
-fn wasm_files(folder: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = fs::read_dir(folder) else {
-        return Vec::new();
-    };
-
-    entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.is_file() && path.extension().is_some_and(|suffix| suffix == "wasm"))
-        .collect()
+        entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.is_file() && path.extension().is_some_and(|suffix| suffix == "wasm")
+            })
+            .collect()
+    }
 }

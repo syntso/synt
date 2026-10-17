@@ -1,8 +1,12 @@
+mod entry;
+
 use std::collections::BTreeMap;
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use synt_actions::{Description, Handle};
 use synt_journal::ActionId;
+
+use entry::Entry;
 
 use super::Loaded;
 use crate::ExtensionError;
@@ -10,50 +14,55 @@ use crate::background::ExtensionEvent;
 
 #[derive(Default)]
 pub(crate) struct Roster {
-    loaded: RwLock<BTreeMap<String, Arc<Loaded>>>,
-    problems: RwLock<BTreeMap<String, String>>,
+    entries: RwLock<BTreeMap<String, Entry>>,
 }
 
 impl Roster {
     pub(crate) fn get(&self, id: &str) -> Option<Arc<Loaded>> {
-        read(&self.loaded).get(id).cloned()
+        self.read().get(id).and_then(Entry::loaded).cloned()
     }
 
     pub(crate) fn all(&self) -> Vec<Arc<Loaded>> {
-        read(&self.loaded).values().cloned().collect()
+        self.read()
+            .values()
+            .filter_map(Entry::loaded)
+            .cloned()
+            .collect()
     }
 
     pub(crate) fn problem(&self, id: &str) -> Option<String> {
-        read(&self.problems).get(id).cloned()
+        self.read()
+            .get(id)
+            .and_then(Entry::problem)
+            .map(str::to_owned)
     }
 
     pub(crate) fn put(&self, loaded: Arc<Loaded>) {
-        let id = loaded.installed.id.clone();
+        let id = loaded.id().to_owned();
 
-        write(&self.problems).remove(&id);
-        write(&self.loaded).insert(id, loaded);
+        self.write().insert(id, Entry::Loaded(loaded));
     }
 
     pub(crate) fn take(&self, id: &str) {
-        write(&self.loaded).remove(id);
-        write(&self.problems).remove(id);
+        self.write().remove(id);
     }
 
     pub(crate) fn note_problem(&self, id: &str, error: &ExtensionError) {
         eprintln!("synt-core: extension {id} is not loaded: {error}");
 
-        write(&self.problems).insert(id.to_owned(), error.to_string());
+        self.write()
+            .insert(id.to_owned(), Entry::Problem(error.to_string()));
     }
 
     pub(crate) fn wake_up(&self) {
-        for loaded in read(&self.loaded).values() {
+        for loaded in self.all() {
             loaded.wake_up();
         }
     }
 
     pub(crate) fn publish(&self, event: &ExtensionEvent) -> usize {
-        read(&self.loaded)
-            .values()
+        self.all()
+            .iter()
             .filter(|loaded| loaded.hear(event))
             .count()
     }
@@ -61,21 +70,21 @@ impl Roster {
     pub(crate) fn handle(&self, id: &ActionId) -> Option<Handle> {
         let (extension, _) = id.as_str().split_once('.')?;
 
-        read(&self.loaded).get(extension)?.handle(id)
+        self.get(extension)?.handle(id)
     }
 
     pub(crate) fn describe(&self) -> Vec<Description> {
-        read(&self.loaded)
-            .values()
+        self.all()
+            .iter()
             .flat_map(|loaded| loaded.describe())
             .collect()
     }
-}
 
-fn read<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
-    lock.read().unwrap_or_else(PoisonError::into_inner)
-}
+    fn read(&self) -> RwLockReadGuard<'_, BTreeMap<String, Entry>> {
+        self.entries.read().unwrap_or_else(PoisonError::into_inner)
+    }
 
-fn write<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
-    lock.write().unwrap_or_else(PoisonError::into_inner)
+    fn write(&self) -> RwLockWriteGuard<'_, BTreeMap<String, Entry>> {
+        self.entries.write().unwrap_or_else(PoisonError::into_inner)
+    }
 }

@@ -1,3 +1,7 @@
+use crate::call::FailureCode;
+use crate::interface::GuestError;
+use crate::manifest::AssetPath;
+
 const LONGEST_PATH: usize = 200;
 const MOST_SEGMENTS: usize = 8;
 
@@ -8,28 +12,28 @@ pub(crate) struct DocumentPath {
 }
 
 impl DocumentPath {
-    pub(crate) fn parse(text: &str) -> Result<Self, String> {
+    pub(crate) fn parse(text: &str) -> Result<Self, GuestError> {
         let segments: Vec<&str> = text.split('/').collect();
 
         if text.len() > LONGEST_PATH || segments.len() > MOST_SEGMENTS {
-            return Err(format!(
+            return Err(Self::invalid(format!(
                 "a document path holds at most {MOST_SEGMENTS} parts and {LONGEST_PATH} bytes"
-            ));
+            )));
         }
 
-        if !segments.iter().all(|segment| is_plain(segment)) {
-            return Err(format!(
+        if !segments
+            .iter()
+            .all(|segment| AssetPath::is_plain_segment(segment))
+        {
+            return Err(Self::invalid(format!(
                 "{text:?} is not a document path: use letters, digits, '-', '_' and '.', \
                  with '/' between parts and no part starting with '.'"
-            ));
+            )));
         }
 
-        let suffix = segments
-            .last()
-            .and_then(|name| name.rsplit_once('.'))
-            .map(|(_, suffix)| suffix.to_owned())
-            .filter(|suffix| !suffix.is_empty())
-            .ok_or_else(|| format!("{text:?} has no suffix naming its document type"))?;
+        let suffix = Self::suffix_of(&segments).ok_or_else(|| {
+            Self::invalid(format!("{text:?} has no suffix naming its document type"))
+        })?;
 
         Ok(Self {
             relative: text.to_owned(),
@@ -48,14 +52,16 @@ impl DocumentPath {
     pub(crate) fn segments(&self) -> impl Iterator<Item = &str> {
         self.relative.split('/')
     }
-}
 
-fn is_plain(segment: &str) -> bool {
-    !segment.is_empty()
-        && !segment.starts_with('.')
-        && segment
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || "-_.".contains(character))
+    fn suffix_of(segments: &[&str]) -> Option<String> {
+        let (_, suffix) = segments.last()?.rsplit_once('.')?;
+
+        (!suffix.is_empty()).then(|| suffix.to_owned())
+    }
+
+    fn invalid(reason: String) -> GuestError {
+        GuestError::new(FailureCode::InvalidPath, reason)
+    }
 }
 
 #[cfg(test)]

@@ -1,5 +1,4 @@
 mod calling_actor;
-mod contributed;
 mod contributions;
 mod document;
 mod extension_params;

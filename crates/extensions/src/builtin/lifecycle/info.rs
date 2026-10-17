@@ -2,55 +2,56 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::extension::Loaded;
-use crate::manifest::{Api, Capabilities, Manifest};
+use crate::manifest::{Api, Capabilities, Description, ExtensionId, Manifest, OneLine};
 use crate::sha256::Sha256;
 use crate::shelf::Installed;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ExtensionInfo {
-    pub id: String,
-    pub name: Option<String>,
-    pub version: String,
-    pub api: Option<Api>,
-    pub description: Option<String>,
-    pub signed: bool,
-    pub enabled: bool,
-    pub loaded: bool,
-    pub sha256: Sha256,
-    pub capabilities: Option<Capabilities>,
-    pub actions: Vec<String>,
-    pub problem: Option<String>,
+    id: ExtensionId,
+    name: Option<OneLine>,
+    version: OneLine,
+    api: Option<Api>,
+    description: Option<Description>,
+    signed: bool,
+    enabled: bool,
+    loaded: bool,
+    sha256: Sha256,
+    capabilities: Option<Capabilities>,
+    actions: Vec<String>,
+    problem: Option<String>,
 }
 
 impl ExtensionInfo {
     pub(crate) fn loaded(loaded: &Loaded) -> Self {
-        let manifest = loaded.guest.manifest();
+        let manifest = loaded.guest().manifest().clone();
+        let resting = Self::resting(loaded.installed(), Some(manifest), None);
 
         Self {
             loaded: true,
             actions: loaded.action_ids(),
-            ..Self::resting(loaded.installed.clone(), Some(manifest.clone()), None)
+            ..resting
         }
     }
 
     pub(crate) fn resting(
-        installed: Installed,
+        installed: &Installed,
         manifest: Option<Manifest>,
         problem: Option<String>,
     ) -> Self {
         Self {
-            id: installed.id,
-            name: manifest.as_ref().map(|manifest| manifest.name.clone()),
-            version: installed.version,
-            api: manifest.as_ref().map(|manifest| manifest.api),
+            id: installed.id().clone(),
+            name: manifest.as_ref().map(|manifest| manifest.name().clone()),
+            version: installed.version().clone(),
+            api: manifest.as_ref().map(Manifest::api),
             description: manifest
                 .as_ref()
-                .map(|manifest| manifest.description.clone()),
-            signed: installed.signed,
-            enabled: installed.enabled,
+                .map(|manifest| manifest.description().clone()),
+            signed: installed.signed(),
+            enabled: installed.enabled(),
             loaded: false,
-            sha256: installed.sha256,
-            capabilities: manifest.map(|manifest| manifest.capabilities),
+            sha256: installed.sha256().clone(),
+            capabilities: manifest.map(|manifest| manifest.capabilities().clone()),
             actions: Vec::new(),
             problem,
         }

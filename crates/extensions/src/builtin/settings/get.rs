@@ -1,4 +1,4 @@
-use serde_json::{Value, json};
+use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::values::SettingsValues;
@@ -26,7 +26,7 @@ impl Action for ExtensionSettingsGet {
     type Output = SettingsValues;
 
     fn summary(&self, output: &SettingsValues) -> Value {
-        json!({ "extension": output.extension })
+        output.summary()
     }
 
     async fn run(
@@ -36,6 +36,6 @@ impl Action for ExtensionSettingsGet {
     ) -> Result<SettingsValues, ActionError> {
         let extensions = self.extensions.clone();
 
-        Blocking::run(move || SettingsValues::current(&extensions, &params.extension)).await
+        Blocking::run(move || SettingsValues::current(&extensions, params.extension())).await
     }
 }

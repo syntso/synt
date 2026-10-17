@@ -1,4 +1,3 @@
-mod check;
 mod get;
 mod set;
 mod values;

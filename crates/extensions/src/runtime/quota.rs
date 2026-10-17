@@ -1,39 +1,58 @@
-use super::QuotaSpent;
+mod spend;
+mod spent;
 
-const STORAGE_OPERATIONS: u32 = 1000;
-const CALLS: u32 = 64;
-const MESSAGES: u32 = 256;
+pub(crate) use spend::Spend;
+pub(crate) use spent::QuotaSpent;
 
 pub(super) struct Quota {
-    storage: u32,
     calls: u32,
+    storage: u32,
     messages: u32,
 }
 
 impl Quota {
     pub(super) fn new() -> Self {
         Self {
-            storage: STORAGE_OPERATIONS,
-            calls: CALLS,
-            messages: MESSAGES,
+            calls: Spend::Call.most(),
+            storage: Spend::Storage.most(),
+            messages: Spend::Message.most(),
         }
     }
 
-    pub(super) fn take_storage(&mut self) -> Result<(), QuotaSpent> {
-        take(&mut self.storage).ok_or(QuotaSpent::new("storage operations", STORAGE_OPERATIONS))
+    pub(super) fn take(&mut self, spend: Spend) -> Result<(), QuotaSpent> {
+        let Some(left) = self.counter(spend) else {
+            return Ok(());
+        };
+
+        *left = left.checked_sub(1).ok_or(QuotaSpent::new(spend))?;
+
+        Ok(())
     }
 
-    pub(super) fn take_call(&mut self) -> Result<(), QuotaSpent> {
-        take(&mut self.calls).ok_or(QuotaSpent::new("calls into the core", CALLS))
-    }
-
-    pub(super) fn take_message(&mut self) -> Result<(), QuotaSpent> {
-        take(&mut self.messages).ok_or(QuotaSpent::new("messages to the app", MESSAGES))
+    fn counter(&mut self, spend: Spend) -> Option<&mut u32> {
+        match spend {
+            Spend::Call => Some(&mut self.calls),
+            Spend::Storage => Some(&mut self.storage),
+            Spend::Message => Some(&mut self.messages),
+            Spend::Free => None,
+        }
     }
 }
 
-fn take(left: &mut u32) -> Option<()> {
-    *left = left.checked_sub(1)?;
+#[cfg(test)]
+mod tests {
+    use super::{Quota, Spend};
 
-    Some(())
+    #[test]
+    fn each_kind_runs_out_on_its_own() {
+        let mut quota = Quota::new();
+
+        for _ in 0..Spend::Call.most() {
+            quota.take(Spend::Call).unwrap();
+        }
+
+        assert!(quota.take(Spend::Call).is_err());
+        assert!(quota.take(Spend::Storage).is_ok());
+        assert!(quota.take(Spend::Free).is_ok());
+    }
 }

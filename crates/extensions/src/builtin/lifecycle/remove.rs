@@ -37,6 +37,6 @@ impl Action for ExtensionRemove {
     ) -> Result<ExtensionInfo, ActionError> {
         let extensions = self.extensions.clone();
 
-        Blocking::run(move || extensions.remove(&params.id)).await
+        Blocking::run(move || extensions.remove(params.id())).await
     }
 }

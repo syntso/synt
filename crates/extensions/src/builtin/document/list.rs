@@ -16,7 +16,7 @@ pub(crate) struct ExtensionDocuments {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ProjectParams {
-    pub project: String,
+    project: String,
 }
 
 impl ExtensionDocuments {
@@ -26,27 +26,24 @@ impl ExtensionDocuments {
 
     fn listed(&self, project: &str) -> Result<Vec<ListedDocument>, ExtensionError> {
         let services = self.extensions.services();
-        let folders = services.folders.get().ok_or_else(|| {
-            ExtensionError::Refused("the core has no projects to keep documents in".to_owned())
-        })?;
+        let folders = services.folders().ok_or(ExtensionError::NoProjects)?;
 
         let mut documents = Vec::new();
 
         for loaded in self.extensions.all_loaded() {
-            let manifest = loaded.guest.manifest();
-            if !manifest.capabilities.documents {
+            let manifest = loaded.guest().manifest();
+
+            if !manifest.capabilities().documents() {
                 continue;
             }
 
-            let store = DocumentStore::new(manifest, &services.shelf, folders.as_ref());
-            let found = store
-                .list(project)
-                .map_err(|error| ExtensionError::Refused(error.to_string()))?;
+            let store = DocumentStore::new(manifest, services.shelf().revisions(), folders);
+            let found = store.list(project)?;
 
             documents.extend(
                 found
                     .into_iter()
-                    .map(|info| ListedDocument::new(&manifest.id, info)),
+                    .map(|info| ListedDocument::new(manifest.id().clone(), info)),
             );
         }
 

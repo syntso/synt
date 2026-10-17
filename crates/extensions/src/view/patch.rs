@@ -1,55 +1,33 @@
+mod operation;
+
+use serde::Deserialize;
 use serde_json::Value;
 
-use super::ViewCheck;
+use operation::Operation;
+
+use crate::error::ViewError;
 
 const MOST_OPERATIONS: usize = 1_000;
-const OPERATIONS: [&str; 3] = ["add", "remove", "replace"];
 
-pub(crate) struct ViewPatch<'a> {
-    owns: &'a dyn Fn(&str) -> bool,
+pub(crate) struct ViewPatch {
+    operations: Vec<Operation>,
 }
 
-impl<'a> ViewPatch<'a> {
-    pub(crate) fn new(owns: &'a dyn Fn(&str) -> bool) -> Self {
-        Self { owns }
-    }
-
-    pub(crate) fn check(&self, patch: &Value) -> Result<(), String> {
-        let operations = patch
-            .as_array()
-            .ok_or("a view patch is a list of JSON Patch operations")?;
+impl ViewPatch {
+    pub(crate) fn parse(patch: &Value) -> Result<Self, ViewError> {
+        let operations = Vec::<Operation>::deserialize(patch)?;
 
         if operations.is_empty() || operations.len() > MOST_OPERATIONS {
-            return Err(format!(
-                "a view patch holds 1 to {MOST_OPERATIONS} operations"
-            ));
+            return Err(ViewError::PatchSize(MOST_OPERATIONS));
         }
 
-        operations
-            .iter()
-            .try_for_each(|operation| self.operation(operation))
+        Ok(Self { operations })
     }
 
-    fn operation(&self, operation: &Value) -> Result<(), String> {
-        let op = operation
-            .get("op")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let path = operation.get("path").and_then(Value::as_str);
-
-        if !OPERATIONS.contains(&op) {
-            return Err(format!("view patches use only {}", OPERATIONS.join(", ")));
-        }
-
-        if !path.is_some_and(|path| path.is_empty() || path.starts_with('/')) {
-            return Err("every view patch operation needs a JSON pointer path".to_owned());
-        }
-
-        match (op, operation.get("value")) {
-            ("remove", _) => Ok(()),
-            (_, Some(value)) => ViewCheck::new(self.owns).value(value),
-            (_, None) => Err(format!("a view patch {op} needs a value")),
-        }
+    pub(crate) fn check(&self, owns: &dyn Fn(&str) -> bool) -> Result<(), ViewError> {
+        self.operations
+            .iter()
+            .try_for_each(|operation| operation.check(owns))
     }
 }
 
@@ -71,7 +49,7 @@ mod tests {
             { "op": "remove", "path": "/children/2" }
         ]);
 
-        assert_eq!(ViewPatch::new(&owns).check(&patch), Ok(()));
+        assert!(ViewPatch::parse(&patch).unwrap().check(&owns).is_ok());
     }
 
     #[test]
@@ -84,7 +62,9 @@ mod tests {
             json!([{ "op": "add", "path": "/x" }]),
             json!([{ "op": "add", "path": "/x", "value": { "type": "button", "title": "Go", "action": "ssh.exec" } }]),
         ] {
-            assert!(ViewPatch::new(&owns).check(&patch).is_err(), "{patch}");
+            let checked = ViewPatch::parse(&patch).and_then(|parsed| parsed.check(&owns));
+
+            assert!(checked.is_err(), "{patch}");
         }
     }
 }

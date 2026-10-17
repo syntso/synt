@@ -14,8 +14,8 @@ pub(crate) struct ExtensionFileForget {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HandleParams {
-    pub extension: String,
-    pub handle: String,
+    extension: String,
+    handle: String,
 }
 
 impl ExtensionFileForget {
@@ -41,10 +41,8 @@ impl Action for ExtensionFileForget {
         let extensions = self.extensions.clone();
 
         Blocking::run(move || {
-            let forgotten = extensions
-                .services()
-                .shelf
-                .forget_pick(&params.extension, &params.handle)?;
+            let picks = extensions.services().shelf().picks();
+            let forgotten = picks.forget(&params.extension, &params.handle)?;
 
             Ok(json!({
                 "extension": params.extension,

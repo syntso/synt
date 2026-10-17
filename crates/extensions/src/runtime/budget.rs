@@ -5,6 +5,7 @@ use wasmtime::Trap;
 
 use super::QuotaSpent;
 use crate::ExtensionError;
+use crate::interface::GuestError;
 
 pub(crate) struct Budget {
     started: Instant,
@@ -34,8 +35,12 @@ impl Budget {
     }
 
     pub(crate) fn blame(&self, error: &wasmtime::Error) -> ExtensionError {
+        if let Some(failure) = error.downcast_ref::<GuestError>() {
+            return ExtensionError::Guest(failure.clone());
+        }
+
         if let Some(spent) = error.downcast_ref::<QuotaSpent>() {
-            return ExtensionError::OverQuota(spent.to_string());
+            return ExtensionError::OverQuota(*spent);
         }
 
         match error.downcast_ref::<Trap>() {

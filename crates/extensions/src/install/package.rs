@@ -6,10 +6,10 @@ pub(super) const COMPONENT_FILE: &str = "extension.wasm";
 
 #[derive(Debug, Clone)]
 pub(crate) struct Package {
-    pub(crate) manifest: Manifest,
-    pub(crate) wasm: Vec<u8>,
-    pub(crate) sha256: Sha256,
-    pub(crate) signed: bool,
+    manifest: Manifest,
+    wasm: Vec<u8>,
+    sha256: Sha256,
+    signed: bool,
 }
 
 impl Package {
@@ -22,5 +22,21 @@ impl Package {
             sha256,
             signed,
         }
+    }
+
+    pub(crate) fn manifest(&self) -> &Manifest {
+        &self.manifest
+    }
+
+    pub(crate) fn wasm(&self) -> &[u8] {
+        &self.wasm
+    }
+
+    pub(crate) fn sha256(&self) -> &Sha256 {
+        &self.sha256
+    }
+
+    pub(crate) fn signed(&self) -> bool {
+        self.signed
     }
 }

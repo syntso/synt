@@ -1,5 +1,4 @@
 mod asset;
-mod asset_file;
 mod info;
 mod message;
 mod mime;

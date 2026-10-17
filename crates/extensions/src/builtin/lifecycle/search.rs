@@ -1,11 +1,14 @@
+mod hit;
+
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
-use super::SearchHit;
 use crate::Extensions;
 use crate::blocking::Blocking;
+
+pub(crate) use hit::SearchHit;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionSearch {
@@ -15,7 +18,7 @@ pub(crate) struct ExtensionSearch {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, JsonSchema)]
 pub(crate) struct SearchParams {
     #[serde(default)]
-    pub query: Option<String>,
+    query: Option<String>,
 }
 
 impl ExtensionSearch {

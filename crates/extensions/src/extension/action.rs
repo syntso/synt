@@ -1,10 +1,16 @@
+mod spec;
+
 use std::sync::Arc;
 
 use serde_json::Value;
-use synt_actions::{ActionError, Context, DynamicAction, Risk};
+use synt_actions::{ActionError, Context, DynamicAction, Handle, Risk};
 use synt_journal::ResourceRef;
+use tokio::runtime::Handle as RuntimeHandle;
 
-use super::{ActionSpec, Guest, on_guest_thread};
+pub(crate) use spec::ActionSpec;
+
+use super::Guest;
+use crate::blocking::Blocking;
 use crate::builtin::CallingActor;
 use crate::runtime::GuestCall;
 
@@ -17,23 +23,29 @@ impl ExtensionAction {
     pub(crate) fn new(spec: ActionSpec, guest: Arc<Guest>) -> Self {
         Self { spec, guest }
     }
+
+    pub(crate) fn into_handle(self) -> Handle {
+        let id = self.spec.id().clone();
+
+        Handle::dynamic(id, self)
+    }
 }
 
 impl DynamicAction for ExtensionAction {
     fn title(&self) -> &str {
-        &self.spec.title
+        self.spec.title()
     }
 
     fn risk(&self) -> Risk {
-        self.spec.risk
+        self.spec.risk()
     }
 
     fn takes_target(&self) -> bool {
-        self.spec.takes_target
+        self.spec.takes_target()
     }
 
     fn params_schema(&self) -> Value {
-        self.spec.params_schema.clone()
+        self.spec.params_schema().clone()
     }
 
     fn destination(&self, target: Option<&ResourceRef>) -> Option<String> {
@@ -48,16 +60,17 @@ impl DynamicAction for ExtensionAction {
     ) -> Result<Value, ActionError> {
         context.refuse_extensions("run the actions of an extension")?;
 
-        let call = GuestCall {
-            action: self.spec.id.as_str().to_owned(),
-            target: target.map(|target| target.as_str().to_owned()),
-            params: params.to_string(),
-        };
+        let call = GuestCall::new(
+            self.spec.id().as_str().to_owned(),
+            target.map(|target| target.as_str().to_owned()),
+            params.to_string(),
+        );
         let guest = Arc::clone(&self.guest);
         let context = context.clone();
+        let runtime = RuntimeHandle::current();
 
-        let text = on_guest_thread(move |runtime| guest.run(&call, context, runtime)).await?;
+        let reply = Blocking::run(move || guest.run(&call, context, runtime)).await?;
 
-        Ok(serde_json::from_str(&text).unwrap_or(Value::String(text)))
+        Ok(reply.into_value())
     }
 }

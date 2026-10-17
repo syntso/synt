@@ -5,10 +5,11 @@ use thiserror::Error;
 
 use crate::ExtensionError;
 use crate::call::{CallFailure, FailureCode};
+use crate::error::HttpError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[error("{code}: {message}")]
-pub(crate) struct GuestError {
+pub struct GuestError {
     code: FailureCode,
     message: String,
 }
@@ -57,6 +58,15 @@ impl From<io::Error> for GuestError {
 
 impl From<ExtensionError> for GuestError {
     fn from(error: ExtensionError) -> Self {
+        match error {
+            ExtensionError::Guest(error) => error,
+            other => Self::failed(other.to_string()),
+        }
+    }
+}
+
+impl From<HttpError> for GuestError {
+    fn from(error: HttpError) -> Self {
         Self::failed(error.to_string())
     }
 }

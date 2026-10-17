@@ -1,26 +1,17 @@
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+mod schema;
 
-use crate::ExtensionError;
-use crate::manifest::checks::refused;
+use serde::{Deserialize, Serialize};
+
+pub use schema::SettingsSchema;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Settings {
-    pub schema: Value,
+    schema: SettingsSchema,
 }
 
 impl Settings {
-    pub(crate) fn check(&self) -> Result<(), ExtensionError> {
-        let is_object = self.schema.get("type").and_then(Value::as_str) == Some("object");
-        let has_properties = self.schema.get("properties").is_some_and(Value::is_object);
-
-        if is_object && has_properties {
-            return Ok(());
-        }
-
-        Err(refused(
-            "settings.schema must be a JSON Schema of type object with properties",
-        ))
+    pub(crate) fn schema(&self) -> &SettingsSchema {
+        &self.schema
     }
 }

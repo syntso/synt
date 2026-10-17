@@ -1,3 +1,5 @@
+mod local;
+
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
@@ -9,6 +11,8 @@ use crate::Extensions;
 use crate::blocking::Blocking;
 use crate::extension::Candidate;
 
+pub(crate) use local::ExtensionInstallLocal;
+
 #[derive(Clone)]
 pub(crate) struct ExtensionInstall {
     extensions: Extensions,
@@ -16,7 +20,7 @@ pub(crate) struct ExtensionInstall {
 
 #[derive(Deserialize, JsonSchema)]
 pub(crate) struct InstallParams {
-    pub id: String,
+    id: String,
 
     #[serde(skip)]
     #[schemars(skip)]

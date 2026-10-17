@@ -37,6 +37,6 @@ impl Action for ExtensionEnable {
     ) -> Result<ExtensionInfo, ActionError> {
         let extensions = self.extensions.clone();
 
-        Blocking::run(move || extensions.enable(&params.id)).await
+        Blocking::run(move || extensions.enable(params.id())).await
     }
 }

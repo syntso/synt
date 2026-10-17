@@ -1,12 +1,12 @@
 use minisign_verify::{PublicKey, Signature};
+use synt_journal::Timestamp;
 
-use super::sealed::Sealed;
-use super::{IndexSeal, Listing};
+use super::Listing;
+use super::seal::{IndexSeal, ListingSeal};
 use crate::ExtensionError;
-use crate::clock::now;
 use crate::sha256::Sha256;
 
-const MILLIS_PER_SECOND: u64 = 1000;
+const MILLIS_PER_SECOND: i64 = 1000;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TrustedKey {
@@ -32,6 +32,7 @@ impl TrustedKey {
         &self,
         index: &[u8],
         signature: &[u8],
+        now: Timestamp,
     ) -> Result<IndexSeal, ExtensionError> {
         let signature = self.verify(index, signature)?;
         let seal: IndexSeal =
@@ -39,7 +40,9 @@ impl TrustedKey {
                 ExtensionError::Signature(format!("the trusted comment of the index: {error}"))
             })?;
 
-        if seal.expires <= now() / MILLIS_PER_SECOND {
+        let now_seconds = u64::try_from(now.as_millis() / MILLIS_PER_SECOND).unwrap_or_default();
+
+        if seal.expired_at(now_seconds) {
             return Err(ExtensionError::Signature(
                 "the registry index has expired; the registry has not been signed lately"
                     .to_owned(),
@@ -51,15 +54,15 @@ impl TrustedKey {
 
     pub(crate) fn check(&self, wasm: &[u8], listing: &Listing) -> Result<(), ExtensionError> {
         let found = Sha256::of(wasm);
-        if found != listing.sha256 {
+        if found != *listing.sha256() {
             return Err(ExtensionError::Signature(format!(
                 "the download has sha256 {found}, the index says {}",
-                listing.sha256
+                listing.sha256()
             )));
         }
 
-        let signature = self.verify(wasm, listing.signature.as_bytes())?;
-        let sealed: Sealed = serde_json::from_str(signature.trusted_comment())
+        let signature = self.verify(wasm, listing.signature().as_bytes())?;
+        let sealed: ListingSeal = serde_json::from_str(signature.trusted_comment())
             .map_err(|error| ExtensionError::Signature(format!("the trusted comment: {error}")))?;
         if !sealed.covers(listing) {
             return Err(ExtensionError::Signature(

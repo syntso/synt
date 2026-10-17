@@ -9,9 +9,9 @@ use crate::manifest::Api;
 use crate::shelf::Installed;
 
 pub(crate) struct Loaded {
-    pub(crate) guest: Arc<Guest>,
-    pub(crate) installed: Installed,
-    pub(crate) ceiling: Risk,
+    guest: Arc<Guest>,
+    installed: Installed,
+    ceiling: Risk,
     handles: Vec<Handle>,
     lane: OnceLock<Lane>,
 }
@@ -25,10 +25,7 @@ impl Loaded {
     ) -> Self {
         let handles = specs
             .into_iter()
-            .map(|spec| {
-                let id = spec.id.clone();
-                Handle::dynamic(id, ExtensionAction::new(spec, Arc::clone(&guest)))
-            })
+            .map(|spec| ExtensionAction::new(spec, Arc::clone(&guest)).into_handle())
             .collect();
 
         let loaded = Self {
@@ -43,22 +40,38 @@ impl Loaded {
         loaded
     }
 
+    pub(crate) fn id(&self) -> &str {
+        self.guest.id()
+    }
+
+    pub(crate) fn guest(&self) -> &Arc<Guest> {
+        &self.guest
+    }
+
+    pub(crate) fn installed(&self) -> &Installed {
+        &self.installed
+    }
+
+    pub(crate) fn ceiling(&self) -> Risk {
+        self.ceiling
+    }
+
     pub(crate) fn wake_up(&self) {
-        if self.guest.manifest().api == Api::V0_1 {
+        if self.guest.manifest().api() == Api::V0_1 {
             return;
         }
 
-        let services = self.guest.services();
-        let Some(handle) = services.background.get() else {
+        let Some(background) = self
+            .guest
+            .services()
+            .link()
+            .and_then(|link| link.background())
+        else {
             return;
         };
 
-        if services.caller.get().is_none() {
-            return;
-        }
-
         self.lane.get_or_init(|| {
-            let lane = Lane::start(Arc::clone(&self.guest), handle);
+            let lane = Lane::start(Arc::clone(&self.guest), background);
             lane.wake(Wake::Start);
             lane
         });
@@ -83,7 +96,7 @@ impl Loaded {
     }
 
     pub(crate) fn hear(&self, event: &ExtensionEvent) -> bool {
-        let listens = self.guest.manifest().capabilities.hears(event.topic);
+        let listens = self.guest.manifest().capabilities().hears(event.topic());
 
         if !listens || event.caused_by_an_extension() {
             return false;

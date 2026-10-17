@@ -1,55 +1,90 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use synt_actions::Risk;
 
-use super::checks::{check_http_host, check_secret_name, refused};
-use super::{EventTopic, FileAccess};
-use crate::ExtensionError;
+use super::{ActionName, EventTopic, HttpHost, SecretName};
+use crate::ManifestError;
+use crate::files::FileAccess;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Capabilities {
     #[serde(default)]
-    pub call: Vec<String>,
+    call: Vec<ActionName>,
 
     #[serde(default)]
-    pub storage: bool,
+    storage: bool,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub http: Vec<String>,
+    http: Vec<HttpHost>,
 
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub secrets: BTreeMap<String, Vec<String>>,
+    secrets: BTreeMap<SecretName, Vec<HttpHost>>,
 
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub documents: bool,
+    documents: bool,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub events: Vec<EventTopic>,
+    events: Vec<EventTopic>,
 
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub timers: bool,
+    timers: bool,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub files: Option<FileAccess>,
+    files: Option<FileAccess>,
 }
 
 impl Capabilities {
-    pub fn may_call(&self, action: &str) -> bool {
-        self.call.iter().any(|allowed| allowed == action)
+    pub(crate) fn calls(&self) -> impl Iterator<Item = &ActionName> {
+        self.call.iter()
     }
 
-    pub fn reaches(&self, host: &str) -> bool {
-        self.http.iter().any(|listed| listed == host)
+    pub(crate) fn may_call(&self, action: &str) -> bool {
+        self.call.iter().any(|allowed| allowed.as_str() == action)
     }
 
-    pub fn may_attach(&self, secret: &str, host: &str) -> bool {
+    pub(crate) fn storage(&self) -> bool {
+        self.storage
+    }
+
+    pub(crate) fn uses_http(&self) -> bool {
+        !self.http.is_empty()
+    }
+
+    pub(crate) fn reaches(&self, host: &str) -> bool {
+        self.http.iter().any(|listed| listed.as_str() == host)
+    }
+
+    pub(crate) fn may_attach(&self, secret: &str, host: &str) -> bool {
         self.secrets
             .get(secret)
-            .is_some_and(|hosts| hosts.iter().any(|listed| listed == host))
+            .is_some_and(|hosts| hosts.iter().any(|listed| listed.as_str() == host))
     }
 
-    pub fn hears(&self, topic: EventTopic) -> bool {
+    pub(crate) fn documents(&self) -> bool {
+        self.documents
+    }
+
+    pub(crate) fn hears(&self, topic: EventTopic) -> bool {
         self.events.contains(&topic)
+    }
+
+    pub(crate) fn timers(&self) -> bool {
+        self.timers
+    }
+
+    pub(crate) fn files(&self) -> Option<FileAccess> {
+        self.files
+    }
+
+    pub(crate) fn ceiling(&self) -> Risk {
+        let writes_files = self.files == Some(FileAccess::ReadWrite);
+
+        if self.http.is_empty() && !self.documents && !writes_files {
+            return Risk::Read;
+        }
+
+        Risk::Write
     }
 
     pub(crate) fn uses_api_0_2(&self) -> bool {
@@ -61,30 +96,22 @@ impl Capabilities {
             || self.files.is_some()
     }
 
-    pub(crate) fn check_http(&self) -> Result<(), ExtensionError> {
-        for host in &self.http {
-            check_http_host(host).map_err(refused)?;
-        }
-
-        for (secret, hosts) in &self.secrets {
-            check_secret_name(secret).map_err(refused)?;
-            self.check_secret_hosts(secret, hosts)?;
-        }
-
-        Ok(())
+    pub(crate) fn check_secret_hosts(&self) -> Result<(), ManifestError> {
+        self.secrets
+            .iter()
+            .try_for_each(|(secret, hosts)| self.check_secret(secret, hosts))
     }
 
-    fn check_secret_hosts(&self, secret: &str, hosts: &[String]) -> Result<(), ExtensionError> {
+    fn check_secret(&self, secret: &SecretName, hosts: &[HttpHost]) -> Result<(), ManifestError> {
         if hosts.is_empty() {
-            return Err(refused(format!(
-                "secret {secret} names no host it may be sent to"
-            )));
+            return Err(ManifestError::SecretWithoutHost(secret.clone()));
         }
 
-        match hosts.iter().find(|host| !self.reaches(host)) {
-            Some(host) => Err(refused(format!(
-                "secret {secret} may go to {host}, which is not listed in capabilities.http"
-            ))),
+        match hosts.iter().find(|host| !self.http.contains(host)) {
+            Some(host) => Err(ManifestError::SecretHostNotListed {
+                secret: secret.clone(),
+                host: host.clone(),
+            }),
             None => Ok(()),
         }
     }
