@@ -3,11 +3,11 @@ use serde::Deserialize;
 use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
-use synt_ssh::{Destination, SshError, Tunnels};
+use synt_ssh::{Destination, Tunnels};
 
 use super::TunnelInfo;
+use crate::CoreError;
 use crate::builtin::hold::keep_hold_while_open;
-use crate::builtin::ssh::failure;
 use crate::projects::{Projects, Resolved};
 
 #[derive(Debug, Clone)]
@@ -89,7 +89,7 @@ impl Action for TunnelOpen {
             .tunnels
             .open(&target, remote, local, stop.clone())
             .await
-            .map_err(open_failure)?;
+            .map_err(CoreError::from)?;
 
         keep_hold_while_open(context, stop);
 
@@ -194,15 +194,4 @@ fn local_port(requested: Option<u16>) -> Result<Option<u16>, ActionError> {
     }
 
     Ok(requested)
-}
-
-fn open_failure(error: SshError) -> ActionError {
-    match error {
-        SshError::Timeout(limit) => ActionError::Failed(format!(
-            "could not connect within {} s, so no tunnel was opened",
-            limit.as_secs()
-        )),
-        error @ SshError::Listen { .. } => ActionError::Failed(error.to_string()),
-        other => failure(other),
-    }
 }

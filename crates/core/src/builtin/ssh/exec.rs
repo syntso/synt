@@ -9,8 +9,8 @@ use synt_journal::ResourceRef;
 use synt_ssh::{ExecLimits, ExecOutput, Pool};
 use tokio::sync::Semaphore;
 
-use super::failure;
 use super::privilege::escalates;
+use crate::CoreError;
 use crate::projects::Projects;
 
 const LONGEST_TIMEOUT: Duration = Duration::from_hours(24);
@@ -108,7 +108,7 @@ impl Action for SshExec {
             .pool
             .exec(&target, &params.command, limits, stop)
             .await
-            .map_err(failure)?;
+            .map_err(CoreError::from)?;
 
         Ok(ExecResult::from(output))
     }

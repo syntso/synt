@@ -6,7 +6,6 @@ use synt_ssh::SshError;
 use thiserror::Error;
 
 use crate::CoreError;
-use crate::builtin::ssh::failure as ssh_failure;
 
 #[derive(Debug, Error)]
 pub(crate) enum DbActionError {
@@ -104,7 +103,7 @@ impl From<DbActionError> for ActionError {
 
         match error {
             DbActionError::Action(action) => action,
-            DbActionError::Tunnel(ssh) => ssh_failure(ssh),
+            DbActionError::Tunnel(ssh) => CoreError::from(ssh).into(),
             DbActionError::Database(DbError::InvalidInput(reason)) => Self::InvalidParams(reason),
             DbActionError::Database(DbError::Server {
                 message,

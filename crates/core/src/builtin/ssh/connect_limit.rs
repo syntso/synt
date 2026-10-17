@@ -5,7 +5,7 @@ use synt_actions::ActionError;
 use synt_ssh::SshError;
 use tokio::time;
 
-use super::failure;
+use crate::CoreError;
 
 const CONNECT_LIMIT: Duration = Duration::from_secs(30);
 
@@ -21,5 +21,5 @@ pub(crate) async fn within_connect_limit<T>(
             ))
         })?;
 
-    connected.map_err(failure)
+    Ok(connected.map_err(CoreError::from)?)
 }

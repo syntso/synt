@@ -8,8 +8,8 @@ use synt_journal::ResourceRef;
 use synt_proto::StreamId;
 use synt_ssh::{Upload, WriteMode};
 
-use super::failed;
 use super::{RemotePath, SftpActions};
+use crate::CoreError;
 use crate::link::Inbound;
 use crate::link::Link;
 
@@ -121,7 +121,7 @@ impl Action for SftpUpload {
         let mut upload = self.open(context, &params).await?;
 
         let sha256 = receive(&mut inbound, &mut upload, params.size).await?;
-        upload.finish().await.map_err(failed)?;
+        upload.finish().await.map_err(CoreError::from)?;
 
         Ok(Uploaded {
             path: params.path.into_string(),
@@ -156,7 +156,7 @@ async fn receive(
         }
 
         hasher.update(&data);
-        upload.write(&data).await.map_err(failed)?;
+        upload.write(&data).await.map_err(CoreError::from)?;
     }
 
     Ok(HEXLOWER.encode(&hasher.finalize()))

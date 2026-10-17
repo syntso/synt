@@ -8,8 +8,8 @@ use synt_journal::ResourceRef;
 use synt_proto::StreamId;
 use synt_ssh::Download;
 
-use super::failed;
 use super::{RemotePath, SftpActions};
+use crate::CoreError;
 use crate::link::Link;
 use crate::link::Outbound;
 
@@ -74,7 +74,7 @@ impl SftpDownload {
         let mut hasher = Sha256::new();
         let mut bytes = 0;
 
-        while let Some(data) = download.next().await.map_err(failed)? {
+        while let Some(data) = download.next().await.map_err(CoreError::from)? {
             hasher.update(&data);
             bytes += u64::try_from(data.len()).unwrap_or(u64::MAX);
 

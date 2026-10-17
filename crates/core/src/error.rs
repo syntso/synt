@@ -5,6 +5,7 @@ use synt_actions::ActionError;
 use synt_db::Engine;
 use synt_journal::{JournalError, JournalId, KeyStoreError};
 use synt_platform::{KeyPlace, PlatformError};
+use synt_ssh::SshError;
 use synt_sync::SyncError;
 use thiserror::Error;
 
@@ -27,8 +28,8 @@ pub enum CoreError {
     #[error("state database: {0}")]
     State(#[from] rusqlite::Error),
 
-    #[error("ssh: {0}")]
-    Ssh(#[from] synt_ssh::SshError),
+    #[error("{}", Self::ssh_reason(.0))]
+    Ssh(#[from] SshError),
 
     #[error("system random source: {0}")]
     Random(#[from] getrandom::Error),
@@ -37,7 +38,7 @@ pub enum CoreError {
     Stopped,
 
     #[error("{0}")]
-    Shell(#[source] synt_ssh::SshError),
+    Shell(#[source] SshError),
 
     #[error("{0}")]
     Pty(#[source] PlatformError),
@@ -397,6 +398,34 @@ impl CoreError {
         Self::Field {
             field,
             reason: Box::new(reason),
+        }
+    }
+
+    fn ssh_reason(error: &SshError) -> String {
+        match error {
+            SshError::HostKeyUnknown { host, fingerprint } => format!(
+                "the host key of {host} is not in known_hosts (fingerprint {fingerprint}); \
+                 check the fingerprint and add the key to ~/.ssh/known_hosts before trying again"
+            ),
+            SshError::HostKeyChanged { host, fingerprint } => format!(
+                "the host key of {host} does not match known_hosts (server sent {fingerprint}); \
+                 someone may be intercepting the connection, so it was refused"
+            ),
+            SshError::HostKeyOtherType { host, fingerprint } => format!(
+                "{host} presented a key of a type not pinned in known_hosts (fingerprint \
+                 {fingerprint}), while a key of another type is pinned; do not replace the pinned \
+                 key without checking the new one out of band"
+            ),
+            SshError::Timeout(limit) => format!(
+                "the host did not answer within {} s, so nothing was started",
+                limit.as_secs()
+            ),
+            SshError::CommandTimeout { .. }
+            | SshError::Sftp { .. }
+            | SshError::SftpLost { .. }
+            | SshError::SftpClosed
+            | SshError::Listen { .. } => error.to_string(),
+            other => format!("ssh: {other}"),
         }
     }
 }

@@ -32,7 +32,7 @@ use synt_journal::ResourceRef;
 use synt_ssh::{FileSessions, Pool, Sftp, SshError};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
-use crate::builtin::ssh::failure;
+use crate::CoreError;
 use crate::projects::Projects;
 
 const CONCURRENT_CALLS: usize = 8;
@@ -76,7 +76,11 @@ impl SftpActions {
             .await
             .map_err(|_| ActionError::failed("sftp is shutting down"))?;
 
-        self.sessions.with(&target, operation).await.map_err(failed)
+        Ok(self
+            .sessions
+            .with(&target, operation)
+            .await
+            .map_err(CoreError::from)?)
     }
 
     fn per_call_risk(&self, target: Option<&ResourceRef>, declared: Risk) -> Risk {
@@ -106,18 +110,5 @@ impl ActionGroup for SftpActions {
         registry.register(SftpMkdir::new(self.clone()))?;
         registry.register(SftpRemove::new(self.clone()))?;
         registry.register(SftpRename::new(self.clone()))
-    }
-}
-
-fn failed(error: SshError) -> ActionError {
-    match error {
-        error @ (SshError::Sftp { .. } | SshError::SftpLost { .. } | SshError::SftpClosed) => {
-            ActionError::Failed(error.to_string())
-        }
-        SshError::Timeout(limit) => ActionError::Failed(format!(
-            "the sftp session did not start within {} s",
-            limit.as_secs()
-        )),
-        other => failure(other),
     }
 }

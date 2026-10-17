@@ -5,7 +5,8 @@ use synt_journal::ResourceRef;
 use synt_ssh::{Pool, Shell, Target, TerminalSize};
 
 use super::{AttachedSession, Dimensions};
-use crate::builtin::ssh::{failure, within_connect_limit};
+use crate::CoreError;
+use crate::builtin::ssh::within_connect_limit;
 use crate::link::Link;
 use crate::projects::Projects;
 use crate::terminals::{OpenConsole, Origin, SessionId, Terminals};
@@ -67,7 +68,9 @@ impl SshSessionOpen {
     ) -> Result<OpenConsole, ActionError> {
         let lease = within_connect_limit(self.pool.acquire(target)).await?;
 
-        let (shell, output) = Shell::open(lease, term, size).await.map_err(failure)?;
+        let (shell, output) = Shell::open(lease, term, size)
+            .await
+            .map_err(CoreError::from)?;
 
         Ok(OpenConsole::new(shell, output))
     }
