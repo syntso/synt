@@ -5,7 +5,7 @@ use russh_sftp::client::error::Error;
 use tokio::task::JoinHandle;
 
 pub(super) const REQUEST_BYTES: usize = 32 * 1024;
-pub(super) const REQUESTS_IN_FLIGHT: usize = 64;
+const REQUESTS_IN_FLIGHT: usize = 64;
 
 const STOPPED: &str = "an sftp request stopped unexpectedly";
 

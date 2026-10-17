@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use russh::keys::{Algorithm, EcdsaCurve, HashAlg};
 use russh::{Preferred, cipher, compression, kex, mac};
 
-use crate::known_hosts::same_family;
+use crate::known_hosts::Family;
 
 const KEY_EXCHANGES: &[kex::Name] = &[
     kex::MLKEM768X25519_SHA256,
@@ -41,22 +41,34 @@ const HOST_KEYS: [Algorithm; 5] = [
     },
 ];
 
-pub(super) fn preferred(known: &[Algorithm]) -> Preferred {
-    Preferred {
-        kex: Cow::Borrowed(KEY_EXCHANGES),
-        key: Cow::Owned(known_first(known, &HOST_KEYS)),
-        host_key_certificates: Cow::Borrowed(&[]),
-        cipher: Cow::Borrowed(CIPHERS),
-        mac: Cow::Borrowed(MACS),
-        compression: Cow::Borrowed(COMPRESSION),
-    }
+pub(super) struct Policy<'a> {
+    known: &'a [Algorithm],
 }
 
-fn known_first(known: &[Algorithm], offered: &[Algorithm]) -> Vec<Algorithm> {
-    let is_known =
-        |algorithm: &&Algorithm| known.iter().any(|pinned| same_family(pinned, algorithm));
+impl<'a> Policy<'a> {
+    pub(super) fn new(known: &'a [Algorithm]) -> Self {
+        Self { known }
+    }
 
-    let (first, rest): (Vec<&Algorithm>, Vec<&Algorithm>) = offered.iter().partition(is_known);
+    pub(super) fn preferred(&self) -> Preferred {
+        Preferred {
+            kex: Cow::Borrowed(KEY_EXCHANGES),
+            key: Cow::Owned(self.host_keys()),
+            host_key_certificates: Cow::Borrowed(&[]),
+            cipher: Cow::Borrowed(CIPHERS),
+            mac: Cow::Borrowed(MACS),
+            compression: Cow::Borrowed(COMPRESSION),
+        }
+    }
 
-    first.into_iter().chain(rest).cloned().collect()
+    fn host_keys(&self) -> Vec<Algorithm> {
+        let (known, rest): (Vec<&Algorithm>, Vec<&Algorithm>) =
+            HOST_KEYS.iter().partition(|offered| self.is_known(offered));
+
+        known.into_iter().chain(rest).cloned().collect()
+    }
+
+    fn is_known(&self, offered: &Algorithm) -> bool {
+        self.known.iter().any(|pinned| pinned.same_family(offered))
+    }
 }

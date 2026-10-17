@@ -1,7 +1,7 @@
 use std::future;
 use std::time::Duration;
 
-use synt_ssh::{ExecLimits, ExecOutput, Pool, PoolBuilder, SshError, Target, exec};
+use synt_ssh::{ExecLimits, ExecOutput, Pool, PoolBuilder, SshError, Target};
 use synt_test_servers::{SshHome, SshServers};
 
 pub struct Setup {
@@ -69,7 +69,9 @@ impl Setup {
         command: &str,
         limits: ExecLimits,
     ) -> Result<ExecOutput, SshError> {
-        exec(&self.pool, target, command, limits, future::pending()).await
+        self.pool
+            .exec(target, command, limits, future::pending())
+            .await
     }
 
     pub async fn client_port(&self, target: &Target) -> String {

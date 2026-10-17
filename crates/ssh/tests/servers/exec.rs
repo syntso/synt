@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use synt_ssh::{ExecLimits, SshError, exec};
+use synt_ssh::{ExecLimits, SshError};
 use tokio::time;
 
 use crate::Setup;
@@ -88,14 +88,10 @@ async fn a_stopped_call_halts_its_command_on_the_server() {
     let bastion = setup.bastion();
     let stop = time::sleep(Duration::from_millis(500));
 
-    let stopped = exec(
-        &setup.pool,
-        &bastion,
-        "exec sleep 31338",
-        ExecLimits::default(),
-        stop,
-    )
-    .await;
+    let stopped = setup
+        .pool
+        .exec(&bastion, "exec sleep 31338", ExecLimits::default(), stop)
+        .await;
 
     assert!(matches!(stopped, Err(SshError::Stopped { ended: true })));
 

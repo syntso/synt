@@ -16,10 +16,10 @@ pub struct FileEntry {
 }
 
 impl FileEntry {
-    pub(crate) fn new(name: String, attributes: &FileAttributes) -> Self {
+    pub(in crate::sftp) fn new(name: String, attributes: &FileAttributes) -> Self {
         Self {
             name,
-            kind: FileKind::from(attributes.file_type()),
+            kind: FileKind::from(attributes),
             size: attributes.size,
             mode: attributes.permissions.map(|bits| bits & PERMISSION_BITS),
             modified: attributes.mtime,

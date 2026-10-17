@@ -7,7 +7,7 @@ use russh::{Channel, Disconnect};
 use tokio::time;
 
 use super::{Algorithms, ClientHandler, Spare};
-use crate::{SshError, Target};
+use crate::{Destination, SshError, Target};
 
 const CLOSE_LIMIT: Duration = Duration::from_secs(5);
 const ORIGINATOR_ADDRESS: &str = "127.0.0.1";
@@ -22,7 +22,7 @@ pub(crate) struct Connection {
 }
 
 impl Connection {
-    pub(crate) fn new(
+    pub(super) fn new(
         handle: Handle<ClientHandler>,
         negotiated: Arc<OnceLock<Algorithms>>,
     ) -> Self {
@@ -60,15 +60,14 @@ impl Connection {
 
     pub(crate) async fn open_direct(
         &self,
-        host: &str,
-        port: u16,
+        destination: &Destination,
         originator: SocketAddr,
     ) -> Result<Channel<Msg>, SshError> {
         let channel = self
             .handle
             .channel_open_direct_tcpip(
-                host,
-                u32::from(port),
+                destination.host(),
+                u32::from(destination.port()),
                 originator.ip().to_string(),
                 u32::from(originator.port()),
             )

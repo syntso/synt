@@ -151,7 +151,7 @@ impl Personal {
 }
 
 fn aliases() -> Result<Vec<String>, CoreError> {
-    Ok(synt_ssh::config_aliases()?)
+    Ok(synt_ssh::UserConfig::load()?.aliases())
 }
 
 fn host_entry(alias: &str) -> Result<ResourceEntry, CoreError> {

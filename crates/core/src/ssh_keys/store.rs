@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use synt_platform::Vault;
-use synt_ssh::{KeyVault, StoredKey};
+use synt_ssh::{KeyVault, StoredKey, VaultError};
 use zeroize::Zeroizing;
 
 use super::{KeyInfo, KeyName};
@@ -76,12 +76,10 @@ impl SshKeys {
 }
 
 impl KeyVault for SshKeys {
-    fn private_key(&self, name: &str) -> Result<Option<Zeroizing<Vec<u8>>>, String> {
+    fn private_key(&self, name: &str) -> Result<Option<Zeroizing<Vec<u8>>>, VaultError> {
         let name = KeyName::parse(name)?;
 
-        self.vault
-            .read(&name.vault_item())
-            .map_err(|error| error.to_string())
+        Ok(self.vault.read(&name.vault_item())?)
     }
 }
 

@@ -1,4 +1,4 @@
-use russh_sftp::protocol::FileType;
+use russh_sftp::protocol::{FileAttributes, FileType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileKind {
@@ -19,9 +19,9 @@ impl FileKind {
     }
 }
 
-impl From<FileType> for FileKind {
-    fn from(file_type: FileType) -> Self {
-        match file_type {
+impl From<&FileAttributes> for FileKind {
+    fn from(attributes: &FileAttributes) -> Self {
+        match attributes.file_type() {
             FileType::File => Self::File,
             FileType::Dir => Self::Directory,
             FileType::Symlink => Self::Symlink,

@@ -28,6 +28,7 @@ security-framework.workspace = true
 interprocess.workspace = true
 keyring-core.workspace = true
 sysinfo.workspace = true
+tokio-util.workspace = true
 windows-native-keyring-store.workspace = true
 
 [dev-dependencies]

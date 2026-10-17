@@ -1,9 +1,19 @@
+mod native;
+#[cfg(unix)]
+mod unix;
+#[cfg(windows)]
+mod windows;
+
 use std::io;
 use std::path::{Path, PathBuf};
 
 use directories::ProjectDirs;
 
-use crate::native;
+use native::NativeDirectories;
+#[cfg(unix)]
+use unix::Unix as Os;
+#[cfg(windows)]
+use windows::Windows as Os;
 
 pub(crate) fn project() -> io::Result<ProjectDirs> {
     ProjectDirs::from("so", "synt", "Synt")
@@ -15,5 +25,10 @@ pub fn data_directory() -> io::Result<PathBuf> {
 }
 
 pub fn create_private_directory(path: &Path) -> io::Result<()> {
-    native::create_private_directory(path)
+    Os::create_private_directory(path)
+}
+
+#[cfg(windows)]
+pub(crate) fn system_root() -> PathBuf {
+    Os::system_root()
 }

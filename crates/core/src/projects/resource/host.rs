@@ -60,7 +60,7 @@ impl HostResource {
         let user = self
             .user
             .clone()
-            .or_else(synt_ssh::local_user)
+            .or_else(synt_platform::user_name)
             .ok_or("no user given and none found in the environment")?;
 
         let target = Target::new(&self.address, self.port.unwrap_or(DEFAULT_PORT), user)

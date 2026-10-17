@@ -6,50 +6,44 @@ use russh::client::Msg;
 use russh::{Channel, ChannelMsg, Sig};
 use tokio::time;
 
-use super::{Collector, ExecLimits, ExecOutput};
+use super::{Collector, ExecLimits, ExecOutput, Interruption};
 use crate::{Lease, Pool, SshError, Target};
 
 const STOP_GRACE: Duration = Duration::from_secs(2);
 
-enum Interruption {
-    TimedOut,
-    Stopped,
-}
-
-struct RemoteCommand {
+pub(crate) struct RemoteCommand {
     channel: Channel<Msg>,
 }
 
-pub async fn exec(
-    pool: &Pool,
-    target: &Target,
-    command: &str,
-    limits: ExecLimits,
-    stop: impl Future<Output = ()>,
-) -> Result<ExecOutput, SshError> {
-    let started = Instant::now();
-    let deadline = time::Instant::from_std(started) + limits.timeout;
-    let mut stop = pin!(stop);
-
-    let leasing = time::timeout_at(deadline, pool.acquire(target));
-    let lease = tokio::select! {
-        () = &mut stop => return Err(SshError::Cancelled),
-        leased = leasing => leased.map_err(|_| SshError::Timeout(limits.timeout))??,
-    };
-
-    let starting = time::timeout_at(deadline, RemoteCommand::start(&lease, command));
-    let remote = tokio::select! {
-        () = &mut stop => return Err(SshError::Cancelled),
-        started = starting => started.map_err(|_| SshError::Timeout(limits.timeout))??,
-    };
-
-    let collected = remote.collect(limits, deadline, stop).await?;
-    let elapsed = milliseconds(started.elapsed());
-
-    Ok(collected.finish(elapsed, lease.algorithms()))
-}
-
 impl RemoteCommand {
+    pub(crate) async fn run(
+        pool: &Pool,
+        target: &Target,
+        command: &str,
+        limits: ExecLimits,
+        stop: impl Future<Output = ()>,
+    ) -> Result<ExecOutput, SshError> {
+        let started = Instant::now();
+        let deadline = time::Instant::from_std(started) + limits.timeout;
+        let mut stop = pin!(stop);
+
+        let leasing = time::timeout_at(deadline, pool.acquire(target));
+        let lease = tokio::select! {
+            () = &mut stop => return Err(SshError::Cancelled),
+            leased = leasing => leased.map_err(|_| SshError::Timeout(limits.timeout))??,
+        };
+
+        let starting = time::timeout_at(deadline, Self::start(&lease, command));
+        let remote = tokio::select! {
+            () = &mut stop => return Err(SshError::Cancelled),
+            started = starting => started.map_err(|_| SshError::Timeout(limits.timeout))??,
+        };
+
+        let collected = remote.collect(limits, deadline, stop).await?;
+
+        Ok(collected.finish(started.elapsed(), lease.algorithms()))
+    }
+
     async fn start(lease: &Lease, command: &str) -> Result<Self, SshError> {
         let channel = lease.open_session().await?;
 
@@ -111,8 +105,4 @@ impl RemoteCommand {
             }
         }
     }
-}
-
-fn milliseconds(elapsed: Duration) -> u64 {
-    u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
 }

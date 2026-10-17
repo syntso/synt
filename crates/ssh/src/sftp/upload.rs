@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use russh_sftp::client::error::Error;
 
-use super::in_flight::{InFlight, REQUEST_BYTES};
-use super::{RemoteFile, Sftp, failure};
+use super::in_flight::REQUEST_BYTES;
+use super::{InFlight, RemoteFile, Sftp, SftpResult};
 use crate::SshError;
 
 const OPERATION: &str = "write";
@@ -51,22 +51,20 @@ impl Upload {
         }
 
         while let Some(answer) = self.requests.next().await {
-            answer.map_err(|error| self.failed(error))?;
+            answer.map_err(|error| self.failed(&error))?;
         }
 
         let Self { file, sync, .. } = self;
         let path = file.path().to_owned();
 
-        file.sync_and_close(sync)
-            .await
-            .map_err(failure(OPERATION, &path))
+        file.sync_and_close(sync).await.during(OPERATION, &path)
     }
 
     async fn send_pending(&mut self) -> Result<(), SshError> {
         if self.requests.is_full()
             && let Some(answer) = self.requests.next().await
         {
-            answer.map_err(|error| self.failed(error))?;
+            answer.map_err(|error| self.failed(&error))?;
         }
 
         let data = std::mem::replace(&mut self.pending, Vec::with_capacity(REQUEST_BYTES));
@@ -83,8 +81,9 @@ impl Upload {
         Ok(())
     }
 
-    fn failed(&mut self, error: Error) -> SshError {
+    fn failed(&mut self, error: &Error) -> SshError {
         self.requests.cancel();
-        failure(OPERATION, self.file.path())(error)
+
+        SshError::sftp(OPERATION, self.file.path(), error)
     }
 }

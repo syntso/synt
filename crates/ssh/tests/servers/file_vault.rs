@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use synt_ssh::KeyVault;
+use synt_ssh::{KeyVault, VaultError};
 use zeroize::Zeroizing;
 
 pub struct FileVault {
@@ -19,13 +19,13 @@ impl FileVault {
 }
 
 impl KeyVault for FileVault {
-    fn private_key(&self, name: &str) -> Result<Option<Zeroizing<Vec<u8>>>, String> {
+    fn private_key(&self, name: &str) -> Result<Option<Zeroizing<Vec<u8>>>, VaultError> {
         if name != self.name {
             return Ok(None);
         }
 
-        fs::read(&self.path)
-            .map(|bytes| Some(Zeroizing::new(bytes)))
-            .map_err(|error| error.to_string())
+        let bytes = fs::read(&self.path)?;
+
+        Ok(Some(Zeroizing::new(bytes)))
     }
 }

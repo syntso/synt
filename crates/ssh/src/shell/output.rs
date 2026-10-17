@@ -4,7 +4,8 @@ use bytes::Bytes;
 use russh::{ChannelMsg, ChannelReadHalf};
 
 use super::ShellEnd;
-use crate::exec::signal_name;
+use crate::SshError;
+use crate::signal_name::SignalName;
 
 pub struct ShellOutput {
     reader: ChannelReadHalf,
@@ -14,10 +15,10 @@ pub struct ShellOutput {
 }
 
 impl ShellOutput {
-    pub(super) fn new(reader: ChannelReadHalf, early: VecDeque<Bytes>) -> Self {
+    pub(super) fn new(reader: ChannelReadHalf) -> Self {
         Self {
             reader,
-            early,
+            early: VecDeque::new(),
             end: ShellEnd::default(),
             finished: false,
         }
@@ -41,6 +42,22 @@ impl ShellOutput {
         self.end.clone()
     }
 
+    pub(super) async fn await_reply(&mut self, request: &'static str) -> Result<(), SshError> {
+        while let Some(message) = self.reader.wait().await {
+            match message {
+                ChannelMsg::Success => return Ok(()),
+                ChannelMsg::Failure => return Err(SshError::Refused(request)),
+                ChannelMsg::Data { data } | ChannelMsg::ExtendedData { data, .. } => {
+                    self.early.push_back(data);
+                }
+                ChannelMsg::Close => break,
+                _ => {}
+            }
+        }
+
+        Err(SshError::Unanswered(request))
+    }
+
     async fn receive(&mut self) -> Option<Bytes> {
         let Some(message) = self.reader.wait().await else {
             self.finished = true;
@@ -54,11 +71,8 @@ impl ShellOutput {
                 self.end.exit = Some(exit_status);
                 None
             }
-            ChannelMsg::ExitSignal {
-                signal_name: signal,
-                ..
-            } => {
-                self.end.signal = Some(signal_name(&signal));
+            ChannelMsg::ExitSignal { signal_name, .. } => {
+                self.end.signal = Some(signal_name.to_name());
                 None
             }
             ChannelMsg::Close => {

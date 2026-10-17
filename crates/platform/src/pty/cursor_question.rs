@@ -31,13 +31,13 @@ impl CursorQuestion {
         let mut shown = std::mem::take(&mut self.held);
         shown.extend_from_slice(chunk);
 
-        if let Some(at) = find(&shown, QUESTION) {
+        if let Some(at) = Self::find(&shown) {
             shown.drain(at..at + QUESTION.len());
             let _ = input.blocking_send(ANSWER.to_vec());
             return shown;
         }
 
-        let kept = shown.len() - partial_question_at_end(&shown);
+        let kept = shown.len() - Self::partial_question_at_end(&shown);
         self.held = shown.split_off(kept);
         self.answer_to = Some(input);
 
@@ -47,19 +47,19 @@ impl CursorQuestion {
     pub(crate) fn rest(self) -> Vec<u8> {
         self.held
     }
-}
 
-fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack
-        .windows(needle.len())
-        .position(|window| window == needle)
-}
+    fn find(shown: &[u8]) -> Option<usize> {
+        shown
+            .windows(QUESTION.len())
+            .position(|window| window == QUESTION)
+    }
 
-fn partial_question_at_end(shown: &[u8]) -> usize {
-    (1..QUESTION.len())
-        .rev()
-        .find(|&length| shown.ends_with(&QUESTION[..length]))
-        .unwrap_or(0)
+    fn partial_question_at_end(shown: &[u8]) -> usize {
+        (1..QUESTION.len())
+            .rev()
+            .find(|&length| shown.ends_with(&QUESTION[..length]))
+            .unwrap_or(0)
+    }
 }
 
 #[cfg(test)]
