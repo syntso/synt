@@ -6,6 +6,7 @@ rust-version.workspace = true
 license-file.workspace = true
 repository.workspace = true
 publish.workspace = true
+autotests = false
 
 [lints]
 workspace = true
@@ -45,3 +46,103 @@ rusqlite.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 wat.workspace = true
+
+[[test]]
+name = "approvals"
+path = "tests/approvals.rs"
+
+[[test]]
+name = "autostart"
+path = "tests/autostart.rs"
+
+[[test]]
+name = "clusters"
+path = "tests/clusters/main.rs"
+
+[[test]]
+name = "concurrency"
+path = "tests/concurrency.rs"
+
+[[test]]
+name = "database_servers"
+path = "tests/database_servers.rs"
+
+[[test]]
+name = "databases"
+path = "tests/databases.rs"
+
+[[test]]
+name = "describe"
+path = "tests/describe.rs"
+
+[[test]]
+name = "error_codes"
+path = "tests/error_codes.rs"
+
+[[test]]
+name = "everything"
+path = "tests/everything/main.rs"
+
+[[test]]
+name = "extension_calls"
+path = "tests/extension_calls.rs"
+
+[[test]]
+name = "idle"
+path = "tests/idle.rs"
+
+[[test]]
+name = "kube_actions"
+path = "tests/kube_actions.rs"
+
+[[test]]
+name = "local_sessions"
+path = "tests/local_sessions.rs"
+
+[[test]]
+name = "projects"
+path = "tests/projects.rs"
+
+[[test]]
+name = "protocol"
+path = "tests/protocol.rs"
+
+[[test]]
+name = "refusals"
+path = "tests/refusals.rs"
+
+[[test]]
+name = "round_trip"
+path = "tests/round_trip.rs"
+
+[[test]]
+name = "runbook_databases"
+path = "tests/runbook_databases.rs"
+
+[[test]]
+name = "runbooks"
+path = "tests/runbooks.rs"
+
+[[test]]
+name = "secrets"
+path = "tests/secrets.rs"
+
+[[test]]
+name = "servers"
+path = "tests/servers/main.rs"
+
+[[test]]
+name = "shutdown"
+path = "tests/shutdown.rs"
+
+[[test]]
+name = "standing_grants"
+path = "tests/standing_grants.rs"
+
+[[test]]
+name = "sync"
+path = "tests/sync.rs"
+
+[[test]]
+name = "vault_keys"
+path = "tests/vault_keys.rs"

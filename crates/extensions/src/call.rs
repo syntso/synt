@@ -1,7 +1,17 @@
-mod caller;
 mod extension;
 mod failure;
 
-pub use caller::{CallFuture, Caller};
 pub use extension::ExtensionCall;
 pub use failure::{CallFailure, FailureCode};
+
+use std::future::Future;
+use std::pin::Pin;
+
+use serde_json::Value;
+use synt_actions::Context;
+
+pub type CallFuture<'a> = Pin<Box<dyn Future<Output = Result<Value, CallFailure>> + Send + 'a>>;
+
+pub trait Caller: Send + Sync + 'static {
+    fn call<'a>(&'a self, call: ExtensionCall, origin: Option<&'a Context>) -> CallFuture<'a>;
+}

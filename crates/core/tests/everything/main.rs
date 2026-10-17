@@ -1,7 +1,9 @@
 #![allow(clippy::unwrap_used)]
 
-#[path = "../common/mod.rs"]
-mod common;
+#[path = ".."]
+mod shared {
+    pub mod common;
+}
 
 mod documents;
 mod echo_server;
@@ -15,4 +17,5 @@ mod timers;
 mod views;
 
 use echo_server::EchoServer;
+use shared::common;
 use stage::Stage;
