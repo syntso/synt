@@ -1,29 +1,16 @@
+mod piece;
+
 use std::sync::Arc;
 
 use bytes::Bytes;
 use russh_sftp::client::error::Error;
 
-use super::in_flight::{InFlight, REQUEST_BYTES};
-use super::{RemoteFile, Sftp, failure, is_eof};
+use piece::Piece;
+
+use super::{InFlight, RemoteFile, Sftp, SftpResult};
 use crate::SshError;
 
 const OPERATION: &str = "read";
-
-struct Piece {
-    offset: u64,
-    length: u32,
-    data: Vec<u8>,
-}
-
-impl Piece {
-    fn wanted(&self) -> usize {
-        usize::try_from(self.length).unwrap_or(usize::MAX)
-    }
-
-    fn is_short(&self) -> bool {
-        self.data.len() < self.wanted()
-    }
-}
 
 pub struct Download {
     file: RemoteFile,
@@ -64,7 +51,7 @@ impl Download {
             return self.complete_short(piece).await.map(Some);
         }
 
-        Ok(Some(whole(piece)))
+        Ok(Some(piece.into_bytes()))
     }
 
     async fn next_piece(&mut self) -> Result<Option<Piece>, SshError> {
@@ -76,11 +63,10 @@ impl Download {
             },
         };
 
-        match answer {
-            Ok(piece) if piece.data.is_empty() => Ok(None),
-            Ok(piece) => Ok(Some(piece)),
-            Err(error) if is_eof(&error) => Ok(None),
-            Err(error) => Err(self.failed(error)),
+        match answer.or_end() {
+            Ok(Some(piece)) if !piece.is_empty() => Ok(Some(piece)),
+            Ok(_) => Ok(None),
+            Err(error) => Err(self.failed(&error)),
         }
     }
 
@@ -89,28 +75,26 @@ impl Download {
             return self.fill_gap(piece).await;
         };
 
-        match following {
-            Ok(next) if next.data.is_empty() => self.finish(),
-            Err(error) if is_eof(&error) => self.finish(),
-            other => {
-                self.held = Some(other);
-                return self.fill_gap(piece).await;
+        match following.or_end() {
+            Ok(Some(next)) if !next.is_empty() => self.held = Some(Ok(next)),
+            Ok(_) => {
+                self.finish();
+                return Ok(piece.into_data());
             }
+            Err(error) => self.held = Some(Err(error)),
         }
 
-        Ok(Bytes::from(piece.data))
+        self.fill_gap(piece).await
     }
 
     async fn fill_gap(&mut self, mut piece: Piece) -> Result<Bytes, SshError> {
         while piece.is_short() {
-            let got = u64::try_from(piece.data.len()).unwrap_or(u64::MAX);
-            let missing = u32::try_from(piece.wanted() - piece.data.len()).unwrap_or(u32::MAX);
+            let rest = Piece::request(&self.file, piece.next_offset(), piece.missing()).await;
 
-            match read(&self.file, piece.offset + got, missing).await {
-                Ok(rest) if !rest.data.is_empty() => piece.data.extend_from_slice(&rest.data),
+            match rest.or_end() {
+                Ok(Some(rest)) if !rest.is_empty() => piece.extend(&rest),
                 Ok(_) => break,
-                Err(error) if is_eof(&error) => break,
-                Err(error) => return Err(self.failed(error)),
+                Err(error) => return Err(self.failed(&error)),
             }
         }
 
@@ -118,7 +102,7 @@ impl Download {
             self.finish();
         }
 
-        Ok(whole(piece))
+        Ok(piece.into_bytes())
     }
 
     fn fill(&mut self) {
@@ -127,14 +111,14 @@ impl Download {
                 return;
             };
 
-            let request = read(&self.file, self.requested, length);
+            let request = Piece::request(&self.file, self.requested, length);
             self.requests.push(request);
             self.requested += u64::from(length);
         }
     }
 
     fn next_length(&self) -> Option<u32> {
-        let whole = u32::try_from(REQUEST_BYTES).unwrap_or(u32::MAX);
+        let whole = Piece::largest();
 
         let Some(end) = self.end else {
             return Some(whole);
@@ -155,33 +139,9 @@ impl Download {
         self.requests.cancel();
     }
 
-    fn failed(&mut self, error: Error) -> SshError {
+    fn failed(&mut self, error: &Error) -> SshError {
         self.finish();
-        failure(OPERATION, self.file.path())(error)
-    }
-}
 
-fn whole(mut piece: Piece) -> Bytes {
-    piece.data.truncate(piece.wanted());
-
-    Bytes::from(piece.data)
-}
-
-fn read(
-    file: &RemoteFile,
-    offset: u64,
-    length: u32,
-) -> impl Future<Output = Result<Piece, Error>> + Send + 'static {
-    let session = Arc::clone(file.session());
-    let handle = file.handle().to_owned();
-
-    async move {
-        let data = session.read(handle, offset, length).await?.data;
-
-        Ok(Piece {
-            offset,
-            length,
-            data,
-        })
+        SshError::sftp(OPERATION, self.file.path(), error)
     }
 }

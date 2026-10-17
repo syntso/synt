@@ -1,15 +1,16 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use synt_platform::Lock;
 use tokio::sync::OnceCell;
 
-use super::Sftp;
-use crate::locked::locked;
-use crate::{Pool, SshError, Target};
+use crate::{Pool, Sftp, SshError, Target};
 
 pub(super) struct SessionSlot {
     session: OnceCell<Arc<Sftp>>,
     last_used: Mutex<Instant>,
+    watched: AtomicBool,
 }
 
 impl SessionSlot {
@@ -17,31 +18,27 @@ impl SessionSlot {
         Self {
             session: OnceCell::new(),
             last_used: Mutex::new(Instant::now()),
+            watched: AtomicBool::new(false),
         }
     }
 
-    pub(super) async fn session(
-        &self,
-        pool: &Pool,
-        target: &Target,
-    ) -> Result<(Arc<Sftp>, bool), SshError> {
-        let mut opened = false;
-
+    pub(super) async fn session(&self, pool: &Pool, target: &Target) -> Result<Arc<Sftp>, SshError> {
         let session = self
             .session
-            .get_or_try_init(|| async {
-                opened = true;
-                Sftp::open(pool, target).await.map(Arc::new)
-            })
+            .get_or_try_init(|| async { Sftp::open(pool, target).await.map(Arc::new) })
             .await?;
 
         self.touch();
 
-        Ok((Arc::clone(session), opened))
+        Ok(Arc::clone(session))
+    }
+
+    pub(super) fn start_watching(&self) -> bool {
+        !self.watched.swap(true, Ordering::AcqRel)
     }
 
     pub(super) fn touch(&self) {
-        *locked(&self.last_used) = Instant::now();
+        *self.last_used.locked() = Instant::now();
     }
 
     pub(super) fn idle_left(&self, idle: Duration) -> Option<Duration> {
@@ -54,7 +51,7 @@ impl SessionSlot {
             return Some(idle);
         }
 
-        let last_used = *locked(&self.last_used);
+        let last_used = *self.last_used.locked();
 
         idle.checked_sub(last_used.elapsed())
             .filter(|left| !left.is_zero())

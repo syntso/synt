@@ -1,14 +1,17 @@
+mod slot;
+
 use std::collections::HashMap;
 use std::fmt::{self, Debug, Formatter};
 use std::future::Future;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::Duration;
 
+use synt_platform::Lock;
 use tokio::time;
 
-use super::{SessionSlot, Sftp};
-use crate::locked::locked;
-use crate::{Pool, SshError, Target};
+use slot::SessionSlot;
+
+use crate::{Pool, Sftp, SshError, Target};
 
 const IDLE: Duration = Duration::from_secs(30);
 
@@ -16,23 +19,15 @@ type Slots = HashMap<Target, Arc<SessionSlot>>;
 
 #[derive(Clone)]
 pub struct FileSessions {
-    shared: Arc<Shared>,
-}
-
-struct Shared {
     pool: Pool,
-    slots: Mutex<Slots>,
+    slots: Arc<Mutex<Slots>>,
 }
 
 impl FileSessions {
     pub fn new(pool: Pool) -> Self {
-        let shared = Shared {
-            pool,
-            slots: Mutex::new(Slots::new()),
-        };
-
         Self {
-            shared: Arc::new(shared),
+            pool,
+            slots: Arc::new(Mutex::new(Slots::new())),
         }
     }
 
@@ -61,9 +56,9 @@ impl FileSessions {
         Running: Future<Output = Result<T, SshError>>,
     {
         let slot = self.slot(target);
-        let (session, opened) = slot.session(&self.shared.pool, target).await?;
+        let session = slot.session(&self.pool, target).await?;
 
-        if opened {
+        if slot.start_watching() {
             self.watch(target.clone(), Arc::downgrade(&slot));
         }
 
@@ -74,14 +69,14 @@ impl FileSessions {
             outcome,
             Err(SshError::SftpClosed | SshError::SftpLost { .. })
         ) {
-            self.shared.discard(target, &slot);
+            self.discard(target, &slot);
         }
 
         outcome
     }
 
     fn slot(&self, target: &Target) -> Arc<SessionSlot> {
-        let mut slots = self.shared.slots();
+        let mut slots = self.slots();
 
         let slot = slots
             .entry(target.clone())
@@ -91,7 +86,7 @@ impl FileSessions {
     }
 
     fn watch(&self, target: Target, slot: Weak<SessionSlot>) {
-        let shared = Arc::clone(&self.shared);
+        let sessions = self.clone();
 
         tokio::spawn(async move {
             let mut wait = IDLE;
@@ -103,12 +98,12 @@ impl FileSessions {
                     return;
                 };
 
-                if !shared.is_current(&target, &watched) {
+                if !sessions.is_current(&target, &watched) {
                     return;
                 }
 
                 let Some(left) = watched.idle_left(IDLE) else {
-                    shared.discard(&target, &watched);
+                    sessions.discard(&target, &watched);
                     return;
                 };
 
@@ -116,37 +111,35 @@ impl FileSessions {
             }
         });
     }
-}
 
-impl Shared {
     fn slots(&self) -> MutexGuard<'_, Slots> {
-        locked(&self.slots)
+        self.slots.locked()
     }
 
     fn is_current(&self, target: &Target, slot: &Arc<SessionSlot>) -> bool {
-        holds(&self.slots(), target, slot)
+        Self::holds(&self.slots(), target, slot)
     }
 
     fn discard(&self, target: &Target, slot: &Arc<SessionSlot>) {
         let mut slots = self.slots();
 
-        if holds(&slots, target, slot) {
+        if Self::holds(&slots, target, slot) {
             slots.remove(target);
         }
     }
-}
 
-fn holds(slots: &Slots, target: &Target, slot: &Arc<SessionSlot>) -> bool {
-    slots
-        .get(target)
-        .is_some_and(|current| Arc::ptr_eq(current, slot))
+    fn holds(slots: &Slots, target: &Target, slot: &Arc<SessionSlot>) -> bool {
+        slots
+            .get(target)
+            .is_some_and(|current| Arc::ptr_eq(current, slot))
+    }
 }
 
 impl Debug for FileSessions {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("FileSessions")
-            .field("open", &self.shared.slots().len())
+            .field("open", &self.slots().len())
             .finish()
     }
 }
