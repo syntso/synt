@@ -22,6 +22,14 @@ impl ExtensionHttp {
             exchange: Arc::new(OnceLock::new()),
         }
     }
+
+    fn sender(context: &Context) -> Result<String, ActionError> {
+        let extension = context.calling_extension().ok_or_else(|| {
+            ActionError::failed("only an extension sends requests through extension.http")
+        })?;
+
+        Ok(extension.as_str().to_owned())
+    }
 }
 
 impl Action for ExtensionHttp {
@@ -53,13 +61,7 @@ impl Action for ExtensionHttp {
         context: &Context,
         params: HttpRequest,
     ) -> Result<HttpResponse, ActionError> {
-        let extension = context
-            .calling_extension()
-            .ok_or_else(|| {
-                ActionError::failed("only an extension sends requests through extension.http")
-            })?
-            .as_str()
-            .to_owned();
+        let extension = Self::sender(context)?;
         let capabilities = self
             .extensions
             .loaded(&extension)?

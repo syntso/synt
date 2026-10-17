@@ -2,6 +2,7 @@ mod info;
 mod merger;
 mod opened;
 mod path;
+mod pending;
 mod place;
 mod projects;
 mod walk;
@@ -15,6 +16,7 @@ pub use projects::{ProjectFolder, ProjectFolders};
 pub(crate) use written::Written;
 
 use path::DocumentPath;
+use pending::Pending;
 use place::{DocumentPlace, LARGEST_DOCUMENT};
 use walk::Walk;
 
@@ -28,12 +30,6 @@ pub(crate) struct DocumentStore<'a> {
     manifest: &'a Manifest,
     revisions: &'a Revisions,
     folders: &'a dyn ProjectFolders,
-}
-
-struct Pending {
-    body: Vec<u8>,
-    parents: Vec<Sha256>,
-    merged: bool,
 }
 
 impl<'a> DocumentStore<'a> {
@@ -91,10 +87,13 @@ impl<'a> DocumentStore<'a> {
             None => Pending::plain(body, base.map(Sha256::recorded)),
         };
 
-        place.write(&pending.body)?;
-        self.remember(&place, &StoredRevision::new(&pending.body, pending.parents))?;
+        place.write(pending.body())?;
+        self.remember(&place, &pending.revision())?;
 
-        Ok(Written::new(place.info(&pending.body), pending.merged))
+        Ok(Written::new(
+            place.info(pending.body()),
+            pending.was_merged(),
+        ))
     }
 
     pub(crate) fn remove(&self, project: &str, path: &str) -> Result<(), GuestError> {
@@ -149,11 +148,9 @@ impl<'a> DocumentStore<'a> {
         let incoming = StoredRevision::new(sides.theirs(), parents);
         self.remember(place, &incoming)?;
 
-        Ok(Pending {
-            body,
-            parents: vec![Sha256::of(sides.ours()), incoming.revision().clone()],
-            merged: true,
-        })
+        let parents = vec![Sha256::of(sides.ours()), incoming.revision().clone()];
+
+        Ok(Pending::merged(body, parents))
     }
 
     fn note_outside_change(&self, place: &DocumentPlace, body: &[u8]) -> Result<(), GuestError> {
@@ -241,15 +238,5 @@ impl<'a> DocumentStore<'a> {
             FailureCode::TooLarge,
             format!("a document holds at most {LARGEST_DOCUMENT} bytes"),
         ))
-    }
-}
-
-impl Pending {
-    fn plain(body: &[u8], parent: Option<Sha256>) -> Self {
-        Self {
-            body: body.to_vec(),
-            parents: parent.into_iter().collect(),
-            merged: false,
-        }
     }
 }
