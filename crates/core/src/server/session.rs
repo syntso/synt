@@ -1,13 +1,16 @@
+mod in_flight;
+
+use in_flight::InFlight;
+
 use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use bytes::Bytes;
 use futures_util::StreamExt;
 use synt_journal::Actor;
 use synt_platform::{AppCheck, LocalStream, Peer};
 use synt_proto::{Frame, FrameCodec, FrameReader, Message, Response};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
+use tokio::sync::{Semaphore, mpsc};
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -77,8 +80,8 @@ impl Session {
         let _registration = self.attend(&actor);
         let actor = Arc::new(actor);
 
-        while let Some((permit, body)) = self.next_message(incoming).await {
-            self.handle(&body, &actor, permit).await;
+        while let Some(message) = self.next_message(incoming).await {
+            self.handle(message, &actor).await;
         }
     }
 
@@ -113,7 +116,7 @@ impl Session {
         Some(registration)
     }
 
-    async fn next_message(&self, incoming: &mut Incoming) -> Option<(OwnedSemaphorePermit, Bytes)> {
+    async fn next_message(&self, incoming: &mut Incoming) -> Option<InFlight> {
         tokio::select! {
             () = self.stop.cancelled() => None,
             () = self.replies.closed() => None,
@@ -121,8 +124,10 @@ impl Session {
         }
     }
 
-    async fn handle(&self, body: &[u8], actor: &Arc<Actor>, permit: OwnedSemaphorePermit) {
-        let request = match Message::decode(body) {
+    async fn handle(&self, message: InFlight, actor: &Arc<Actor>) {
+        let InFlight { body, permit } = message;
+
+        let request = match Message::decode(&body) {
             Ok(Message::Request(request)) => request,
             Ok(Message::Response(_) | Message::Notification(_)) => return,
             Err(error) => {
@@ -151,12 +156,12 @@ impl Session {
         });
     }
 
-    async fn read_message(&self, incoming: &mut Incoming) -> Option<(OwnedSemaphorePermit, Bytes)> {
+    async fn read_message(&self, incoming: &mut Incoming) -> Option<InFlight> {
         loop {
             match incoming.next().await?.ok()? {
                 Frame::Message(body) => {
                     let permit = Arc::clone(&self.in_flight).acquire_owned().await.ok()?;
-                    return Some((permit, body));
+                    return Some(InFlight { body, permit });
                 }
                 Frame::Stream { stream, data } => self.link.deliver(stream, data),
             }

@@ -13,12 +13,13 @@ pub(crate) struct K8sStreamClose {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub(crate) struct StreamCloseParams {
-    pub request: u64,
+    #[schemars(with = "u64")]
+    pub request: Seq,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct StreamClosed {
-    pub request: u64,
+    pub request: Seq,
 }
 
 impl K8sStreamClose {
@@ -44,8 +45,7 @@ impl Action for K8sStreamClose {
         context: &Context,
         params: StreamCloseParams,
     ) -> Result<StreamClosed, ActionError> {
-        let request = Seq::new(params.request);
-        self.kube.streams().close(request, context.actor())?;
+        self.kube.streams().close(params.request, context.actor())?;
 
         Ok(StreamClosed {
             request: params.request,
