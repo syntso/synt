@@ -11,8 +11,8 @@ mod resize;
 mod revocation;
 mod size;
 
-pub use attach::SessionAttach;
 pub(crate) use crate::terminals::AttachedSession;
+pub use attach::SessionAttach;
 pub use blocks::SessionBlocks;
 pub use close::SessionClose;
 pub(crate) use info::SessionInfo;

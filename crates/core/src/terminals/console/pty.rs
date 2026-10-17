@@ -26,7 +26,12 @@ impl Console for Pty {
     }
 
     fn write(&self, data: Bytes) -> BoxFuture<'_, Result<(), CoreError>> {
-        async move { Pty::write(self, data.to_vec()).await.map_err(CoreError::Pty) }.boxed()
+        async move {
+            Pty::write(self, data.to_vec())
+                .await
+                .map_err(CoreError::Pty)
+        }
+        .boxed()
     }
 
     fn resize(&self, size: TerminalSize) -> BoxFuture<'_, Result<(), CoreError>> {

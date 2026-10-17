@@ -6,7 +6,10 @@ pub(crate) struct OpenConsole {
 }
 
 impl OpenConsole {
-    pub(crate) fn new(console: impl Console + 'static, output: impl ConsoleOutput + 'static) -> Self {
+    pub(crate) fn new(
+        console: impl Console + 'static,
+        output: impl ConsoleOutput + 'static,
+    ) -> Self {
         Self {
             console: Box::new(console),
             output: Box::new(output),

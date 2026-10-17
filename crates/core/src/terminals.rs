@@ -5,9 +5,9 @@ mod session;
 
 pub(crate) use block::{Block, BlockHistory, Scanner};
 pub(crate) use console::{Console, ConsoleOutput, OpenConsole};
+pub(crate) use session::Origin;
 pub(crate) use session::Session;
 pub use session::{AttachedSession, Ending, SessionId, SessionKind};
-pub(crate) use session::Origin;
 
 use screen::{Attachment, Screen};
 
@@ -139,7 +139,7 @@ impl Terminals {
             target: origin.target.as_ref(),
         };
 
-        let finished = Recorder::step(&call, EventKind::Finished, ending);
+        let finished = call.step(EventKind::Finished, ending);
         let recorded = self
             .recorder
             .follow_up(origin.request, vec![finished])
