@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use synt_core::{Broker, Core, Kube, ProjectOpen, Projects, ResourceList};
 use synt_journal::EventKind;
 use synt_kube::KubeconfigSource;
-use synt_proto::{ActionCall, ActionDescription, ErrorCode, RiskLevel};
+use synt_proto::{ActionCall, ActionDescription, ErrorCode, Risk};
 use synt_ssh::Pool;
 
 const NOWHERE: &str = "https://127.0.0.1:1";
@@ -87,7 +87,7 @@ async fn every_cluster_action_is_described_with_its_risk_and_params() {
     let agent = harness.agent("deploy-bot").await;
 
     let described = agent.describe().await.unwrap();
-    let rules: Vec<(&str, RiskLevel, bool)> = [
+    let rules: Vec<(&str, Risk, bool)> = [
         "k8s.contexts",
         "k8s.list",
         "k8s.get",
@@ -115,21 +115,21 @@ async fn every_cluster_action_is_described_with_its_risk_and_params() {
     assert_eq!(
         rules,
         [
-            ("k8s.contexts", RiskLevel::Read, false),
-            ("k8s.list", RiskLevel::Read, true),
-            ("k8s.get", RiskLevel::Read, true),
-            ("k8s.events", RiskLevel::Read, true),
-            ("k8s.logs", RiskLevel::Read, true),
-            ("k8s.watch", RiskLevel::Read, true),
-            ("k8s.stream.close", RiskLevel::Read, false),
-            ("k8s.apply", RiskLevel::Write, true),
-            ("k8s.scale", RiskLevel::Write, true),
-            ("k8s.rollout_restart", RiskLevel::Write, true),
-            ("k8s.delete", RiskLevel::Write, true),
-            ("k8s.exec", RiskLevel::Write, true),
-            ("k8s.port_forward", RiskLevel::Write, true),
-            ("k8s.port_forward.list", RiskLevel::Read, false),
-            ("k8s.port_forward.close", RiskLevel::Write, false),
+            ("k8s.contexts", Risk::Read, false),
+            ("k8s.list", Risk::Read, true),
+            ("k8s.get", Risk::Read, true),
+            ("k8s.events", Risk::Read, true),
+            ("k8s.logs", Risk::Read, true),
+            ("k8s.watch", Risk::Read, true),
+            ("k8s.stream.close", Risk::Read, false),
+            ("k8s.apply", Risk::Write, true),
+            ("k8s.scale", Risk::Write, true),
+            ("k8s.rollout_restart", Risk::Write, true),
+            ("k8s.delete", Risk::Write, true),
+            ("k8s.exec", Risk::Write, true),
+            ("k8s.port_forward", Risk::Write, true),
+            ("k8s.port_forward.list", Risk::Read, false),
+            ("k8s.port_forward.close", Risk::Write, false),
         ]
     );
     assert!(!list.title.is_empty());

@@ -1,6 +1,6 @@
 use serde_json::json;
 use synt_journal::{Actor, EventKind, Name};
-use synt_proto::{ActionCall, ApprovalDecision, ErrorCode, Requester, RiskLevel};
+use synt_proto::{ActionCall, ApprovalDecision, ErrorCode, Risk};
 
 use super::Stage;
 use crate::common::rejection;
@@ -28,7 +28,7 @@ async fn an_extension_reaches_a_listed_host_through_the_core() {
     assert_eq!(requested[0].actor(), &every());
     assert_eq!(
         requested[0].details().value()["parent"],
-        json!(outer.request.0)
+        json!(outer.request.get())
     );
     assert_eq!(
         requested[0].details().value()["params"]["url"],
@@ -119,10 +119,10 @@ async fn a_request_that_writes_asks_the_person() {
         .decide(&app, post, ApprovalDecision::AllowOnce)
         .await;
 
-    assert_eq!(question.actor, Requester::Plugin("every".to_owned()));
-    assert_eq!(question.on_behalf_of, Some(Requester::Person));
+    assert_eq!(question.actor, Actor::Plugin(Name::new("every").unwrap()));
+    assert_eq!(question.on_behalf_of, Some(Actor::Person));
     assert_eq!(question.action, "extension.http");
-    assert_eq!(question.risk, RiskLevel::Write);
+    assert_eq!(question.risk, Risk::Write);
     assert_eq!(question.params["body_bytes"], 3);
     assert_eq!(
         outcome.unwrap().value["body"],

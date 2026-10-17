@@ -37,3 +37,15 @@ impl fmt::Display for ResourceRef {
         self.0.fmt(f)
     }
 }
+
+impl PartialEq<str> for ResourceRef {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl PartialEq<&str> for ResourceRef {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}

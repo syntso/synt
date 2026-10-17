@@ -24,7 +24,7 @@ impl Action for Ping {
     async fn run(&self, context: &Context, (): ()) -> Result<Pong, ActionError> {
         Ok(Pong {
             core: VERSION.to_owned(),
-            request: RequestSeq(context.request().get()),
+            request: RequestSeq::new(context.request().get()),
         })
     }
 }

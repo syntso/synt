@@ -40,7 +40,7 @@ impl Action for LocalSessionOpen {
 
         let opened = open_pty(term, size).await?;
 
-        let id = SessionId::from(context.request());
+        let id = SessionId::new(context.request().get());
         let origin = Origin {
             action: Self::ID,
             actor: context.actor().clone(),

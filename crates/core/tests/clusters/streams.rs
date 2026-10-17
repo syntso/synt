@@ -20,7 +20,7 @@ struct Followed {
 impl Followed {
     fn open(client: &Client) -> (u32, Self) {
         let mut stream = client.open_stream();
-        let id = stream.stream().0;
+        let id = stream.stream().get();
         let (sink, source) = io::duplex(64 * 1024);
         let client = client.clone();
 
@@ -83,7 +83,7 @@ async fn followed_logs_stream_until_the_caller_closes_them() {
         .agent(
             "",
             "k8s.stream.close",
-            json!({ "request": started.request.0 }),
+            json!({ "request": started.request.get() }),
         )
         .await
         .unwrap();
@@ -93,19 +93,19 @@ async fn followed_logs_stream_until_the_caller_closes_them() {
         .person(
             "",
             "k8s.stream.close",
-            json!({ "request": started.request.0 }),
+            json!({ "request": started.request.get() }),
         )
         .await;
 
     assert_eq!(
         started.value,
-        json!({ "request": started.request.0, "stream": stream })
+        json!({ "request": started.request.get(), "stream": stream })
     );
     assert!(
         first.starts_with("tick ") && second.starts_with("tick "),
         "{first} {second}"
     );
-    assert_eq!(closed.value["request"], started.request.0);
+    assert_eq!(closed.value["request"], started.request.get());
     assert_eq!(journaled["reason"], "closed");
     assert_eq!(journaled["pod"], pod.as_str());
     assert_eq!(journaled["bytes"], bytes);
@@ -149,7 +149,7 @@ async fn a_watch_streams_one_json_line_per_change() {
     lab.agent(
         "",
         "k8s.stream.close",
-        json!({ "request": started.request.0 }),
+        json!({ "request": started.request.get() }),
     )
     .await
     .unwrap();

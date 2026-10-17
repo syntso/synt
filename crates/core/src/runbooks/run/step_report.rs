@@ -34,7 +34,7 @@ impl StepReport {
 
     pub(crate) fn settle(&mut self, step: &PlannedStep, outcome: Result<ActionOutcome, RpcError>) {
         let (request, value) = match outcome {
-            Ok(outcome) => (Some(outcome.request.0), outcome.value),
+            Ok(outcome) => (Some(outcome.request.get()), outcome.value),
             Err(error) => {
                 self.fail(None, None, error.message);
                 return;

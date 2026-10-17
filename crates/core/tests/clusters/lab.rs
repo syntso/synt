@@ -207,7 +207,7 @@ impl Lab {
     }
 
     fn detail_of(&self, request: RequestSeq, kind: EventKind) -> Option<Value> {
-        self.events(&Filter::all().call(Seq::new(request.0)))
+        self.events(&Filter::all().call(Seq::new(request.get())))
             .into_iter()
             .find(|event| event.kind() == kind)
             .map(|event| event.details().value().clone())

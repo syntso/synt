@@ -6,7 +6,7 @@ use common::{Guarded, Harness, Secret, kinds, rejection};
 use serde_json::json;
 use synt_actions::Action;
 use synt_journal::EventKind;
-use synt_proto::{ActionCall, ActionDescription, ErrorCode, RiskLevel};
+use synt_proto::{ActionCall, ActionDescription, ErrorCode, Risk};
 
 fn find<'a>(descriptions: &'a [ActionDescription], id: &str) -> Option<&'a ActionDescription> {
     descriptions.iter().find(|description| description.id == id)
@@ -24,7 +24,7 @@ async fn the_person_is_shown_every_action_with_its_rules() {
     assert!(secret.person_only);
     assert_eq!(secret.title, Secret::TITLE);
     assert!(!guarded.person_only);
-    assert_eq!(guarded.risk, RiskLevel::Read);
+    assert_eq!(guarded.risk, Risk::Read);
     assert!(!guarded.takes_target);
     assert_eq!(guarded.params["type"], json!("object"));
     assert!(guarded.params["properties"]["risk"].is_object());

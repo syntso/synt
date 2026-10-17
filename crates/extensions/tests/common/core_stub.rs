@@ -1,5 +1,5 @@
 use serde_json::json;
-use synt_actions::{Catalog, Description, Handle, Risk};
+use synt_actions::{ActionDescription, Catalog, Handle, Risk};
 use synt_journal::ActionId;
 
 const ACTIONS: [(&str, Risk); 3] = [
@@ -15,10 +15,10 @@ impl Catalog for CoreStub {
         None
     }
 
-    fn describe(&self) -> Vec<Description> {
+    fn describe(&self) -> Vec<ActionDescription> {
         ACTIONS
             .iter()
-            .map(|(id, risk)| Description {
+            .map(|(id, risk)| ActionDescription {
                 id: ActionId::new(*id).unwrap(),
                 title: format!("Stand in for {id}"),
                 risk: *risk,

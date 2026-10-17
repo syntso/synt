@@ -136,6 +136,6 @@ async fn a_refusal_leaves_the_connection_usable() {
     let outcome = client.call(ping()).await.unwrap();
 
     assert_eq!(refused.code, ErrorCode::DENIED);
-    assert_eq!(outcome.request, RequestSeq(3));
+    assert_eq!(outcome.request, RequestSeq::new(3));
     assert!(harness.is_intact());
 }

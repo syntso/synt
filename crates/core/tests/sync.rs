@@ -9,7 +9,7 @@ use std::time::Duration;
 use common::{PROJECT_ID, SyncingCore, eventually, rejection};
 use serde_json::{Value, json};
 use synt_journal::EventKind;
-use synt_proto::{ActionCall, ErrorCode, RiskLevel};
+use synt_proto::{ActionCall, ErrorCode, Risk};
 use tempfile::TempDir;
 
 const SOON: Duration = Duration::from_millis(100);
@@ -237,13 +237,13 @@ async fn sync_actions_are_described_with_their_risk_and_owner() {
         (description.risk, description.person_only)
     };
 
-    assert_eq!(rule("sync.enable"), (RiskLevel::Write, true));
-    assert_eq!(rule("sync.disable"), (RiskLevel::Write, true));
-    assert_eq!(rule("sync.status"), (RiskLevel::Read, false));
-    assert_eq!(rule("sync.share"), (RiskLevel::Write, true));
-    assert_eq!(rule("sync.unshare"), (RiskLevel::Write, true));
-    assert_eq!(rule("document.history"), (RiskLevel::Read, false));
-    assert_eq!(rule("document.resolve"), (RiskLevel::Write, true));
+    assert_eq!(rule("sync.enable"), (Risk::Write, true));
+    assert_eq!(rule("sync.disable"), (Risk::Write, true));
+    assert_eq!(rule("sync.status"), (Risk::Read, false));
+    assert_eq!(rule("sync.share"), (Risk::Write, true));
+    assert_eq!(rule("sync.unshare"), (Risk::Write, true));
+    assert_eq!(rule("document.history"), (Risk::Read, false));
+    assert_eq!(rule("document.resolve"), (Risk::Write, true));
 
     let enable = described
         .iter()

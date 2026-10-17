@@ -209,7 +209,7 @@ mod tests {
 
             match answer {
                 Ok(value) => Ok(ActionOutcome {
-                    request: RequestSeq(request),
+                    request: RequestSeq::new(request),
                     value,
                 }),
                 Err(reason) => Err(RpcError::new(ErrorCode::ACTION_FAILED, reason)),

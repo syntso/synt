@@ -13,7 +13,7 @@ use synt_core::{
     Broker, Core, ProjectClose, ProjectList, ProjectOpen, Projects, ResourceGet, ResourceList,
     ResourcePut, ResourceRemove, SshExec,
 };
-use synt_proto::{ActionCall, ApprovalDecision, ErrorCode, RiskLevel};
+use synt_proto::{ActionCall, ApprovalDecision, ErrorCode, ResourceRef, Risk};
 use synt_ssh::Pool;
 
 const PROJECT_ID: &str = "4f2c9a7e1b3d5f60718293a4b5c6d7e8";
@@ -363,7 +363,7 @@ async fn a_project_target_resolves_through_its_via_chain() {
         .decide(&agent, exec("@orders/api-1"), ApprovalDecision::Deny)
         .await;
 
-    assert_eq!(question.target.as_deref(), Some("@orders/api-1"));
+    assert_eq!(question.target.as_ref().map(ResourceRef::as_str), Some("@orders/api-1"));
     assert_eq!(
         question.destination.as_deref(),
         Some(
@@ -371,7 +371,7 @@ async fn a_project_target_resolves_through_its_via_chain() {
                 .as_str()
         )
     );
-    assert_eq!(question.risk, RiskLevel::Write);
+    assert_eq!(question.risk, Risk::Write);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -412,7 +412,7 @@ async fn a_host_that_logs_in_as_root_is_asked_as_privileged() {
         .decide(&agent, exec("@orders/db-1"), ApprovalDecision::Deny)
         .await;
 
-    assert_eq!(question.risk, RiskLevel::Privileged);
+    assert_eq!(question.risk, Risk::Privileged);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -493,7 +493,7 @@ async fn an_agent_changing_a_resource_is_asked_with_the_project_id() {
         .params(json!({ "kind": "host", "address": "10.0.3.3" }));
     let (question, outcome) = approver.decide(&agent, call, ApprovalDecision::Deny).await;
 
-    assert_eq!(question.risk, RiskLevel::Write);
+    assert_eq!(question.risk, Risk::Write);
     assert_eq!(
         question.destination.as_deref(),
         Some(format!("@{PROJECT_ID}/web-1").as_str())

@@ -62,7 +62,7 @@ async fn the_endpoint_can_be_bound_again_after_shutdown() {
         .unwrap();
     let outcome = client.call(ping()).await.unwrap();
 
-    assert_eq!(outcome.request, RequestSeq(1));
+    assert_eq!(outcome.request, RequestSeq::new(1));
     restarted.stop().await;
 }
 
@@ -79,7 +79,7 @@ async fn the_journal_stays_intact_across_a_restart() {
     let outcome = client.call(ping()).await.unwrap();
     restarted.stop().await;
 
-    assert_eq!(outcome.request, RequestSeq(4));
+    assert_eq!(outcome.request, RequestSeq::new(4));
     assert_eq!(harness.events().len(), 6);
     assert!(harness.is_intact());
 }

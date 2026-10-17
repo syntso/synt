@@ -40,7 +40,7 @@ async fn the_request_is_the_seq_of_the_requested_event() {
     let trail = harness.trail(outcome.request);
 
     assert_eq!(trail[0].kind(), EventKind::Requested);
-    assert_eq!(trail[0].seq(), Seq::new(outcome.request.0));
+    assert_eq!(trail[0].seq(), Seq::new(outcome.request.get()));
     assert_eq!(trail[0].call(), None);
     assert_eq!(trail[0].details().value(), &json!({ "params": null }));
 }
@@ -51,7 +51,7 @@ async fn a_call_is_journaled_as_requested_started_finished() {
     let client = harness.app().await;
 
     let outcome = client.call(ping()).await.unwrap();
-    let request = Seq::new(outcome.request.0);
+    let request = Seq::new(outcome.request.get());
     let trail = harness.trail(outcome.request);
     let ping_id = ActionId::new("core.ping").unwrap();
 

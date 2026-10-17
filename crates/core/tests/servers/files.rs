@@ -42,7 +42,7 @@ async fn upload(lab: &Lab, path: &str, data: &[u8]) -> (ActionOutcome, Transferr
     let size = data.len() as u64;
     let call = ActionCall::new("sftp.upload").target(INNER).params(json!({
         "path": path,
-        "stream": stream.stream().0,
+        "stream": stream.stream().get(),
         "size": size,
     }));
 
@@ -58,7 +58,7 @@ async fn download(lab: &Lab, path: &str) -> (ActionOutcome, Transferred, Vec<u8>
     let mut bytes = Vec::new();
     let call = ActionCall::new("sftp.download")
         .target(INNER)
-        .params(json!({ "path": path, "stream": stream.stream().0 }));
+        .params(json!({ "path": path, "stream": stream.stream().get() }));
 
     let calling = lab.client.call(call);
     let receiving = lab.client.receive_credited(&mut stream, &mut bytes);

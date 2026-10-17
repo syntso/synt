@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use synt_proto::RiskLevel;
+use synt_proto::Risk;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time;
@@ -71,8 +71,8 @@ async fn a_command_in_a_pod_is_asked_like_ssh_exec_and_its_output_is_not_journal
     let shell = shell.unwrap();
     let journaled = lab.finished(plain.request).await;
 
-    assert_eq!(plain_question.risk, RiskLevel::Write);
-    assert_eq!(shell_question.risk, RiskLevel::Privileged);
+    assert_eq!(plain_question.risk, Risk::Write);
+    assert_eq!(shell_question.risk, Risk::Privileged);
     assert_eq!(plain.value["stdout"], "hello from worker\n");
     assert_eq!(shell.value["exit"], 3);
     assert_eq!(journaled["exit"], 0);
@@ -147,7 +147,7 @@ async fn a_port_forward_is_held_until_it_is_closed() {
     let closed = closed.unwrap();
     let after = TcpStream::connect(("127.0.0.1", port)).await;
 
-    assert_eq!(question.risk, RiskLevel::Write);
+    assert_eq!(question.risk, Risk::Write);
     assert!(page.contains("hello from web"), "{page}");
     assert_eq!(listed.value.as_array().unwrap().len(), 1);
     assert_eq!(listed.value[0]["remote_port"], 8080);

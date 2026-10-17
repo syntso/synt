@@ -51,7 +51,7 @@ async fn a_native_view_renders_for_a_target_and_is_journaled_without_its_tree() 
         .await
         .unwrap();
     let finished = stage
-        .trail(synt_journal::Seq::new(rendered.request.0))
+        .trail(synt_journal::Seq::new(rendered.request.get()))
         .into_iter()
         .find(|event| event.kind() == EventKind::Finished)
         .unwrap();
@@ -151,7 +151,7 @@ async fn a_panel_message_reaches_the_extension_and_its_calls_reach_the_core() {
     assert!(reply.value["pong"]["core"].is_string());
     assert_eq!(
         nested[0].details().value()["parent"],
-        json!(reply.request.0)
+        json!(reply.request.get())
     );
 }
 

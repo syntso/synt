@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use synt_actions::{ActionError, Catalog, Description, Handle, Registry};
+use synt_actions::{ActionDescription, ActionError, Catalog, Handle, Registry};
 use synt_journal::ActionId;
 use tokio::runtime::Handle as RuntimeHandle;
 
@@ -341,7 +341,7 @@ impl Catalog for Extensions {
         self.roster.handle(id)
     }
 
-    fn describe(&self) -> Vec<Description> {
+    fn describe(&self) -> Vec<ActionDescription> {
         self.roster.describe()
     }
 }

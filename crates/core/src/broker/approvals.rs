@@ -176,7 +176,7 @@ impl Broker {
     }
 
     fn next_id(&self) -> ApprovalId {
-        ApprovalId(self.next_id.fetch_add(1, Ordering::Relaxed))
+        ApprovalId::new(self.next_id.fetch_add(1, Ordering::Relaxed))
     }
 }
 

@@ -1,5 +1,5 @@
 use serde_json::json;
-use synt_proto::RiskLevel;
+use synt_proto::Risk;
 use synt_test_servers::KubeServers;
 
 use crate::Lab;
@@ -159,8 +159,8 @@ async fn secrets_are_privileged_and_their_values_never_reach_the_journal() {
 
     let text = lab.journal_text();
 
-    assert_eq!(asked.risk, RiskLevel::Privileged);
-    assert_eq!(listed_question.risk, RiskLevel::Privileged);
+    assert_eq!(asked.risk, Risk::Privileged);
+    assert_eq!(listed_question.risk, Risk::Privileged);
     assert_eq!(
         read.value["data"]["password"],
         "Y29ycmVjdC1ob3JzZS1iYXR0ZXJ5"

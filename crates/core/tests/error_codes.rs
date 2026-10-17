@@ -33,7 +33,7 @@ fn the_codes_are_the_ones_the_protocol_documents() {
     ];
 
     for (code, number) in documented {
-        assert_eq!(code.0, number);
+        assert_eq!(code.get(), number);
         assert_eq!(serde_json::to_value(code).unwrap(), json!(number));
     }
 }
@@ -72,7 +72,9 @@ async fn invalid_request_is_for_a_second_hello() {
     let harness = Harness::start();
     let mut connection = RawConnection::greeted(harness.endpoint()).await;
 
-    connection.hello(RequestId(2), &common::app_hello()).await;
+    connection
+        .hello(RequestId::new(2), &common::app_hello())
+        .await;
 
     assert_eq!(
         error(connection.receive().await.outcome).code,
@@ -86,7 +88,7 @@ async fn method_not_found_is_for_a_method_the_core_does_not_have() {
     let mut connection = RawConnection::greeted(harness.endpoint()).await;
 
     connection
-        .request_named(RequestId(2), "actions.forget", json!({}))
+        .request_named(RequestId::new(2), "actions.forget", json!({}))
         .await;
 
     assert_eq!(
@@ -115,7 +117,7 @@ async fn invalid_params_is_for_an_approval_answer_of_the_wrong_shape() {
 
     connection
         .request(
-            RequestId(2),
+            RequestId::new(2),
             Method::ApprovalRespond,
             &json!({ "id": 1, "decision": "maybe" }),
         )
@@ -147,7 +149,7 @@ async fn handshake_required_is_for_a_first_request_that_is_not_hello() {
     let mut connection = RawConnection::open(harness.endpoint()).await;
 
     connection
-        .request(RequestId(1), Method::ActionsDescribe, &json!({}))
+        .request(RequestId::new(1), Method::ActionsDescribe, &json!({}))
         .await;
 
     assert_eq!(
@@ -166,7 +168,7 @@ async fn protocol_mismatch_is_for_another_major_version() {
         major: ProtocolVersion::CURRENT.major.wrapping_sub(1),
         minor: 0,
     };
-    connection.hello(RequestId(1), &older).await;
+    connection.hello(RequestId::new(1), &older).await;
 
     assert_eq!(
         error(connection.receive().await.outcome).code,
@@ -211,7 +213,7 @@ async fn denied_is_for_an_agent_answering_an_approval() {
 
     let error = rejection(
         agent
-            .respond(ApprovalId(1), ApprovalDecision::AllowOnce)
+            .respond(ApprovalId::new(1), ApprovalDecision::AllowOnce)
             .await,
     );
 
@@ -250,7 +252,10 @@ async fn approval_unknown_is_for_an_answer_no_question_waits_for() {
     let harness = Harness::start();
     let app = harness.app().await;
 
-    let error = rejection(app.respond(ApprovalId(1), ApprovalDecision::Deny).await);
+    let error = rejection(
+        app.respond(ApprovalId::new(1), ApprovalDecision::Deny)
+            .await,
+    );
 
     assert_eq!(error.code, ErrorCode::APPROVAL_UNKNOWN);
 }

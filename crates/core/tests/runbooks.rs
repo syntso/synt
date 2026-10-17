@@ -6,8 +6,7 @@ use common::{RunbookDesk, eventually, kinds, rejection};
 use serde_json::{Value, json};
 use synt_journal::{Actor, Event, EventKind, Filter, Name, Seq};
 use synt_proto::{
-    ActionCall, ApprovalDecision, ErrorCode, RequestSeq, Requester, RiskLevel, RunPhase,
-    RunbookStep, StepState,
+    ActionCall, ApprovalDecision, ErrorCode, RequestSeq, Risk, RunPhase, RunbookStep, StepState,
 };
 
 const DEPLOY: &str = r#"
@@ -99,7 +98,7 @@ fn step_requests(desk: &RunbookDesk, run: RequestSeq) -> Vec<Event> {
     desk.harness()
         .matching(&Filter::all().kind(EventKind::Requested))
         .into_iter()
-        .filter(|event| event.details().value()["parent"] == json!(run.0))
+        .filter(|event| event.details().value()["parent"] == json!(run.get()))
         .collect()
 }
 
@@ -137,7 +136,7 @@ async fn a_run_approved_up_front_journals_each_step_under_the_runbook() {
     assert_eq!(steps[0].resource().unwrap().as_str(), "web-1");
     assert_eq!(
         steps[0].details().value(),
-        &json!({ "params": { "command": "docker pull app:v7" }, "parent": outcome.request.0 })
+        &json!({ "params": { "command": "docker pull app:v7" }, "parent": outcome.request.get() })
     );
 
     let pulled = desk.harness().matching(&Filter::all().call(steps[0].seq()));
@@ -189,9 +188,9 @@ async fn without_approval_up_front_every_write_step_asks_the_person() {
 
     assert_eq!(
         pull.actor,
-        Requester::Runbook(RunbookDesk::reference("deploy"))
+        Actor::Runbook(Name::new(RunbookDesk::reference("deploy")).unwrap())
     );
-    assert_eq!(pull.on_behalf_of, Some(Requester::Person));
+    assert_eq!(pull.on_behalf_of, Some(Actor::Person));
     assert_eq!(pull.action, "ssh.exec");
     assert_eq!(pull.params, json!({ "command": "docker pull app:v7" }));
     assert_eq!(count.action, "test.touch");
@@ -216,10 +215,10 @@ async fn a_privileged_step_asks_every_time_even_in_a_run_approved_up_front() {
     let step = &step_requests(&desk, outcome.request)[0];
     let approval = &desk.harness().matching(&Filter::all().call(step.seq()))[1];
 
-    assert_eq!(question.risk, RiskLevel::Privileged);
+    assert_eq!(question.risk, Risk::Privileged);
     assert_eq!(
         question.actor,
-        Requester::Runbook(RunbookDesk::reference("escalating"))
+        Actor::Runbook(Name::new(RunbookDesk::reference("escalating")).unwrap())
     );
     assert_eq!(
         approval.details().value(),
@@ -318,7 +317,7 @@ async fn progress_reaches_the_caller_step_by_step() {
         .unwrap();
     let heard: Vec<RunbookStep> = RunbookDesk::hear(&mut notifications, 4).await;
 
-    assert!(heard.iter().all(|step| step.run == outcome.request.0));
+    assert!(heard.iter().all(|step| step.run == outcome.request.get()));
     assert_eq!(
         heard
             .iter()
@@ -354,7 +353,7 @@ async fn an_agent_asks_once_for_the_whole_run_and_shows_its_steps() {
         .await;
 
     assert_eq!(question.action, "runbook.run");
-    assert_eq!(question.risk, RiskLevel::Write);
+    assert_eq!(question.risk, Risk::Write);
     assert_eq!(question.destination, Some(RunbookDesk::reference("deploy")));
     assert_eq!(
         question.params["steps"][0]["params"],
@@ -651,7 +650,7 @@ async fn calls_in_the_journal_become_a_runbook_with_their_shared_values_as_param
 
     let drafted = app
         .call(ActionCall::new("runbook.from_journal").params(json!({
-            "events": [uptime.request.0, disks_finished.get(), uptime.request.0],
+            "events": [uptime.request.get(), disks_finished.get(), uptime.request.get()],
             "name": "Look around",
         })))
         .await
@@ -713,12 +712,12 @@ async fn runbook_actions_describe_their_risk_and_params() {
     let run = find("runbook.run").unwrap();
 
     assert_eq!(run.title, "Run a runbook step by step");
-    assert_eq!(run.risk, RiskLevel::Read);
+    assert_eq!(run.risk, Risk::Read);
     assert_eq!(run.params["required"], json!(["project", "name"]));
     assert!(run.params["properties"]["approve_steps"].is_object());
     assert!(run.params["properties"].get("plan").is_none());
-    assert_eq!(find("runbook.put").unwrap().risk, RiskLevel::Write);
-    assert_eq!(find("runbook.stop").unwrap().risk, RiskLevel::Write);
+    assert_eq!(find("runbook.put").unwrap().risk, Risk::Write);
+    assert_eq!(find("runbook.stop").unwrap().risk, Risk::Write);
     assert!(find("runbook.export").is_some());
     assert!(find("runbook.from_journal").is_some());
     assert!(find("runbook.from_blocks").is_none());

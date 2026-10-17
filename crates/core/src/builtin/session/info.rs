@@ -1,6 +1,6 @@
 use serde::Serialize;
 use synt_actions::Risk;
-use synt_proto::Requester;
+use synt_journal::Actor;
 
 use crate::terminal::{SessionId, SessionKind};
 
@@ -10,7 +10,7 @@ pub struct SessionInfo {
     pub kind: SessionKind,
     pub target: Option<String>,
     pub host: String,
-    pub actor: Requester,
+    pub actor: Actor,
     pub risk: Risk,
     #[serde(rename = "cols")]
     pub columns: u16,

@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use synt_client::Client;
 use synt_core::{Broker, Core, Databases, ProjectOpen, Projects, SecretPut, Secrets};
 use synt_journal::EventKind;
-use synt_proto::{ActionCall, ApprovalDecision, ErrorCode, RiskLevel};
+use synt_proto::{ActionCall, ApprovalDecision, ErrorCode, Risk};
 use synt_ssh::Pool;
 use synt_test_servers::DbServers;
 
@@ -205,7 +205,7 @@ async fn redis_writes_are_asked_and_journaled_without_their_values() {
         .await
         .unwrap();
 
-    assert_eq!(question.risk, RiskLevel::Write);
+    assert_eq!(question.risk, Risk::Write);
     assert_eq!(outcome.unwrap().value["rows"], json!([["OK"]]));
     assert_eq!(read["rows"], json!([["token-value-42"]]));
     assert!(!data.journal_text().contains("token-value-42"));

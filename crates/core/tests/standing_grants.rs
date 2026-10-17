@@ -322,7 +322,7 @@ async fn revoking_a_grant_stops_the_calls_that_use_it_and_asks_again() {
     assert_eq!(grants(&harness).await, json!([]));
     assert_eq!(notes.len(), 1);
     assert_eq!(notes[0].details().value()["revoked"], json!(1));
-    assert_eq!(notes[0].call(), Some(Seq::new(revoked.request.0)));
+    assert_eq!(notes[0].call(), Some(Seq::new(revoked.request.get())));
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -109,9 +109,9 @@ async fn a_local_shell_runs_until_it_exits_and_is_journaled() {
 
     assert_eq!(ended.reason, EndReason::Exited);
     assert_eq!(ended.exit, Some(4));
-    assert_eq!(ended.session, opened["session"].as_u64().unwrap());
+    assert_eq!(ended.session.get(), opened["session"].as_u64().unwrap());
 
-    let request = Seq::new(outcome.request.0);
+    let request = Seq::new(outcome.request.get());
     let finished = time::timeout(LIMIT, finished_event(&journal, request))
         .await
         .unwrap();

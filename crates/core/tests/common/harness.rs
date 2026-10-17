@@ -100,7 +100,7 @@ impl Harness {
     }
 
     pub fn trail(&self, request: RequestSeq) -> Vec<Event> {
-        self.matching(&Filter::all().call(Seq::new(request.0)))
+        self.matching(&Filter::all().call(Seq::new(request.get())))
     }
 
     pub fn is_intact(&self) -> bool {
