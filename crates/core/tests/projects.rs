@@ -363,7 +363,10 @@ async fn a_project_target_resolves_through_its_via_chain() {
         .decide(&agent, exec("@orders/api-1"), ApprovalDecision::Deny)
         .await;
 
-    assert_eq!(question.target.as_ref().map(ResourceRef::as_str), Some("@orders/api-1"));
+    assert_eq!(
+        question.target.as_ref().map(ResourceRef::as_str),
+        Some("@orders/api-1")
+    );
     assert_eq!(
         question.destination.as_deref(),
         Some(
