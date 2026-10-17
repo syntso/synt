@@ -1,12 +1,10 @@
 mod expect;
 mod on_failure;
-mod one_line;
 mod retry;
 mod step;
 
 pub use expect::Expect;
 pub use on_failure::OnFailure;
-pub use one_line::OneLine;
 pub use retry::Retry;
 pub use step::{Step, StepAction};
 
@@ -14,7 +12,7 @@ use std::collections::BTreeSet;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use synt_proto::RunPhase;
+use synt_proto::{OneLine, RunPhase};
 
 use super::RunbookError;
 use super::param::{ParamName, ParamSpec};

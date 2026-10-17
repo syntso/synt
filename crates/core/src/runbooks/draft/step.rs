@@ -1,8 +1,9 @@
 use serde_json::{Map, Value};
+use synt_proto::OneLine;
 
 use super::placeholders::Placeholders;
 use crate::runbooks::RunbookError;
-use crate::runbooks::document::{OneLine, Step, StepAction};
+use crate::runbooks::document::{Step, StepAction};
 use crate::runbooks::template::{JsonTemplate, TextTemplate};
 
 const LONGEST_TITLE: usize = 80;

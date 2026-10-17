@@ -6,6 +6,7 @@ mod extension;
 mod handshake;
 mod method;
 mod name;
+mod one_line;
 mod resource_ref;
 mod rpc;
 mod runbook;
@@ -20,6 +21,7 @@ pub use extension::{PanelPosted, ViewPatched};
 pub use handshake::{ClientKind, Hello, ProtocolVersion, Welcome};
 pub use method::Method;
 pub use name::Name;
+pub use one_line::OneLine;
 pub use resource_ref::ResourceRef;
 pub use rpc::{
     ErrorCode, Message, Notice, Notification, Outcome, Request, RequestId, Response, RpcError,

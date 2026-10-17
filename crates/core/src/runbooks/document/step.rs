@@ -5,8 +5,9 @@ pub use action::StepAction;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use synt_proto::OneLine;
 
-use super::{Expect, OnFailure, OneLine, Retry};
+use super::{Expect, OnFailure, Retry};
 use crate::runbooks::RunbookError;
 use crate::runbooks::param::ParamName;
 use crate::runbooks::template::JsonTemplate;

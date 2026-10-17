@@ -1,7 +1,7 @@
 use synt_proto::ProtoError;
 use thiserror::Error;
 
-use crate::manifest::{AssetPath, ExtensionId, HttpHost, LocalId, OneLine, SecretName, Suffix};
+use crate::manifest::{AssetPath, ExtensionId, HttpHost, LocalId, SecretName, Suffix};
 
 #[derive(Debug, Error)]
 pub enum ManifestError {
@@ -19,8 +19,8 @@ pub enum ManifestError {
     )]
     LocalId(String),
 
-    #[error("{0:?} must be one line of at most {most} bytes", most = OneLine::LONGEST)]
-    NotOneLine(String),
+    #[error(transparent)]
+    NotOneLine(#[from] ProtoError),
 
     #[error("description is too long or holds control characters")]
     Description,

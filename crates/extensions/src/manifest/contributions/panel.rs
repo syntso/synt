@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use fields::PanelFields;
 use kind::PanelKind;
+use synt_proto::OneLine;
 
 use crate::ManifestError;
-use crate::manifest::{AssetPath, LocalId, OneLine};
+use crate::manifest::{AssetPath, LocalId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "PanelFields")]

@@ -2,9 +2,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
+use synt_proto::OneLine;
 
 use super::Drafted;
-use crate::runbooks::{Draft, DraftStep, OneLine, RunbookError, Runbooks};
+use crate::runbooks::{Draft, DraftStep, RunbookError, Runbooks};
 use crate::terminals::{Block, SessionId};
 
 const MOST_BLOCKS: usize = 100;
@@ -86,7 +87,7 @@ impl Action for RunbookFromBlocks {
         let blocks = terminal.blocks().await;
         let name = match params.name {
             Some(name) => name,
-            None => OneLine::new(DEFAULT_NAME)?,
+            None => OneLine::new(DEFAULT_NAME).map_err(RunbookError::NotOneLine)?,
         };
         let mut draft = Draft::new(name);
 

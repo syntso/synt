@@ -1,6 +1,7 @@
 use serde::Deserialize;
+use synt_proto::OneLine;
 
-use super::{Api, Capabilities, Contributions, Description, ExtensionId, OneLine};
+use super::{Api, Capabilities, Contributions, Description, ExtensionId};
 
 #[derive(Deserialize)]
 pub(super) struct Unchecked {

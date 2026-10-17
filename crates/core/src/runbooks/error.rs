@@ -12,8 +12,8 @@ use crate::CoreError;
 
 #[derive(Debug, Error)]
 pub enum RunbookError {
-    #[error("{text:?} must be 1 to {longest} characters on one line")]
-    NotOneLine { text: String, longest: usize },
+    #[error(transparent)]
+    NotOneLine(#[from] ProtoError),
 
     #[error(transparent)]
     BadName(Box<CoreError>),

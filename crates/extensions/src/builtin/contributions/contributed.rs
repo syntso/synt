@@ -1,6 +1,7 @@
 use serde::Serialize;
+use synt_proto::OneLine;
 
-use crate::manifest::{Contributions, ExtensionId, Manifest, OneLine};
+use crate::manifest::{Contributions, ExtensionId, Manifest};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct Contributed {

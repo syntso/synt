@@ -27,6 +27,9 @@ pub enum ProtoError {
     #[error("name contains a control character")]
     ControlCharacter,
 
+    #[error("{text:?} must be 1 to {longest} bytes on one line")]
+    NotOneLine { text: String, longest: usize },
+
     #[error("{0:?} is not an actor")]
     UnknownActor(String),
 }

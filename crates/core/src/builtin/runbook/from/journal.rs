@@ -7,8 +7,9 @@ use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use super::Drafted;
 use crate::CoreError;
-use crate::runbooks::{OneLine, RunbookError, Runbooks};
+use crate::runbooks::{RunbookError, Runbooks};
 use requests::Requests;
+use synt_proto::OneLine;
 
 const MOST_EVENTS: usize = 100;
 const DEFAULT_NAME: &str = "Steps from the journal";
@@ -62,7 +63,7 @@ impl Action for RunbookFromJournal {
         let journal = self.runbooks.journal().clone();
         let name = match params.name {
             Some(name) => name,
-            None => OneLine::new(DEFAULT_NAME)?,
+            None => OneLine::new(DEFAULT_NAME).map_err(RunbookError::NotOneLine)?,
         };
 
         let runbook = blocking::<_, _, CoreError>(move || {

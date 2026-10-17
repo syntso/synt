@@ -2,9 +2,10 @@ use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
 use synt_journal::{Event, EventKind, JournalReader, Seq};
+use synt_proto::OneLine;
 
 use crate::CoreError;
-use crate::runbooks::{Draft, DraftStep, OneLine, RunbookDocument, RunbookError};
+use crate::runbooks::{Draft, DraftStep, RunbookDocument, RunbookError};
 
 const PARAMS: &str = "params";
 

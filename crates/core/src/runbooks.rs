@@ -10,7 +10,6 @@ mod runs;
 mod shell;
 mod template;
 
-pub(crate) use document::OneLine;
 pub use document::RunbookDocument;
 pub(crate) use draft::{Draft, DraftStep};
 pub use error::RunbookError;

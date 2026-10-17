@@ -5,10 +5,10 @@ pub(crate) use step::PlannedStep;
 use serde_json::{Map, Value, json};
 use synt_actions::Handle;
 use synt_journal::{ActionId, Actor, Name};
-use synt_proto::RunPhase;
+use synt_proto::{OneLine, RunPhase};
 
 use super::RunbookError;
-use super::document::{OneLine, RunbookDocument, Step};
+use super::document::{RunbookDocument, Step};
 use super::param::Values;
 
 #[derive(Debug, Clone, PartialEq)]

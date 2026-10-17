@@ -4,10 +4,10 @@ mod step;
 
 pub(crate) use step::DraftStep;
 
-use synt_proto::RunPhase;
+use synt_proto::{OneLine, RunPhase};
 
 use super::RunbookError;
-use super::document::{OneLine, RunbookDocument, Step};
+use super::document::{RunbookDocument, Step};
 use placeholders::Placeholders;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,7 +54,9 @@ mod tests {
     use serde_json::{Map, Value, json};
 
     use super::{Draft, DraftStep};
-    use crate::runbooks::document::{OneLine, RunbookDocument};
+    use synt_proto::OneLine;
+
+    use crate::runbooks::document::RunbookDocument;
     use crate::runbooks::param::{ParamKind, Values};
     use crate::runbooks::template::JsonTemplate;
 

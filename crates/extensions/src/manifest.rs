@@ -8,7 +8,6 @@ mod event_topic;
 mod extension_id;
 mod http_host;
 mod local_id;
-mod one_line;
 mod secret_name;
 mod unchecked;
 
@@ -24,9 +23,9 @@ pub use event_topic::EventTopic;
 pub use extension_id::ExtensionId;
 pub use http_host::HttpHost;
 pub use local_id::LocalId;
-pub use one_line::OneLine;
 pub use secret_name::SecretName;
 
+use synt_proto::OneLine;
 use unchecked::Unchecked;
 
 use crate::{ExtensionError, ManifestError};
