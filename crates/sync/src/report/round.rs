@@ -1,12 +1,12 @@
 use serde::Serialize;
+use synt_journal::Timestamp;
 
 use super::Applied;
 use crate::SyncError;
-use crate::clock::unix_millis;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct RoundReport {
-    pub at: u64,
+    pub at: Timestamp,
     pub recorded: usize,
     pub pulled: usize,
     pub held: usize,
@@ -19,17 +19,17 @@ pub struct RoundReport {
 }
 
 impl RoundReport {
-    pub(crate) fn starting() -> Self {
+    pub(crate) fn starting(at: Timestamp) -> Self {
         Self {
-            at: unix_millis(),
+            at,
             ..Self::default()
         }
     }
 
-    pub(crate) fn failed(error: &SyncError) -> Self {
+    pub(crate) fn failed(error: &SyncError, at: Timestamp) -> Self {
         Self {
             error: Some(error.to_string()),
-            ..Self::starting()
+            ..Self::starting(at)
         }
     }
 }

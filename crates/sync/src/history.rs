@@ -15,13 +15,13 @@ use std::time::Duration;
 use rusqlite::{Connection, OptionalExtension, Params, Row, Transaction, params};
 
 use crate::SyncError;
-use crate::clock::unix_millis;
 use crate::document::Revision;
 use crate::id::{DocumentId, MemberId, ProjectId, RevisionId};
 use crate::merge::DocumentGraph;
 use crate::provider::{Cursor, Place, SealedRevision};
 use crate::report::ConflictInfo;
 use row::{FromRow, TypedRow};
+use synt_journal::Timestamp;
 
 const BUSY_WAIT: Duration = Duration::from_secs(5);
 const REVISION_COLUMNS: &str = "revision, document, parents, at, path, body, conflicts, author";
@@ -68,15 +68,16 @@ impl History {
         )
     }
 
-    pub(crate) fn enable(&self, project: &ProjectId, place: &Place) -> Result<(), SyncError> {
+    pub(crate) fn enable(
+        &self,
+        project: &ProjectId,
+        place: &Place,
+        at: Timestamp,
+    ) -> Result<(), SyncError> {
         self.lock().execute(
             "INSERT OR IGNORE INTO sync_projects (project, place, cursor, enabled_at) \
              VALUES (?1, ?2, '', ?3)",
-            params![
-                project.get(),
-                serde_json::to_string(place)?,
-                signed(unix_millis())
-            ],
+            params![project.get(), serde_json::to_string(place)?, at.as_millis()],
         )?;
 
         Ok(())

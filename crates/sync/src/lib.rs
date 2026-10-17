@@ -1,5 +1,4 @@
 mod canonical;
-mod clock;
 mod document;
 mod encoding;
 mod error;

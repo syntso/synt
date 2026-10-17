@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use synt_journal::JournalWriter;
+use synt_journal::{Clock, JournalWriter};
 use synt_platform::Vault;
 
 use super::notes::Notes;
@@ -22,6 +22,7 @@ pub(crate) struct Engine {
     vault: Arc<dyn Vault>,
     projects: Arc<dyn OpenProjects>,
     merger: Option<Arc<dyn DocumentMerger>>,
+    clock: Arc<dyn Clock>,
     notes: Notes,
     reports: Reports,
     work: Mutex<()>,
@@ -34,12 +35,14 @@ impl Engine {
         projects: Arc<dyn OpenProjects>,
         journal: Option<JournalWriter>,
         merger: Option<Arc<dyn DocumentMerger>>,
+        clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             history,
             vault,
             projects,
             merger,
+            clock,
             notes: Notes::new(journal),
             reports: Reports::default(),
             work: Mutex::default(),
@@ -62,7 +65,7 @@ impl Engine {
 
         let membership = Membership::new(Arc::clone(&self.vault), place.connect()?, id.clone())?;
         membership.join()?;
-        self.history.enable(id, place)?;
+        self.history.enable(id, place, self.clock.now())?;
 
         let synced = self.synced(id)?;
         self.round_of(&synced);
@@ -151,7 +154,7 @@ impl Engine {
                 .iter()
                 .map(|synced| self.round_of(synced))
                 .collect(),
-            Err(error) => vec![RoundReport::failed(&error)],
+            Err(error) => vec![RoundReport::failed(&error, self.clock.now())],
         }
     }
 
@@ -174,7 +177,7 @@ impl Engine {
     }
 
     fn round_of(&self, synced: &SyncedProject) -> RoundReport {
-        let mut report = RoundReport::starting();
+        let mut report = RoundReport::starting(self.clock.now());
 
         if let Err(error) = self.round_steps(synced, &mut report) {
             report.error = Some(error.to_string());
@@ -262,6 +265,7 @@ impl Engine {
             naming,
             membership.me(),
             self.merger.clone(),
+            Arc::clone(&self.clock),
         ))
     }
 
