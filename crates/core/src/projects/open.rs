@@ -38,14 +38,14 @@ impl OpenProject {
         path: &Path,
         changes: broadcast::Sender<ProjectChange>,
     ) -> Result<RecommendedWatcher, CoreError> {
-        let watched = Arc::downgrade(folder);
+        let owner = Arc::downgrade(folder);
         let cannot_watch = |source: notify::Error| CoreError::Watch {
             path: path.to_owned(),
             source,
         };
 
         let mut watcher = notify::recommended_watcher(move |event: notify::Result<Event>| {
-            Self::changed(&watched, event, &changes);
+            Self::changed(&owner, event, &changes);
         })
         .map_err(cannot_watch)?;
 

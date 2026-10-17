@@ -24,7 +24,7 @@ const LARGEST_SECRET: usize = 16 * 1024;
 #[derive(Debug, Clone)]
 pub struct Secrets {
     items: VaultItems<SecretItem>,
-    secrets: SecretTable,
+    table: SecretTable,
     keys: SshKeyTable,
 }
 
@@ -32,7 +32,7 @@ impl Secrets {
     pub fn new(vault: Arc<dyn Vault>, state: State) -> Self {
         Self {
             items: VaultItems::new(vault),
-            secrets: SecretTable::new(state.clone()),
+            table: SecretTable::new(state.clone()),
             keys: SshKeyTable::new(state),
         }
     }
@@ -51,26 +51,26 @@ impl Secrets {
         let info = SecretInfo::new(name, value.len(), SystemClock.now());
 
         self.items.write(name, value)?;
-        self.secrets.put(&info)?;
-        self.secrets.forget_use(name)?;
+        self.table.put(&info)?;
+        self.table.forget_use(name)?;
 
         Ok(info)
     }
 
     pub fn list(&self) -> Result<Vec<SecretInfo>, CoreError> {
-        self.secrets.all()
+        self.table.all()
     }
 
     pub fn remove(&self, name: &SecretName) -> Result<SecretInfo, CoreError> {
         let _change = self.items.change();
 
         let info = self
-            .secrets
+            .table
             .find(name)?
             .ok_or_else(|| CoreError::NoSecret(name.clone()))?;
 
         self.items.remove(name)?;
-        self.secrets.delete(name)?;
+        self.table.delete(name)?;
 
         Ok(info)
     }
@@ -102,7 +102,7 @@ impl Secrets {
         name: &SecretName,
         extension: &str,
     ) -> Result<Option<Zeroizing<Vec<u8>>>, CoreError> {
-        if self.secrets.find(name)?.is_none() {
+        if self.table.find(name)?.is_none() {
             return Ok(None);
         }
 
@@ -118,8 +118,8 @@ impl Secrets {
     fn claim(&self, name: &SecretName, used_for: &str) -> Result<(), CoreError> {
         let _change = self.items.change();
 
-        match self.secrets.use_of(name)? {
-            None => self.secrets.bind_use(name, used_for),
+        match self.table.use_of(name)? {
+            None => self.table.bind_use(name, used_for),
             Some(bound) if bound == used_for => Ok(()),
             Some(bound) => Err(CoreError::SecretKeptFor {
                 name: name.clone(),
