@@ -37,7 +37,7 @@ impl LoginCommand {
         Ok(Some(Self::parse(rest)?))
     }
 
-    pub fn parse(arguments: &[OsString]) -> Result<Self, CoreError> {
+    fn parse(arguments: &[OsString]) -> Result<Self, CoreError> {
         let usage = CoreError::CommandUsage {
             command: Self::NAME,
             choices: &[INSTALL, UNINSTALL, STATUS],

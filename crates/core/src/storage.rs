@@ -35,20 +35,6 @@ impl Storage {
         Self::prepare(data, vault)
     }
 
-    fn prepare(data: &Path, vault: Box<dyn Vault>) -> Result<Self, CoreError> {
-        let journals = data.join(JOURNALS);
-        synt_platform::create_private_directory(&journals)?;
-
-        let state = data.join(STATE);
-        synt_platform::create_private_directory(&state)?;
-
-        Ok(Self {
-            journals,
-            state,
-            vault: Arc::from(vault),
-        })
-    }
-
     pub fn open_journal(&self) -> Result<JournalWriter, CoreError> {
         let journal = self.journal()?;
 
@@ -60,22 +46,6 @@ impl Storage {
         );
 
         Ok(JournalWriter::spawn(journal)?)
-    }
-
-    fn journal(&self) -> Result<Journal, CoreError> {
-        let path = self.journals.join(JOURNAL_FILE);
-        let keys = Arc::new(JournalKeys::new(Arc::clone(&self.vault)));
-        let exists = path.try_exists()?;
-
-        match self.remembered_id()? {
-            Some(id) if exists => Ok(Journal::open(&path, id, keys)?),
-            Some(id) => self.resume(&path, id, keys),
-            None if exists => Err(CoreError::UnknownJournal {
-                journal: path,
-                place: self.vault.place(),
-            }),
-            None => self.create(&path, keys),
-        }
     }
 
     pub fn state(&self) -> Result<State, CoreError> {
@@ -92,6 +62,36 @@ impl Storage {
 
     pub fn grant_seal(&self) -> Result<GrantSeal, CoreError> {
         GrantSeal::open(Arc::clone(&self.vault))
+    }
+
+    fn prepare(data: &Path, vault: Box<dyn Vault>) -> Result<Self, CoreError> {
+        let journals = data.join(JOURNALS);
+        synt_platform::create_private_directory(&journals)?;
+
+        let state = data.join(STATE);
+        synt_platform::create_private_directory(&state)?;
+
+        Ok(Self {
+            journals,
+            state,
+            vault: Arc::from(vault),
+        })
+    }
+
+    fn journal(&self) -> Result<Journal, CoreError> {
+        let path = self.journals.join(JOURNAL_FILE);
+        let keys = Arc::new(JournalKeys::new(Arc::clone(&self.vault)));
+        let exists = path.try_exists()?;
+
+        match self.remembered_id()? {
+            Some(id) if exists => Ok(Journal::open(&path, id, keys)?),
+            Some(id) => self.resume(&path, id, keys),
+            None if exists => Err(CoreError::UnknownJournal {
+                journal: path,
+                place: self.vault.place(),
+            }),
+            None => self.create(&path, keys),
+        }
     }
 
     fn create(&self, path: &Path, keys: Arc<JournalKeys>) -> Result<Journal, CoreError> {
