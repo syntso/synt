@@ -163,6 +163,9 @@ pub enum SshError {
     #[error("refused a local connection: {limit} connections are already open through the tunnel")]
     TunnelBusy { limit: usize },
 
+    #[error("remote must be host:port, such as orders-db:5432, got {0:?}")]
+    NotARemote(String),
+
     #[error(transparent)]
     Io(Arc<io::Error>),
 }

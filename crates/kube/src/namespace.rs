@@ -5,14 +5,14 @@ pub use scope::NamespaceScope;
 use std::fmt::{self, Display, Formatter};
 
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::KubeError;
 
 const LONGEST: usize = 63;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, JsonSchema)]
-#[serde(try_from = "String")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(try_from = "String", into = "String")]
 pub struct Namespace(String);
 
 impl Namespace {
@@ -53,6 +53,12 @@ impl TryFrom<&str> for Namespace {
 
     fn try_from(text: &str) -> Result<Self, KubeError> {
         Self::try_from(text.to_owned())
+    }
+}
+
+impl From<Namespace> for String {
+    fn from(namespace: Namespace) -> Self {
+        namespace.0
     }
 }
 
