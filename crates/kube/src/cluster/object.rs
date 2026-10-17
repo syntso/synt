@@ -4,11 +4,12 @@ use serde_json::{Value, json};
 
 use crate::apply::Comparison;
 use crate::objects::Noise;
-use crate::{AppliedObject, Change, Deleted, Kind, KubeError, ObjectRef, Restarted, Scaled};
+use crate::{
+    AppliedObject, Change, Deleted, Kind, KubeError, ObjectRef, Replicas, Restarted, Scaled,
+};
 
 const FIELD_MANAGER: &str = "synt";
 const RESTARTED_AT: &str = "kubectl.kubernetes.io/restartedAt";
-const LARGEST_REPLICAS: u32 = 10_000;
 
 pub struct ClusterObject {
     kind: Kind,
@@ -39,15 +40,9 @@ impl ClusterObject {
         Ok(self.kind.tidy(object))
     }
 
-    pub async fn scale(self, replicas: u32) -> Result<Scaled, KubeError> {
-        if replicas > LARGEST_REPLICAS {
-            return Err(KubeError::invalid(format!(
-                "replicas must be at most {LARGEST_REPLICAS}, got {replicas}"
-            )));
-        }
-
+    pub async fn scale(self, replicas: Replicas) -> Result<Scaled, KubeError> {
         let before = self.api.get_scale(self.name()).await?;
-        let patch = json!({ "spec": { "replicas": replicas } });
+        let patch = json!({ "spec": { "replicas": replicas.get() } });
         let after = self
             .api
             .patch_scale(self.name(), &PatchParams::default(), &Patch::Merge(&patch))
@@ -130,13 +125,11 @@ impl ClusterObject {
         let live = self.live().await?;
         let applied = self.patch(object, &patch_params(force)).await?;
 
-        let change = match live.and_then(|live| live.metadata.resource_version) {
-            None => Change::Create,
-            Some(version) if applied.metadata.resource_version.as_ref() == Some(&version) => {
-                Change::Unchanged
-            }
-            Some(_) => Change::Update,
-        };
+        let before = live.and_then(|live| live.metadata.resource_version);
+        let change = Change::between(
+            before.as_deref(),
+            applied.metadata.resource_version.as_deref(),
+        );
 
         Ok(AppliedObject {
             object: self.reference,

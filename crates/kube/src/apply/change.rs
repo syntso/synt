@@ -7,3 +7,13 @@ pub enum Change {
     Update,
     Unchanged,
 }
+
+impl Change {
+    pub(crate) fn between(before: Option<&str>, after: Option<&str>) -> Self {
+        match before {
+            None => Self::Create,
+            Some(version) if after == Some(version) => Self::Unchanged,
+            Some(_) => Self::Update,
+        }
+    }
+}

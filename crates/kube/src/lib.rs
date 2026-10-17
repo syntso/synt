@@ -9,6 +9,7 @@ mod kubeconfig;
 mod logs;
 mod namespace;
 mod objects;
+mod replicas;
 mod transport;
 mod watch;
 
@@ -23,5 +24,6 @@ pub use kubeconfig::{ClusterPlace, ClusterSpec, ContextInfo, KubeconfigSource};
 pub use logs::{LogRequest, LogStream, LogText};
 pub use namespace::{Namespace, NamespaceScope};
 pub use objects::{EventLine, EventQuery, ListQuery, Listing, ObjectName, ObjectRef};
+pub use replicas::Replicas;
 pub use transport::{Dialer, Dialing, Duplex};
 pub use watch::{NoticeKind, Watch, WatchNotice, WatchRequest};

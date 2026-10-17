@@ -1,4 +1,4 @@
-use synt_kube::{Change, Manifest};
+use synt_kube::{Change, Manifest, Replicas};
 
 use crate::Lab;
 use crate::lab::ticker;
@@ -102,7 +102,10 @@ async fn a_deployment_scales_restarts_and_goes_away() {
     let deployments = lab.kind("deploy").await;
     let deployment = || lab.object(&deployments, "scaled");
 
-    let scaled = deployment().scale(3).await.unwrap();
+    let scaled = deployment()
+        .scale(Replicas::try_from(3).unwrap())
+        .await
+        .unwrap();
     let restarted = deployment().restart().await.unwrap();
     let live = deployment().get().await.unwrap();
     let pods = lab.kind("pods").await;
