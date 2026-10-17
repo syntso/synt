@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use synt_actions::{Description, Handle};
+use synt_actions::{ActionDescription, Handle};
 use synt_journal::ActionId;
 
 use super::Loaded;
@@ -64,7 +64,7 @@ impl Roster {
         read(&self.loaded).get(extension)?.handle(id)
     }
 
-    pub(crate) fn describe(&self) -> Vec<Description> {
+    pub(crate) fn describe(&self) -> Vec<ActionDescription> {
         read(&self.loaded)
             .values()
             .flat_map(|loaded| loaded.describe())

@@ -98,7 +98,7 @@ impl Action for K8sWatch {
         };
         let watch = cluster.watch(&kind, &request);
 
-        let about = json!({ "kind": kind.to_string(), "stream": params.stream.0 });
+        let about = json!({ "kind": kind.to_string(), "stream": params.stream.get() });
         self.kube
             .streams()
             .start(context, Self::ID, about, move |stop| async move {
@@ -109,7 +109,7 @@ impl Action for K8sWatch {
 
         Ok(StreamStarted {
             request: context.request().get(),
-            stream: params.stream.0,
+            stream: params.stream.get(),
         })
     }
 }

@@ -1,5 +1,9 @@
+use synt_proto::ResourceRef;
+
 use crate::codec::Encoder;
-use crate::model::{NewEvent, ResourceRef, Seq, Timestamp};
+use crate::event::NewEvent;
+use crate::seq::Seq;
+use crate::timestamp::Timestamp;
 
 const VERSION: u8 = 1;
 

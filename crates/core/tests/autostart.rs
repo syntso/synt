@@ -64,7 +64,7 @@ async fn a_running_core_is_reached_and_not_started_again() {
     let second = place.connect(&autostart).await.unwrap();
     let second_ping = second.call(ping()).await.unwrap();
 
-    assert!(second_ping.request.0 > first_ping.request.0);
+    assert!(second_ping.request.get() > first_ping.request.get());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -82,10 +82,7 @@ async fn the_core_must_be_named_by_an_absolute_path() {
 
     let refused = place.connect(&Autostart::core().program("synt-core")).await;
 
-    assert!(matches!(
-        refused,
-        Err(ClientError::CoreStart { reason, .. }) if reason.contains("absolute path")
-    ));
+    assert!(matches!(refused, Err(ClientError::CoreNotAbsolute { .. })));
 }
 
 #[tokio::test(flavor = "multi_thread")]

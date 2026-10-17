@@ -9,8 +9,8 @@ use serde_json::{Value, json};
 use synt_journal::Actor;
 use synt_platform::{AppCheck, LocalStream, Peer};
 use synt_proto::{
-    ActionCall, ApprovalAnswer, ErrorCode, Frame, FrameReader, Message, Method, Request, Response,
-    RpcError, split_framed,
+    ActionCall, ApprovalAnswer, ErrorCode, Frame, FrameCodec, FrameReader, Message, Method,
+    Request, Response, RpcError,
 };
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio::time;
@@ -52,7 +52,7 @@ impl Session {
     ) {
         let peer = stream.peer().await;
 
-        let (mut incoming, outgoing) = split_framed(stream, REQUEST_FRAME_LIMIT);
+        let (mut incoming, outgoing) = FrameCodec::split(stream, REQUEST_FRAME_LIMIT);
         let (replies, queue) = mpsc::channel(OUTGOING_BACKLOG);
         let (frames, streams) = mpsc::channel(STREAM_BACKLOG);
         let writer = tokio::spawn(outgoing::write_all(outgoing, queue, streams));

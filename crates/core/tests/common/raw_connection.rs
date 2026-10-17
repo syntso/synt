@@ -6,8 +6,8 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use synt_platform::{Endpoint, LocalStream};
 use synt_proto::{
-    Frame, FrameCodec, FrameError, FrameReader, FrameWriter, Hello, Message, Method, Outcome,
-    Request, RequestId, Response, split_framed,
+    Frame, FrameCodec, FrameReader, FrameWriter, Hello, Message, Method, Outcome, ProtoError,
+    Request, RequestId, Response,
 };
 use tokio::time;
 
@@ -23,7 +23,7 @@ pub struct RawConnection {
 impl RawConnection {
     pub async fn open(endpoint: &Endpoint) -> Self {
         let stream = LocalStream::connect(endpoint).await.unwrap();
-        let (incoming, outgoing) = split_framed(stream, FrameCodec::DEFAULT_LIMIT);
+        let (incoming, outgoing) = FrameCodec::split(stream, FrameCodec::DEFAULT_LIMIT);
 
         Self { incoming, outgoing }
     }
@@ -31,7 +31,7 @@ impl RawConnection {
     pub async fn greeted(endpoint: &Endpoint) -> Self {
         let mut connection = Self::open(endpoint).await;
 
-        connection.hello(RequestId(0), &app_hello()).await;
+        connection.hello(RequestId::new(0), &app_hello()).await;
         let welcome = connection.receive().await;
 
         assert!(matches!(welcome.outcome, Outcome::Result(_)));
@@ -82,7 +82,7 @@ impl RawConnection {
         !matches!(frame, Some(Ok(_)))
     }
 
-    async fn next_frame(&mut self) -> Option<Result<Frame, FrameError>> {
+    async fn next_frame(&mut self) -> Option<Result<Frame, ProtoError>> {
         let Ok(frame) = time::timeout(ANSWER_LIMIT, self.incoming.next()).await else {
             panic!("the core did not answer in time");
         };

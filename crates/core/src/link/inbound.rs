@@ -80,7 +80,7 @@ impl Inbound {
 
         let credit = Frame::Stream {
             stream: self.stream,
-            data: Credit(self.granted).encode(),
+            data: Credit::new(self.granted).encode(),
         };
 
         let sent = time::timeout(SILENCE_LIMIT, self.link.frames().send(credit)).await;
@@ -101,6 +101,6 @@ impl Drop for Inbound {
 pub(super) fn unusable(stream: StreamId) -> ActionError {
     ActionError::InvalidParams(format!(
         "stream {} is not free, or was not opened by the client",
-        stream.0
+        stream.get()
     ))
 }

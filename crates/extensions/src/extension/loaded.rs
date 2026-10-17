@@ -1,6 +1,6 @@
 use std::sync::{Arc, OnceLock};
 
-use synt_actions::{Description, Handle, Risk};
+use synt_actions::{ActionDescription, Handle, Risk};
 use synt_journal::ActionId;
 
 use super::{ActionSpec, ExtensionAction, Guest};
@@ -71,7 +71,7 @@ impl Loaded {
             .cloned()
     }
 
-    pub(crate) fn describe(&self) -> Vec<Description> {
+    pub(crate) fn describe(&self) -> Vec<ActionDescription> {
         self.handles.iter().map(Handle::describe).collect()
     }
 

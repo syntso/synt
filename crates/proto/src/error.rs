@@ -2,8 +2,10 @@ use std::io;
 
 use thiserror::Error;
 
+use crate::Name;
+
 #[derive(Debug, Error)]
-pub enum FrameError {
+pub enum ProtoError {
     #[error("connection: {0}")]
     Io(#[from] io::Error),
 
@@ -15,4 +17,16 @@ pub enum FrameError {
 
     #[error("frame is too short for its kind")]
     Truncated,
+
+    #[error("name is empty")]
+    EmptyName,
+
+    #[error("name is {len} bytes, the limit is {}", Name::MAX_LEN)]
+    LongName { len: usize },
+
+    #[error("name contains a control character")]
+    ControlCharacter,
+
+    #[error("{0:?} is not an actor")]
+    UnknownActor(String),
 }

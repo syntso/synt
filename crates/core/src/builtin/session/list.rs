@@ -4,7 +4,6 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::SessionInfo;
-use crate::broker::requester;
 use crate::clock::milliseconds;
 use crate::terminal::{Terminal, Terminals};
 
@@ -54,7 +53,7 @@ async fn describe(terminal: &Arc<Terminal>) -> SessionInfo {
             .as_ref()
             .map(|target| target.as_str().to_owned()),
         host: terminal.host(),
-        actor: requester(&origin.actor),
+        actor: origin.actor.clone(),
         risk: origin.risk,
         columns: size.columns,
         rows: size.rows,

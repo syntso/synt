@@ -67,7 +67,7 @@ impl Autostart {
 
         self.launch(&program, endpoint).await?;
 
-        wait_for(endpoint)
+        Self::wait_for(endpoint)
             .await
             .ok_or_else(|| ClientError::CoreSilent {
                 program: program.display().to_string(),
@@ -77,13 +77,13 @@ impl Autostart {
 
     fn resolve(&self) -> Result<PathBuf, ClientError> {
         if let Some(program) = &self.program {
-            return absolute(program.clone());
+            return Self::absolute(program.clone());
         }
 
         if cfg!(debug_assertions)
             && let Some(program) = env::var_os(CORE_VARIABLE)
         {
-            return absolute(PathBuf::from(program));
+            return Self::absolute(PathBuf::from(program));
         }
 
         let running = env::current_exe().map_err(ClientError::CoreNotFound)?;
@@ -104,40 +104,39 @@ impl Autostart {
         let launched = program.to_owned();
         let started = task::spawn_blocking(move || start_detached(&launched, &arguments)).await;
 
-        let reason = match started {
+        let source = match started {
             Ok(Ok(())) => return Ok(()),
-            Ok(Err(error)) => error.to_string(),
-            Err(error) => error.to_string(),
+            Ok(Err(error)) => error,
+            Err(error) => io::Error::other(error),
         };
 
         Err(ClientError::CoreStart {
             program: program.display().to_string(),
-            reason,
+            source,
         })
     }
-}
 
-fn absolute(program: PathBuf) -> Result<PathBuf, ClientError> {
-    if program.is_absolute() {
-        return Ok(program);
-    }
-
-    Err(ClientError::CoreStart {
-        program: program.display().to_string(),
-        reason: "the core must be named by an absolute path".to_owned(),
-    })
-}
-
-async fn wait_for(endpoint: &Endpoint) -> Option<LocalStream> {
-    let deadline = time::Instant::now() + PATIENCE;
-
-    while time::Instant::now() < deadline {
-        if let Ok(stream) = LocalStream::connect(endpoint).await {
-            return Some(stream);
+    fn absolute(program: PathBuf) -> Result<PathBuf, ClientError> {
+        if program.is_absolute() {
+            return Ok(program);
         }
 
-        time::sleep(RETRY_PAUSE).await;
+        Err(ClientError::CoreNotAbsolute {
+            program: program.display().to_string(),
+        })
     }
 
-    None
+    async fn wait_for(endpoint: &Endpoint) -> Option<LocalStream> {
+        let deadline = time::Instant::now() + PATIENCE;
+
+        while time::Instant::now() < deadline {
+            if let Ok(stream) = LocalStream::connect(endpoint).await {
+                return Some(stream);
+            }
+
+            time::sleep(RETRY_PAUSE).await;
+        }
+
+        None
+    }
 }

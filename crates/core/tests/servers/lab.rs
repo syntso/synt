@@ -85,7 +85,7 @@ impl Lab {
     }
 
     pub fn trail(&self, request: RequestSeq) -> Vec<Event> {
-        self.events(&Filter::all().call(Seq::new(request.0)))
+        self.events(&Filter::all().call(Seq::new(request.get())))
     }
 
     pub fn kinds(&self, request: RequestSeq) -> Vec<EventKind> {

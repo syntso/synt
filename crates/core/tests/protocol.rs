@@ -16,11 +16,11 @@ async fn a_request_before_hello_is_refused_and_the_connection_closes() {
     let mut connection = RawConnection::open(harness.endpoint()).await;
 
     connection
-        .request(RequestId(1), Method::ActionCall, &ping())
+        .request(RequestId::new(1), Method::ActionCall, &ping())
         .await;
     let response = connection.receive().await;
 
-    assert_eq!(response.id, Some(RequestId(1)));
+    assert_eq!(response.id, Some(RequestId::new(1)));
     assert_eq!(error(response.outcome).code, ErrorCode::HANDSHAKE_REQUIRED);
     assert!(connection.is_closed().await);
     assert!(harness.events().is_empty());
@@ -44,11 +44,11 @@ async fn hello_is_answered_with_a_welcome() {
     let harness = Harness::start();
     let mut connection = RawConnection::open(harness.endpoint()).await;
 
-    connection.hello(RequestId(7), &app_hello()).await;
+    connection.hello(RequestId::new(7), &app_hello()).await;
     let response = connection.receive().await;
     let welcome: Welcome = serde_json::from_value(response.outcome.into_result().unwrap()).unwrap();
 
-    assert_eq!(response.id, Some(RequestId(7)));
+    assert_eq!(response.id, Some(RequestId::new(7)));
     assert_eq!(welcome.protocol, ProtocolVersion::CURRENT);
 }
 
@@ -63,7 +63,7 @@ async fn another_major_version_is_refused() {
         minor: 0,
     };
 
-    connection.hello(RequestId(1), &future).await;
+    connection.hello(RequestId::new(1), &future).await;
     let response = connection.receive().await;
 
     assert_eq!(error(response.outcome).code, ErrorCode::PROTOCOL_MISMATCH);
@@ -78,7 +78,7 @@ async fn a_newer_minor_version_is_welcomed() {
     let mut newer = app_hello();
     newer.protocol.minor += 1;
 
-    connection.hello(RequestId(1), &newer).await;
+    connection.hello(RequestId::new(1), &newer).await;
     let response = connection.receive().await;
 
     assert!(response.outcome.into_result().is_ok());
@@ -93,7 +93,7 @@ async fn garbage_after_hello_is_a_parse_error_and_the_connection_survives() {
     let garbage = connection.receive().await;
 
     connection
-        .request(RequestId(2), Method::ActionCall, &ping())
+        .request(RequestId::new(2), Method::ActionCall, &ping())
         .await;
     let answered = connection.receive().await;
     let outcome: ActionOutcome =
@@ -102,8 +102,8 @@ async fn garbage_after_hello_is_a_parse_error_and_the_connection_survives() {
 
     assert_eq!(garbage.id, None);
     assert_eq!(error(garbage.outcome).code, ErrorCode::PARSE_ERROR);
-    assert_eq!(answered.id, Some(RequestId(2)));
-    assert_eq!(outcome.request, RequestSeq(1));
+    assert_eq!(answered.id, Some(RequestId::new(2)));
+    assert_eq!(outcome.request, RequestSeq::new(1));
     assert_eq!(pong.request, outcome.request);
 }
 
@@ -126,11 +126,11 @@ async fn an_unknown_method_is_not_found() {
     let mut connection = RawConnection::greeted(harness.endpoint()).await;
 
     connection
-        .request_named(RequestId(3), "core.shutdown", json!({}))
+        .request_named(RequestId::new(3), "core.shutdown", json!({}))
         .await;
     let response = connection.receive().await;
 
-    assert_eq!(response.id, Some(RequestId(3)));
+    assert_eq!(response.id, Some(RequestId::new(3)));
     assert_eq!(error(response.outcome).code, ErrorCode::METHOD_NOT_FOUND);
     assert!(harness.events().is_empty());
 }
@@ -140,7 +140,7 @@ async fn a_second_hello_is_an_invalid_request() {
     let harness = Harness::start();
     let mut connection = RawConnection::greeted(harness.endpoint()).await;
 
-    connection.hello(RequestId(4), &app_hello()).await;
+    connection.hello(RequestId::new(4), &app_hello()).await;
     let response = connection.receive().await;
 
     assert_eq!(error(response.outcome).code, ErrorCode::INVALID_REQUEST);
@@ -152,7 +152,11 @@ async fn malformed_call_params_are_invalid_and_leave_no_trace() {
     let mut connection = RawConnection::greeted(harness.endpoint()).await;
 
     connection
-        .request(RequestId(5), Method::ActionCall, &json!({ "params": 1 }))
+        .request(
+            RequestId::new(5),
+            Method::ActionCall,
+            &json!({ "params": 1 }),
+        )
         .await;
     let response = connection.receive().await;
 

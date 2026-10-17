@@ -89,7 +89,7 @@ impl Action for SshSessionOpen {
 
         let opened = self.shell(&target, term, size).await?;
 
-        let id = SessionId::from(context.request());
+        let id = SessionId::new(context.request().get());
         let origin = Origin {
             action: Self::ID,
             actor: context.actor().clone(),

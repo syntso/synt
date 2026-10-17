@@ -29,7 +29,7 @@ impl Rule {
     }
 
     pub(super) fn for_call(actor: &Actor, risk: Risk) -> Self {
-        let personal = matches!(actor, Actor::Person | Actor::Core);
+        let personal = actor.acts_for_person();
 
         match risk {
             Risk::Read => Self::Allow,

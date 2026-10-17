@@ -11,7 +11,7 @@ use synt_actions::Action;
 use synt_core::{Broker, Core, CoreCaller, CoreScreen};
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Actor, EventKind, Filter, Name, ResourceRef, Seq};
-use synt_proto::{ActionCall, ApprovalDecision, ErrorCode, Requester, RiskLevel};
+use synt_proto::{ActionCall, ApprovalDecision, ErrorCode, Risk};
 
 const SAMPLE: &str = include_str!("../../extensions/tests/fixtures/sample.wat");
 const MANIFEST: &str = r#"
@@ -96,15 +96,18 @@ async fn the_person_is_asked_before_an_extension_writes_on_their_behalf() {
         .decide(&app, uptime(), ApprovalDecision::AllowOnce)
         .await;
 
-    assert_eq!(question.actor, Requester::Plugin("t".to_owned()));
-    assert_eq!(question.on_behalf_of, Some(Requester::Person));
+    assert_eq!(question.actor, Actor::Plugin(Name::new("t").unwrap()));
+    assert_eq!(question.on_behalf_of, Some(Actor::Person));
     assert_eq!(question.action, ExecStub::ID);
-    assert_eq!(question.target.as_deref(), Some(HOST));
+    assert_eq!(
+        question.target.as_ref().map(ResourceRef::as_str),
+        Some(HOST)
+    );
     assert_eq!(
         question.destination.as_deref(),
         Some("synt-test = root@203.0.113.7:22")
     );
-    assert_eq!(question.risk, RiskLevel::Write);
+    assert_eq!(question.risk, Risk::Write);
     assert_eq!(question.params, json!({ "command": "uptime" }));
     assert_eq!(
         outcome.unwrap().value,
@@ -121,7 +124,7 @@ async fn a_nested_call_is_journaled_as_the_extension_under_the_call_that_made_it
     let outer = approver
         .approve(&app, uptime(), ApprovalDecision::AllowOnce)
         .await;
-    let outer_seq = Seq::new(outer.request.0);
+    let outer_seq = Seq::new(outer.request.get());
     let nested = harness
         .matching(&Filter::all().kind(EventKind::Requested))
         .into_iter()
@@ -203,8 +206,8 @@ async fn an_extension_is_asked_for_every_privileged_call() {
         .decide(&app, privileged(), ApprovalDecision::AllowOnce)
         .await;
 
-    assert_eq!(first.risk, RiskLevel::Privileged);
-    assert_eq!(second.risk, RiskLevel::Privileged);
+    assert_eq!(first.risk, Risk::Privileged);
+    assert_eq!(second.risk, Risk::Privileged);
     assert!(second.id > first.id);
     assert!(outcome.is_ok());
 }
@@ -228,12 +231,12 @@ async fn an_agent_using_an_extension_is_asked_for_both_calls() {
         .unwrap();
     let outcome = running.await.unwrap();
 
-    assert_eq!(outer.actor, Requester::Agent("deploy-bot".to_owned()));
+    assert_eq!(outer.actor, Actor::Agent(Name::new("deploy-bot").unwrap()));
     assert_eq!(outer.action, "t.call");
-    assert_eq!(nested.actor, Requester::Plugin("t".to_owned()));
+    assert_eq!(nested.actor, Actor::Plugin(Name::new("t").unwrap()));
     assert_eq!(
         nested.on_behalf_of,
-        Some(Requester::Agent("deploy-bot".to_owned()))
+        Some(Actor::Agent(Name::new("deploy-bot").unwrap()))
     );
     assert!(outcome.is_ok());
 }

@@ -19,7 +19,7 @@ pub struct Ending {
 impl Ending {
     pub(crate) fn notice(&self, stream: StreamId) -> SessionEnded {
         SessionEnded {
-            session: self.session.get(),
+            session: self.session,
             stream,
             reason: self.reason,
             exit: self.exit,

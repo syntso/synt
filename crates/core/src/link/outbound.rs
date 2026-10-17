@@ -40,7 +40,7 @@ impl Outbound {
             stream,
             frames: link.frames(),
             credits,
-            allowed: Credit::OPENING.0,
+            allowed: Credit::OPENING.get(),
             sent: 0,
         })
     }
@@ -75,7 +75,7 @@ impl Outbound {
 
         let credit = Credit::decode(&data)
             .ok_or_else(|| ActionError::failed("the client sent a malformed credit"))?;
-        self.allowed = self.allowed.max(credit.0);
+        self.allowed = self.allowed.max(credit.get());
 
         Ok(())
     }

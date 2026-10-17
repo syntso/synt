@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use super::{Notification, Request, Response, RpcError};
 
@@ -19,7 +19,9 @@ impl Message {
             return Err(RpcError::invalid_request("a message must be a JSON object"));
         };
 
-        let message = match (fields.contains_key("method"), has_id(fields)) {
+        let has_id = fields.get("id").is_some_and(|id| !id.is_null());
+
+        let message = match (fields.contains_key("method"), has_id) {
             (true, true) => serde_json::from_value(value).map(Self::Request),
             (true, false) => serde_json::from_value(value).map(Self::Notification),
             (false, _) => serde_json::from_value(value).map(Self::Response),
@@ -57,10 +59,6 @@ impl From<Notification> for Message {
     }
 }
 
-fn has_id(fields: &Map<String, Value>) -> bool {
-    fields.get("id").is_some_and(|id| !id.is_null())
-}
-
 #[cfg(test)]
 mod tests {
     use serde_json::{Value, json};
@@ -76,14 +74,17 @@ mod tests {
     #[test]
     fn requests_responses_and_notifications_round_trip() {
         let request = Request::new(
-            RequestId(1),
+            RequestId::new(1),
             Method::ActionCall,
             &json!({ "action": "core.ping" }),
         )
         .unwrap();
-        let success = Response::new(Some(RequestId(1)), Outcome::Result(json!({ "pong": true })));
+        let success = Response::new(
+            Some(RequestId::new(1)),
+            Outcome::Result(json!({ "pong": true })),
+        );
         let failure = Response::new(
-            Some(RequestId(2)),
+            Some(RequestId::new(2)),
             Outcome::Error(RpcError::new(ErrorCode::DENIED, "no")),
         );
         let event = Notification::new("journal.appended", json!({ "seq": 7 }));
@@ -95,7 +96,7 @@ mod tests {
 
     #[test]
     fn wire_format_is_json_rpc() {
-        let request = Request::new(RequestId(5), Method::Hello, &json!({})).unwrap();
+        let request = Request::new(RequestId::new(5), Method::Hello, &json!({})).unwrap();
         let bytes = Message::from(request).encode().unwrap();
         let value: Value = serde_json::from_slice(&bytes).unwrap();
 

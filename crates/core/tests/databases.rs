@@ -13,7 +13,7 @@ use synt_core::{
     Broker, Core, Databases, ProjectOpen, Projects, SecretList, SecretPut, SecretRemove, Secrets,
 };
 use synt_journal::EventKind;
-use synt_proto::{ActionCall, ActionOutcome, ApprovalDecision, ErrorCode, RiskLevel};
+use synt_proto::{ActionCall, ActionOutcome, ApprovalDecision, ErrorCode, Risk};
 use synt_ssh::Pool;
 
 const PROJECT_FILE: &str = "id = \"6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d6d\"\nname = \"Shop\"\n";
@@ -193,7 +193,7 @@ async fn a_write_from_an_agent_waits_for_the_person_and_a_denial_changes_nothing
         )
         .await;
 
-    assert_eq!(question.risk, RiskLevel::Write);
+    assert_eq!(question.risk, Risk::Write);
     assert_eq!(
         question.params["sql"],
         json!("DELETE FROM orders WHERE total > 15")
@@ -238,7 +238,7 @@ async fn schema_changes_and_unreadable_text_are_asked_as_privileged() {
             .decide(&agent, query(sql), ApprovalDecision::Deny)
             .await;
 
-        assert_eq!(question.risk, RiskLevel::Privileged, "{sql}");
+        assert_eq!(question.risk, Risk::Privileged, "{sql}");
         assert_eq!(rejection(outcome).code, ErrorCode::DENIED, "{sql}");
     }
 
@@ -366,12 +366,12 @@ async fn database_actions_are_described_with_their_risks_and_params() {
     let described = agent.describe().await.unwrap();
     let find = |id: &str| described.iter().find(|action| action.id == id).unwrap();
 
-    assert_eq!(find("db.query").risk, RiskLevel::Write);
+    assert_eq!(find("db.query").risk, Risk::Write);
     assert!(find("db.query").params.to_string().contains("\"sql\""));
-    assert_eq!(find("db.schema").risk, RiskLevel::Read);
-    assert_eq!(find("db.tables").risk, RiskLevel::Read);
-    assert_eq!(find("db.explain").risk, RiskLevel::Read);
-    assert_eq!(find("db.ping").risk, RiskLevel::Read);
+    assert_eq!(find("db.schema").risk, Risk::Read);
+    assert_eq!(find("db.tables").risk, Risk::Read);
+    assert_eq!(find("db.explain").risk, Risk::Read);
+    assert_eq!(find("db.ping").risk, Risk::Read);
     assert!(find("db.ping").takes_target);
     assert!(described.iter().all(|action| action.id != "secret.put"));
 }

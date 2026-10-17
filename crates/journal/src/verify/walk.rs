@@ -1,10 +1,10 @@
 use super::{Damage, Verification};
-use crate::anchor::Mark;
-use crate::chain::Linker;
+use crate::anchors::Mark;
+use crate::chain::Chain;
 use crate::store::RowView;
 
 pub(crate) struct Walk<'a> {
-    linker: &'a Linker,
+    chain: &'a Chain,
     head: Mark,
     previous: Mark,
     checked: u64,
@@ -12,9 +12,9 @@ pub(crate) struct Walk<'a> {
 }
 
 impl<'a> Walk<'a> {
-    pub(crate) fn new(linker: &'a Linker, start: Mark, head: Mark) -> Self {
+    pub(crate) fn new(chain: &'a Chain, start: Mark, head: Mark) -> Self {
         Self {
-            linker,
+            chain,
             head,
             previous: start,
             checked: 0,
@@ -39,7 +39,7 @@ impl<'a> Walk<'a> {
         let fields = row.fields().ok_or(altered)?;
 
         fields.write(&mut self.scratch);
-        let link = self.linker.link(&self.previous.link, &self.scratch);
+        let link = self.chain.link(&self.previous.link, &self.scratch);
 
         if row.link != Some(link) {
             return Err(altered);

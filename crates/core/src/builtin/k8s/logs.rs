@@ -91,7 +91,7 @@ impl K8sLogs {
             "pod": request.pod,
             "namespace": request.namespace.as_deref().unwrap_or(cluster.namespace()),
             "container": request.container,
-            "stream": stream.0,
+            "stream": stream.get(),
         });
         self.kube
             .streams()
@@ -103,7 +103,7 @@ impl K8sLogs {
 
         Ok(Logs::Followed(StreamStarted {
             request: context.request().get(),
-            stream: stream.0,
+            stream: stream.get(),
         }))
     }
 }

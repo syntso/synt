@@ -11,8 +11,9 @@ use synt_proto::{
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::broadcast;
 
+use crate::credit::{Receiving, Sending};
 use crate::transport::{Connection, Duplex};
-use crate::{Autostart, ClientError, StreamReceiver, Transferred, transfer};
+use crate::{Autostart, ClientError, StreamReceiver, Transferred};
 
 #[derive(Clone)]
 pub struct Client {
@@ -41,7 +42,7 @@ impl Client {
 
     pub async fn call(&self, call: ActionCall) -> Result<ActionOutcome, ClientError> {
         let reply = self.connection.request(Method::ActionCall, &call).await?;
-        expect_shape(reply)
+        Self::shaped(reply)
     }
 
     pub async fn describe(&self) -> Result<Vec<ActionDescription>, ClientError> {
@@ -50,7 +51,7 @@ impl Client {
             .request(Method::ActionsDescribe, &json!({}))
             .await?;
 
-        expect_shape(reply)
+        Self::shaped(reply)
     }
 
     pub fn notifications(&self) -> broadcast::Receiver<Notification> {
@@ -88,7 +89,9 @@ impl Client {
         source: R,
         size: u64,
     ) -> Result<Transferred, ClientError> {
-        transfer::send(&self.connection, stream, source, size).await
+        Sending::new(&self.connection, stream)
+            .read_from(source, size)
+            .await
     }
 
     pub async fn receive_credited<W: AsyncWrite + Unpin>(
@@ -96,24 +99,26 @@ impl Client {
         stream: &mut StreamReceiver,
         sink: W,
     ) -> Result<Transferred, ClientError> {
-        transfer::receive(&self.connection, stream, sink).await
+        Receiving::new(&self.connection, stream)
+            .write_to(sink)
+            .await
     }
 
     async fn start(stream: impl Duplex + 'static, hello: Hello) -> Result<Self, ClientError> {
         let connection = Connection::open(stream);
 
         let reply = connection.request(Method::Hello, &hello).await?;
-        let welcome: Welcome = expect_shape(reply)?;
+        let welcome: Welcome = Self::shaped(reply)?;
 
         Ok(Self {
             connection: Arc::new(connection),
             welcome: Arc::new(welcome),
         })
     }
-}
 
-fn expect_shape<T: DeserializeOwned>(reply: Value) -> Result<T, ClientError> {
-    serde_json::from_value(reply).map_err(|error| ClientError::UnexpectedReply(error.to_string()))
+    fn shaped<T: DeserializeOwned>(reply: Value) -> Result<T, ClientError> {
+        serde_json::from_value(reply).map_err(ClientError::UnexpectedReply)
+    }
 }
 
 #[cfg(test)]
@@ -123,8 +128,8 @@ mod tests {
     use futures_util::{SinkExt, StreamExt};
     use serde_json::{Value, json};
     use synt_proto::{
-        ActionCall, ClientKind, ErrorCode, Frame, FrameCodec, Hello, Message, Method,
-        ProtocolVersion, Request, RequestId, Requester, Response, RpcError, Welcome,
+        ActionCall, Actor, ClientKind, ErrorCode, Frame, FrameCodec, Hello, Message, Method,
+        ProtocolVersion, Request, RequestId, Response, RpcError, Welcome,
     };
     use tokio::io::DuplexStream;
     use tokio::time;
@@ -173,7 +178,7 @@ mod tests {
             let welcome = Welcome {
                 protocol: ProtocolVersion::CURRENT,
                 core: "test".to_owned(),
-                actor: Requester::Person,
+                actor: Actor::Person,
             };
             self.reply(hello.id, Ok(serde_json::to_value(welcome).unwrap()))
                 .await;
@@ -190,7 +195,7 @@ mod tests {
 
     fn outcome(request: &Request) -> Value {
         let call: ActionCall = request.params().unwrap();
-        json!({ "request": request.id.0, "value": call.action })
+        json!({ "request": request.id.get(), "value": call.action })
     }
 
     async fn connected() -> (Client, FakeCore) {

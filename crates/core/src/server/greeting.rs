@@ -8,7 +8,6 @@ use synt_proto::{
 };
 
 use crate::VERSION;
-use crate::broker::requester;
 
 const UNVERIFIED_APP: &str = "unverified-app";
 
@@ -78,7 +77,7 @@ async fn greet(hello: Hello, peer: io::Result<Peer>, apps: &AppCheck) -> Greeted
     let welcome = Welcome {
         protocol: ProtocolVersion::CURRENT,
         core: VERSION.to_owned(),
-        actor: requester(&actor),
+        actor: actor.clone(),
     };
     let welcome = serde_json::to_value(welcome)
         .map_err(|_| RpcError::internal("the welcome cannot be encoded"))?;
@@ -125,7 +124,7 @@ mod tests {
     use super::{agent, read_hello};
 
     fn encoded(hello: &Hello) -> Vec<u8> {
-        let request = Request::new(RequestId(1), Method::Hello, hello).unwrap();
+        let request = Request::new(RequestId::new(1), Method::Hello, hello).unwrap();
         Message::from(request).encode().unwrap().to_vec()
     }
 
@@ -155,7 +154,7 @@ mod tests {
 
     #[test]
     fn anything_else_first_is_refused() {
-        let call = Request::new(RequestId(1), Method::ActionCall, &json!({})).unwrap();
+        let call = Request::new(RequestId::new(1), Method::ActionCall, &json!({})).unwrap();
         let body = Message::from(call).encode().unwrap();
 
         let (_, hello) = read_hello(&body);
@@ -165,7 +164,7 @@ mod tests {
 
     #[test]
     fn a_first_response_is_refused_without_an_id() {
-        let response = Response::new(Some(RequestId(9)), Ok(json!(null)));
+        let response = Response::new(Some(RequestId::new(9)), Ok(json!(null)));
         let body = Message::from(response).encode().unwrap();
 
         let (id, hello) = read_hello(&body);
@@ -178,7 +177,7 @@ mod tests {
     fn a_hello_is_answered_under_its_own_id() {
         let (id, hello) = read_hello(&encoded(&Hello::new(ClientKind::App, "test")));
 
-        assert_eq!(id, Some(RequestId(1)));
+        assert_eq!(id, Some(RequestId::new(1)));
         assert_eq!(hello.unwrap().client, ClientKind::App);
     }
 }

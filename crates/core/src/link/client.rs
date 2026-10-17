@@ -39,7 +39,7 @@ impl Link {
     }
 
     pub(crate) fn open_stream(&self, input: mpsc::Sender<Bytes>) -> StreamId {
-        let stream = StreamId(self.next_stream.fetch_add(1, Ordering::Relaxed));
+        let stream = StreamId::new(self.next_stream.fetch_add(1, Ordering::Relaxed));
         let route = Route {
             input,
             delivery: Delivery::Lossy,

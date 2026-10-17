@@ -1,5 +1,5 @@
 use serde_json::json;
-use synt_proto::RiskLevel;
+use synt_proto::Risk;
 
 use crate::Lab;
 use crate::lab::{DIRECT, INSIDE, ticker};
@@ -29,7 +29,7 @@ async fn an_apply_asks_with_the_dry_run_diff_and_journals_no_manifest() {
     let finished = lab.finished(applied.request).await;
 
     let diff = question.params["diff"].as_str().unwrap();
-    assert_eq!(question.risk, RiskLevel::Write);
+    assert_eq!(question.risk, Risk::Write);
     assert!(
         question
             .destination
@@ -97,16 +97,16 @@ async fn scaling_restarting_and_deleting_ask_an_agent_and_record_names_only() {
         .await;
 
     let scaled = scaled.unwrap();
-    assert_eq!(scale_question.risk, RiskLevel::Write);
+    assert_eq!(scale_question.risk, Risk::Write);
     assert_eq!(scaled.value["to"], 2);
     assert_eq!(
         lab.finished(scaled.request).await,
         json!({ "kind": "Deployment", "name": "api", "namespace": lab.namespace, "from": 1, "to": 2 })
     );
     assert!(lab.finished(restarted.unwrap().request).await["restarted_at"].is_string());
-    assert_eq!(delete_question.risk, RiskLevel::Write);
+    assert_eq!(delete_question.risk, Risk::Write);
     assert_eq!(lab.finished(deleted.unwrap().request).await["name"], "api");
-    assert_eq!(namespace_question.risk, RiskLevel::Privileged);
+    assert_eq!(namespace_question.risk, Risk::Privileged);
     assert!(refused.is_err());
 
     lab.finish().await;

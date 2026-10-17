@@ -1,5 +1,7 @@
-use crate::model::Actor;
-use crate::payload::Details;
+use synt_proto::Actor;
+
+use crate::codec::{Decoder, Encoder};
+use crate::event::Details;
 
 pub fn decode_details(bytes: &[u8]) -> Option<Details> {
     Details::decode(bytes.to_vec()).ok()
@@ -10,9 +12,9 @@ pub fn details_bytes(details: &Details) -> &[u8] {
 }
 
 pub fn decode_actor(bytes: &[u8]) -> Option<Actor> {
-    Actor::decode(bytes).ok()
+    Decoder::new(bytes).actor().ok()
 }
 
 pub fn actor_bytes(actor: &Actor) -> Vec<u8> {
-    actor.encode()
+    Encoder::actor_bytes(actor)
 }

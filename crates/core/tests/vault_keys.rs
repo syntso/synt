@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use synt_actions::Action;
 use synt_client::{Client, ClientError};
 use synt_core::{Broker, Core, KeyGenerate, KeyImport, KeyList, KeyRemove, SshKeys};
-use synt_proto::{ActionCall, ActionOutcome, ApprovalDecision, ErrorCode, Requester, RiskLevel};
+use synt_proto::{ActionCall, ActionOutcome, Actor, ApprovalDecision, ErrorCode, Risk};
 use synt_ssh::{Pool, Target};
 
 const PLAIN_KEY: &str = include_str!("fixtures/ed25519");
@@ -183,8 +183,8 @@ async fn importing_is_privileged_even_for_the_person() {
         .await;
     let key = outcome.unwrap().value;
 
-    assert_eq!(question.actor, Requester::Person);
-    assert_eq!(question.risk, RiskLevel::Privileged);
+    assert_eq!(question.actor, Actor::Person);
+    assert_eq!(question.risk, Risk::Privileged);
     assert_eq!(key["kind"], json!("ssh-ed25519"));
     assert_eq!(key["fingerprint"], json!(PLAIN_FINGERPRINT));
     assert!(

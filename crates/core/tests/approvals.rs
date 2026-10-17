@@ -9,7 +9,7 @@ use serde_json::json;
 use synt_actions::Action;
 use synt_core::Broker;
 use synt_journal::{EventKind, Filter};
-use synt_proto::{ApprovalDecision, ApprovalId, ErrorCode, Requester, RiskLevel};
+use synt_proto::{Actor, ApprovalDecision, ApprovalId, ErrorCode, Name, Risk};
 
 const SHORT_PATIENCE: Duration = Duration::from_millis(300);
 
@@ -56,9 +56,12 @@ async fn an_agent_write_waits_for_the_person_and_runs_once_allowed() {
         .await;
     let trail = harness.trail(outcome.unwrap().request);
 
-    assert_eq!(question.actor, Requester::Agent("deploy-bot".to_owned()));
+    assert_eq!(
+        question.actor,
+        Actor::Agent(Name::new("deploy-bot").unwrap())
+    );
     assert_eq!(question.action, Guarded::ID);
-    assert_eq!(question.risk, RiskLevel::Write);
+    assert_eq!(question.risk, Risk::Write);
     assert_eq!(question.params, json!({ "risk": "write" }));
     assert_eq!(question.on_behalf_of, None);
     assert_eq!(harness.runs(), 1);
@@ -91,8 +94,8 @@ async fn the_person_is_asked_before_a_privileged_call() {
         )
         .await;
 
-    assert_eq!(question.actor, Requester::Person);
-    assert_eq!(question.risk, RiskLevel::Privileged);
+    assert_eq!(question.actor, Actor::Person);
+    assert_eq!(question.risk, Risk::Privileged);
     assert!(outcome.is_ok());
     assert_eq!(harness.runs(), 1);
 }
@@ -227,7 +230,7 @@ async fn an_answer_to_no_question_is_unknown() {
     let refused = rejection(
         approver
             .app()
-            .respond(ApprovalId(404), ApprovalDecision::AllowOnce)
+            .respond(ApprovalId::new(404), ApprovalDecision::AllowOnce)
             .await,
     );
 
@@ -278,6 +281,6 @@ async fn questions_are_numbered_from_one() {
         .decide(&agent, Guarded::call("write"), ApprovalDecision::Deny)
         .await;
 
-    assert_eq!(first.id, ApprovalId(1));
-    assert_eq!(second.id, ApprovalId(2));
+    assert_eq!(first.id, ApprovalId::new(1));
+    assert_eq!(second.id, ApprovalId::new(2));
 }

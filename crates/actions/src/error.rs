@@ -1,4 +1,3 @@
-use synt_journal::NameError;
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -12,8 +11,8 @@ pub enum ActionError {
     #[error("{0}")]
     Failed(String),
 
-    #[error("action id {id:?} is invalid: {reason}")]
-    InvalidId { id: &'static str, reason: NameError },
+    #[error("action id {0:?} is invalid")]
+    InvalidId(&'static str),
 
     #[error("action {0} is already registered")]
     Duplicate(&'static str),

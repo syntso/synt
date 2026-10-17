@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use synt_actions::{ActionError, Completed, Context, Description, Handle, Prepared, Registry};
+use synt_actions::{ActionError, Completed, Context, Handle, Prepared, Registry};
 use synt_journal::{
     ActionId, Actor, EventKind, JournalError, JournalWriter, NewEvent, ResourceRef, Seq,
 };
@@ -14,7 +14,7 @@ use tokio::{task, time};
 use tokio_util::sync::CancellationToken;
 
 use crate::access::{AccessRequest, Decision, Gate, Scope};
-use crate::broker::{Broker, risk_level};
+use crate::broker::Broker;
 use crate::grants::{GrantId, Hold};
 use crate::link::Link;
 use crate::on_behalf::OnBehalf;
@@ -115,13 +115,12 @@ impl Core {
     }
 
     pub(crate) fn describe(&self, actor: &Actor) -> Vec<ActionDescription> {
-        let for_person = acts_for_person(actor);
+        let for_person = actor.acts_for_person();
 
         self.registry
             .describe()
             .into_iter()
             .filter(|description| for_person || !description.person_only)
-            .map(action_description)
             .collect()
     }
 
@@ -247,7 +246,7 @@ impl Core {
         }
 
         Ok(ActionOutcome {
-            request: RequestSeq(request.get()),
+            request: RequestSeq::new(request.get()),
             value: completed.value,
         })
     }
@@ -280,7 +279,7 @@ async fn screen(
         return Err(Refusal::Failed(error));
     };
 
-    if handle.person_only() && !acts_for_person(call.actor) {
+    if handle.person_only() && !call.actor.acts_for_person() {
         let reason = format!("{} is for the person only", call.action);
         return Err(Refusal::Denied(reason));
     }
@@ -432,19 +431,4 @@ fn failure(error: &ActionError) -> RpcError {
     };
 
     RpcError::new(code, error.to_string())
-}
-
-fn action_description(description: Description) -> ActionDescription {
-    ActionDescription {
-        id: description.id.as_str().to_owned(),
-        title: description.title,
-        risk: risk_level(description.risk),
-        person_only: description.person_only,
-        takes_target: description.takes_target,
-        params: description.params,
-    }
-}
-
-fn acts_for_person(actor: &Actor) -> bool {
-    matches!(actor, Actor::Person | Actor::Core)
 }
