@@ -118,9 +118,6 @@ pub enum ExtensionError {
     #[error("{0}")]
     Http(#[from] HttpError),
 
-    #[error("the view is malformed: {0}")]
-    View(#[from] ViewError),
-
     #[error(
         "the component cannot be used: the component is not an extension for api {api}: {reason}"
     )]
@@ -248,9 +245,6 @@ pub enum ExtensionError {
 
     #[error("system random source: {0}")]
     Random(getrandom::Error),
-
-    #[error("{0}")]
-    Refused(String),
 }
 
 impl From<wasmtime::Error> for ExtensionError {
