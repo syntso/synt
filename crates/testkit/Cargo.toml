@@ -1,0 +1,56 @@
+[package]
+name = "synt-testkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+core = [
+    "journal",
+    "sync",
+    "dep:bytes",
+    "dep:futures-util",
+    "dep:schemars",
+    "dep:serde",
+    "dep:synt-actions",
+    "dep:synt-client",
+    "dep:synt-core",
+    "dep:synt-proto",
+    "dep:tokio",
+]
+extensions = [
+    "dep:minisign",
+    "dep:serde_json",
+    "dep:synt-actions",
+    "dep:synt-extensions",
+    "dep:synt-journal",
+    "dep:tempfile",
+]
+journal = ["dep:rusqlite", "dep:serde_json", "dep:synt-journal", "dep:tempfile"]
+sync = ["dep:synt-sync", "dep:tempfile"]
+
+[dependencies]
+bytes = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+minisign = { workspace = true, optional = true }
+rusqlite = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+synt-actions = { workspace = true, optional = true }
+synt-client = { workspace = true, optional = true }
+synt-core = { workspace = true, optional = true }
+synt-extensions = { workspace = true, optional = true }
+synt-journal = { workspace = true, optional = true }
+synt-platform.workspace = true
+synt-proto = { workspace = true, optional = true }
+synt-sync = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+zeroize.workspace = true

@@ -8,6 +8,7 @@ use synt_journal::{
 use tempfile::TempDir;
 
 use super::{ManualClock, exec};
+use crate::TestError;
 
 pub struct Fixture {
     pub dir: TempDir,
@@ -17,45 +18,45 @@ pub struct Fixture {
 }
 
 impl Fixture {
-    pub fn new() -> Self {
-        let dir = tempfile::tempdir().unwrap();
+    pub fn new() -> Result<Self, TestError> {
+        let dir = tempfile::tempdir()?;
         let path = dir.path().join("journal.sqlite");
 
-        Self {
+        Ok(Self {
             dir,
             path,
-            keys: Arc::new(MemoryKeyStore::new().unwrap()),
+            keys: Arc::new(MemoryKeyStore::new()?),
             clock: Arc::new(ManualClock::starting_at(1_700_000_000_000)),
-        }
+        })
     }
 
     pub fn keys(&self) -> Arc<dyn KeyStore> {
         self.keys.clone()
     }
 
-    pub fn create(&self) -> Journal {
-        self.builder().create(&self.path).unwrap()
+    pub fn create(&self) -> Result<Journal, JournalError> {
+        self.builder().create(&self.path)
     }
 
     pub fn open(&self, id: JournalId) -> Result<Journal, JournalError> {
         self.builder().open(&self.path, id)
     }
 
-    pub fn reader(&self, id: JournalId) -> JournalReader {
-        JournalReader::open(&self.path, id, self.keys()).unwrap()
+    pub fn reader(&self, id: JournalId) -> Result<JournalReader, JournalError> {
+        JournalReader::open(&self.path, id, self.keys())
     }
 
-    pub fn with_events(&self, count: u64) -> JournalId {
-        let mut journal = self.create();
+    pub fn with_events(&self, count: u64) -> Result<JournalId, TestError> {
+        let mut journal = self.create()?;
 
         for n in 1..=count {
-            journal.append(&exec(&format!("step {n}"))).unwrap();
+            journal.append(&exec(&format!("step {n}"))?)?;
         }
 
-        journal.id()
+        Ok(journal.id())
     }
 
-    pub fn raw(&self) -> Connection {
+    pub fn raw(&self) -> Result<Connection, rusqlite::Error> {
         raw(&self.path)
     }
 
@@ -64,11 +65,9 @@ impl Fixture {
     }
 }
 
-pub fn raw(path: &Path) -> Connection {
-    let connection = Connection::open(path).unwrap();
-    connection
-        .execute_batch("DROP TRIGGER IF EXISTS events_are_append_only")
-        .unwrap();
+pub fn raw(path: &Path) -> Result<Connection, rusqlite::Error> {
+    let connection = Connection::open(path)?;
+    connection.execute_batch("DROP TRIGGER IF EXISTS events_are_append_only")?;
 
-    connection
+    Ok(connection)
 }

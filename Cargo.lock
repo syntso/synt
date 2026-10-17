@@ -4583,6 +4583,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "synt-proto",
+ "synt-testkit",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
@@ -4686,6 +4687,7 @@ dependencies = [
  "synt-journal",
  "synt-platform",
  "synt-proto",
+ "synt-testkit",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
@@ -4702,6 +4704,30 @@ dependencies = [
  "data-encoding",
  "sha2 0.11.1",
  "tempfile",
+]
+
+[[package]]
+name = "synt-testkit"
+version = "0.0.0"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "minisign",
+ "rusqlite",
+ "schemars",
+ "serde",
+ "serde_json",
+ "synt-actions",
+ "synt-client",
+ "synt-core",
+ "synt-extensions",
+ "synt-journal",
+ "synt-platform",
+ "synt-proto",
+ "synt-sync",
+ "tempfile",
+ "tokio",
+ "zeroize",
 ]
 
 [[package]]

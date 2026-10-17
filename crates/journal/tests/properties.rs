@@ -1,14 +1,10 @@
-#![allow(clippy::unwrap_used)]
-
-mod common;
-
-use common::{Fixture, action};
 use proptest::prelude::*;
 use serde_json::{Value, json};
 use synt_journal::{Actor, Damage, Details, EventKind, Name, NewEvent, Seq, Verification};
+use synt_testkit::journal::{Fixture, action};
 
 fn actor() -> impl Strategy<Value = Actor> {
-    let name = "[a-z][a-z0-9-]{0,15}".prop_map(|text| Name::new(text).unwrap());
+    let name = "[a-z][a-z0-9-]{0,15}".prop_filter_map("a valid name", |text| Name::new(text).ok());
 
     prop_oneof![
         Just(Actor::Person),
@@ -49,9 +45,15 @@ fn details() -> impl Strategy<Value = Value> {
 }
 
 fn event() -> impl Strategy<Value = NewEvent> {
-    (actor(), kind(), "[a-z]{1,8}\\.[a-z]{1,8}", details()).prop_map(|(actor, kind, id, value)| {
-        NewEvent::new(actor, kind, action(&id)).details(Details::from_serialize(&value).unwrap())
-    })
+    (actor(), kind(), "[a-z]{1,8}\\.[a-z]{1,8}", details()).prop_filter_map(
+        "a valid event",
+        |(actor, kind, id, value)| {
+            let action = action(&id).ok()?;
+            let details = Details::from_serialize(&value).ok()?;
+
+            Some(NewEvent::new(actor, kind, action).details(details))
+        },
+    )
 }
 
 const COLUMNS: [&str; 6] = ["at", "actor", "kind", "action", "details", "link"];
@@ -61,8 +63,8 @@ proptest! {
 
     #[test]
     fn any_sequence_verifies_and_reads_back(events in prop::collection::vec(event(), 1..24)) {
-        let fixture = Fixture::new();
-        let mut journal = fixture.create();
+        let fixture = Fixture::new().unwrap();
+        let mut journal = fixture.create().unwrap();
 
         journal.append_all(&events).unwrap();
         let reader = journal.reader().unwrap();
@@ -83,8 +85,8 @@ proptest! {
         target in any::<prop::sample::Index>(),
         column in 0..COLUMNS.len(),
     ) {
-        let fixture = Fixture::new();
-        let mut journal = fixture.create();
+        let fixture = Fixture::new().unwrap();
+        let mut journal = fixture.create().unwrap();
         let id = journal.id();
 
         journal.append_all(&events).unwrap();
@@ -99,10 +101,10 @@ proptest! {
             _ => format!("CAST({column} || X'00' AS BLOB)"),
         };
 
-        fixture.raw().execute(&format!("UPDATE events SET {column} = {change} WHERE seq = ?1"), [i64::try_from(seq).unwrap()]).unwrap();
+        fixture.raw().unwrap().execute(&format!("UPDATE events SET {column} = {change} WHERE seq = ?1"), [i64::try_from(seq).unwrap()]).unwrap();
 
         prop_assert_eq!(
-            fixture.reader(id).verify().unwrap(),
+            fixture.reader(id).unwrap().verify().unwrap(),
             Verification::Broken { at: Seq::new(seq), damage: Damage::Altered }
         );
     }

@@ -3,11 +3,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use synt_sync::{
-    DocumentMerger, MemberId, Place, RevisionInfo, RoundReport, StatusReport, SyncError, Syncer,
+    DocumentMerger, DocumentPath, MemberId, Place, RevisionInfo, RoundReport, StatusReport, SyncError, Syncer,
 };
 use tempfile::TempDir;
 
-use super::{MemoryVault, OneProject, PROJECT_ID, PROJECT_SLUG};
+use super::{OneProject, PROJECT_ID, PROJECT_SLUG};
+use crate::{MemoryVault, TestError};
 
 const STATE_FILE: &str = "state.sqlite";
 
@@ -19,23 +20,22 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn new(shared: &Path) -> Self {
+    pub fn new(shared: &Path) -> Result<Self, TestError> {
         Self::build(shared, None)
     }
 
-    pub fn with_merger(shared: &Path, merger: Arc<dyn DocumentMerger>) -> Self {
+    pub fn with_merger(shared: &Path, merger: Arc<dyn DocumentMerger>) -> Result<Self, TestError> {
         Self::build(shared, Some(merger))
     }
 
-    fn build(shared: &Path, merger: Option<Arc<dyn DocumentMerger>>) -> Self {
-        let home = tempfile::tempdir().unwrap();
+    fn build(shared: &Path, merger: Option<Arc<dyn DocumentMerger>>) -> Result<Self, TestError> {
+        let home = tempfile::tempdir()?;
         let project = home.path().join(PROJECT_SLUG);
-        fs::create_dir_all(project.join("resources")).unwrap();
+        fs::create_dir_all(project.join("resources"))?;
         fs::write(
             project.join("synt.toml"),
             format!("id = \"{PROJECT_ID}\"\nname = \"Orders\"\n"),
-        )
-        .unwrap();
+        )?;
 
         let vault = Arc::new(MemoryVault::default());
         let mut builder = Syncer::builder(
@@ -47,30 +47,36 @@ impl Device {
             builder = builder.merger(merger);
         }
 
-        Self {
+        Ok(Self {
             home,
             shared: shared.to_owned(),
             vault,
-            syncer: builder.open().unwrap(),
-        }
+            syncer: builder.open()?,
+        })
     }
 
     pub fn project(&self) -> PathBuf {
         self.home.path().join(PROJECT_SLUG)
     }
 
-    pub fn write(&self, path: &str, text: &str) {
+    pub fn write(&self, path: &str, text: &str) -> Result<(), TestError> {
         let file = self.project().join(path);
-        fs::create_dir_all(file.parent().unwrap()).unwrap();
-        fs::write(file, text).unwrap();
+        let folder = file.parent().ok_or("the file has no folder")?;
+
+        fs::create_dir_all(folder)?;
+        fs::write(file, text)?;
+
+        Ok(())
     }
 
     pub fn read(&self, path: &str) -> Option<String> {
         fs::read_to_string(self.project().join(path)).ok()
     }
 
-    pub fn remove(&self, path: &str) {
-        fs::remove_file(self.project().join(path)).unwrap();
+    pub fn remove(&self, path: &str) -> Result<(), TestError> {
+        fs::remove_file(self.project().join(path))?;
+
+        Ok(())
     }
 
     pub fn vault_items(&self) -> Vec<String> {
@@ -81,25 +87,26 @@ impl Device {
         &self.syncer
     }
 
-    pub async fn enable(&self) -> StatusReport {
+    pub async fn enable(&self) -> Result<StatusReport, SyncError> {
         self.syncer
             .enable(PROJECT_SLUG, Place::Folder(self.shared.clone()))
             .await
-            .unwrap()
     }
 
-    pub async fn status(&self) -> StatusReport {
-        self.syncer.status(PROJECT_SLUG).await.unwrap()
+    pub async fn status(&self) -> Result<StatusReport, SyncError> {
+        self.syncer.status(PROJECT_SLUG).await
     }
 
-    pub async fn member(&self) -> MemberId {
-        self.status().await.device
+    pub async fn member(&self) -> Result<MemberId, SyncError> {
+        Ok(self.status().await?.device)
     }
 
-    pub async fn share_with(&self, other: &Device) {
-        let member = other.member().await;
+    pub async fn share_with(&self, other: &Device) -> Result<(), SyncError> {
+        let member = other.member().await?;
 
-        self.syncer.share(PROJECT_SLUG, member).await.unwrap();
+        self.syncer.share(PROJECT_SLUG, member).await?;
+
+        Ok(())
     }
 
     pub async fn sync(&self) -> RoundReport {
@@ -117,8 +124,8 @@ impl Device {
     }
 
     pub async fn history(&self, path: &str) -> Result<Vec<RevisionInfo>, SyncError> {
-        self.syncer
-            .history(PROJECT_SLUG, synt_sync::DocumentPath::parse(path).unwrap())
-            .await
+        let path = DocumentPath::parse(path)?;
+
+        self.syncer.history(PROJECT_SLUG, path).await
     }
 }

@@ -26,6 +26,7 @@ zeroize.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+synt-testkit = { workspace = true, features = ["journal"] }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 
