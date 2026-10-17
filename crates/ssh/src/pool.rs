@@ -14,7 +14,7 @@ pub use lease::Lease;
 use registry::Registry;
 use slot::Slot;
 
-use crate::exec::Execution;
+use crate::exec::Invocation;
 use crate::known_hosts::KnownHosts;
 use crate::{ExecLimits, ExecOutput, SshError, Target};
 
@@ -56,7 +56,7 @@ impl Pool {
         limits: ExecLimits,
         stop: impl Future<Output = ()>,
     ) -> Result<ExecOutput, SshError> {
-        Execution::run(self, target, command, limits, stop).await
+        Invocation::run(self, target, command, limits, stop).await
     }
 
     pub fn connections(&self) -> Vec<ConnectionStatus> {

@@ -11,11 +11,11 @@ use crate::{Lease, Pool, SshError, Target};
 
 const STOP_GRACE: Duration = Duration::from_secs(2);
 
-pub(crate) struct Execution {
+pub(crate) struct Invocation {
     channel: Channel<Msg>,
 }
 
-impl Execution {
+impl Invocation {
     pub(crate) async fn run(
         pool: &Pool,
         target: &Target,
