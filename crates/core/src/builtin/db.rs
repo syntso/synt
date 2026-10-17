@@ -1,21 +1,34 @@
+mod error;
+mod explain;
+mod open;
+mod ping;
+mod query;
+mod recorded;
+mod schema;
+mod tables;
+
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
 use synt_actions::{ActionError, Context, Registry, Risk};
-use synt_db::{Database, DbError, Effect, Engine};
+use synt_db::{Database, DbError, Effect, Engine, Server};
 use synt_journal::ResourceRef;
 use synt_ssh::{Destination, Pool, Target, Tunnels};
 use tokio::sync::Semaphore;
 use tokio::time;
-use tokio_util::sync::{CancellationToken, DropGuard};
+use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
 
-use super::failure::failure;
-use super::open::OpenDatabase;
-use super::{DbExplain, DbPing, DbQuery, DbSchema, DbTables};
+use self::error::DbActionError;
+use self::explain::DbExplain;
+use self::open::OpenDatabase;
+use self::ping::DbPing;
+use self::query::DbQuery;
+use self::schema::DbSchema;
+use self::tables::DbTables;
 use crate::builtin::blocking::blocking;
-use crate::builtin::ssh::{failure as ssh_failure, is_root};
+use crate::builtin::ssh::is_root;
 use crate::projects::{Projects, ResolvedDatabase};
 use crate::secrets::Secrets;
 
@@ -47,21 +60,28 @@ impl Databases {
         registry.register(DbPing::new(self.clone()))
     }
 
-    pub(super) fn check_target(&self, target: Option<&ResourceRef>) -> Result<Engine, ActionError> {
+    fn check_target(&self, target: Option<&ResourceRef>) -> Result<Engine, DbActionError> {
         let target = target.ok_or(ActionError::TargetRequired)?;
 
-        self.projects
+        let resolved = self
+            .projects
             .database(target.as_str())
-            .map(|resolved| resolved.resource.engine)
-            .map_err(|error| ActionError::InvalidParams(error.to_string()))
+            .map_err(DbActionError::Target)?;
+
+        Ok(resolved.resource.engine)
     }
 
-    pub(super) fn engine(&self, target: Option<&ResourceRef>) -> Option<Engine> {
+    fn engine(&self, target: Option<&ResourceRef>) -> Option<Engine> {
         self.resolve(target)
             .map(|resolved| resolved.resource.engine)
     }
 
-    pub(super) fn risk(&self, target: Option<&ResourceRef>, effect: Effect) -> Risk {
+    fn current_engine(&self, context: &Context) -> Result<Engine, DbActionError> {
+        self.engine(context.target())
+            .ok_or(DbActionError::NotADatabase)
+    }
+
+    fn risk(&self, target: Option<&ResourceRef>, effect: Effect) -> Risk {
         let Some(resolved) = self.resolve(target) else {
             return Risk::Privileged;
         };
@@ -77,7 +97,7 @@ impl Databases {
         }
     }
 
-    pub(super) fn destination(&self, target: Option<&ResourceRef>) -> Option<String> {
+    fn destination(&self, target: Option<&ResourceRef>) -> Option<String> {
         let target = target?;
         let resolved = self.resolve(Some(target))?;
 
@@ -87,59 +107,50 @@ impl Databases {
         )
     }
 
-    pub(super) async fn with<T>(
+    async fn with<T>(
         &self,
         context: &Context,
         limit: Duration,
         work: impl AsyncFnOnce(&mut Database) -> Result<T, DbError>,
-    ) -> Result<T, ActionError> {
+    ) -> Result<T, DbActionError> {
         let _permit = self
             .calls
             .acquire()
             .await
-            .map_err(|_| ActionError::failed("the database actions are shutting down"))?;
+            .map_err(|_| DbActionError::ShuttingDown)?;
 
         let running = async {
             let open = self.open(context).await?;
-            open.serve(work).await.map_err(failure)
+            Ok(open.serve(work).await?)
         };
 
-        time::timeout(limit, running).await.map_err(|_| {
-            ActionError::Failed(format!(
-                "no answer within {} s, so the call was stopped",
-                limit.as_secs()
-            ))
-        })?
+        time::timeout(limit, running)
+            .await
+            .map_err(|_| DbActionError::Timeout(limit))?
     }
 
-    async fn open(&self, context: &Context) -> Result<OpenDatabase, ActionError> {
+    async fn open(&self, context: &Context) -> Result<OpenDatabase, DbActionError> {
         let target = context.target().ok_or(ActionError::TargetRequired)?;
         let resolved = self.reach(context, target).await?;
-        let password = self.password(&resolved).await?;
-
-        let server = resolved
-            .resource
-            .server(password)
-            .map_err(ActionError::Failed)?;
+        let server = self.server(&resolved).await?;
 
         let Some(via) = &resolved.via else {
-            let database = Database::connect(&server).await.map_err(failure)?;
+            let database = Database::connect(&server).await?;
             return Ok(OpenDatabase::new(database, None));
         };
 
-        let (local, tunnel) = self.tunnel(via, &resolved).await?;
-        let database = Database::connect(&server.reached_at(local))
-            .await
-            .map_err(failure)?;
+        let stop = CancellationToken::new();
+        let local = self.tunnel(via, &resolved, stop.clone()).await?;
+        let database = Database::connect(&server.reached_at(local)).await?;
 
-        Ok(OpenDatabase::new(database, Some(tunnel)))
+        Ok(OpenDatabase::new(database, Some(stop.drop_guard())))
     }
 
     async fn reach(
         &self,
         context: &Context,
         target: &ResourceRef,
-    ) -> Result<ResolvedDatabase, ActionError> {
+    ) -> Result<ResolvedDatabase, DbActionError> {
         let projects = self.projects.clone();
         let text = target.as_str().to_owned();
         let resolved = blocking(move || projects.database(&text)).await?;
@@ -147,10 +158,9 @@ impl Databases {
         if resolved.via.as_ref().is_some_and(|via| is_root(via.user()))
             && context.risk() != Risk::Privileged
         {
-            return Err(ActionError::Failed(format!(
-                "{target} is now reached through a root login, which the call was not \
-                 admitted for; run it again so it is asked as privileged"
-            )));
+            return Err(DbActionError::RootLogin {
+                target: target.to_string(),
+            });
         }
 
         let reached = self
@@ -158,53 +168,56 @@ impl Databases {
             .database_destination(target.as_str(), &resolved);
 
         if context.destination() != Some(reached.as_str()) {
-            return Err(ActionError::Failed(format!(
-                "{target} now leads to {reached}, which is not what the call was admitted \
-                 for; run it again so it is checked for the new place"
-            )));
+            return Err(DbActionError::Moved {
+                target: target.to_string(),
+                reached,
+            });
         }
 
         Ok(resolved)
     }
 
+    async fn server(&self, resolved: &ResolvedDatabase) -> Result<Server, DbActionError> {
+        let password = self.password(resolved).await?;
+
+        resolved
+            .resource
+            .server(password)
+            .map_err(DbActionError::Resource)
+    }
+
     async fn password(
         &self,
         resolved: &ResolvedDatabase,
-    ) -> Result<Option<Zeroizing<String>>, ActionError> {
-        let Some(name) = resolved
+    ) -> Result<Option<Zeroizing<String>>, DbActionError> {
+        let name = resolved
             .resource
             .password_name()
-            .map_err(ActionError::Failed)?
-        else {
+            .map_err(DbActionError::Resource)?;
+
+        let Some(name) = name else {
             return Ok(None);
         };
 
         let secrets = self.secrets.clone();
         let used_for = format!("the database {}", resolved.describe());
+        let password = blocking(move || secrets.read_text_for(&name, &used_for)).await?;
 
-        blocking(move || secrets.read_text_for(&name, &used_for))
-            .await
-            .map(Some)
+        Ok(Some(password))
     }
 
     async fn tunnel(
         &self,
         via: &Target,
         resolved: &ResolvedDatabase,
-    ) -> Result<(SocketAddr, DropGuard), ActionError> {
+        stop: CancellationToken,
+    ) -> Result<SocketAddr, DbActionError> {
         let host = resolved.resource.host.clone().unwrap_or_default();
         let destination = Destination::new(host, resolved.resource.port());
-        let stop = CancellationToken::new();
 
-        let opened = self
-            .tunnels
-            .open(via, destination, None, stop.clone())
-            .await
-            .map_err(|error| ssh_failure(&error))?;
+        let opened = self.tunnels.open(via, destination, None, stop).await?;
 
-        let local = SocketAddr::from((Ipv4Addr::LOCALHOST, opened.local_port));
-
-        Ok((local, stop.drop_guard()))
+        Ok(SocketAddr::from((Ipv4Addr::LOCALHOST, opened.local_port)))
     }
 
     fn resolve(&self, target: Option<&ResourceRef>) -> Option<ResolvedDatabase> {

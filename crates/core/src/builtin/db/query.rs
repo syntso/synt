@@ -1,15 +1,19 @@
+mod fields;
+mod statement;
+
 use std::time::{Duration, Instant};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
-use synt_db::{
-    Access, Classification, Database, DbError, Effect, Engine, Page, Query, Rows, StatementKind,
-};
+use synt_db::{Effect, Page, Rows, StatementKind};
 use synt_journal::ResourceRef;
 
+use self::fields::QueryFields;
+use self::statement::Statement;
 use super::Databases;
+use super::error::DbActionError;
 use super::recorded::recorded_statement;
 use crate::clock::milliseconds;
 
@@ -19,6 +23,7 @@ const DEFAULT_BYTES: usize = 1024 * 1024;
 const MOST_BYTES: usize = 8 * 1024 * 1024;
 const DEFAULT_TIMEOUT: u64 = 60;
 const LONGEST_TIMEOUT: u64 = 3600;
+const JUDGED: &str = "judged";
 
 #[derive(Debug, Clone)]
 pub(crate) struct DbQuery {
@@ -26,28 +31,13 @@ pub(crate) struct DbQuery {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "QueryFields", into = "QueryFields")]
 pub(crate) struct QueryParams {
-    #[serde(default)]
-    pub sql: Option<String>,
-
-    #[serde(default)]
-    pub command: Option<Vec<String>>,
-
-    #[serde(default)]
-    pub params: Vec<Value>,
-
-    #[serde(default)]
-    pub limit: Option<usize>,
-
-    #[serde(default)]
-    pub max_bytes: Option<usize>,
-
-    #[serde(default)]
-    pub offset: u64,
-
-    #[serde(default)]
-    pub timeout_seconds: Option<u64>,
+    statement: Statement,
+    limit: Option<usize>,
+    max_bytes: Option<usize>,
+    offset: u64,
+    timeout_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -79,8 +69,7 @@ impl Action for DbQuery {
     fn check(&self, target: Option<&ResourceRef>, params: &QueryParams) -> Result<(), ActionError> {
         let engine = self.databases.check_target(target)?;
 
-        params.check_limits()?;
-        params.check_statement(engine)
+        Ok(params.statement.check(engine)?)
     }
 
     fn inspect(
@@ -92,13 +81,13 @@ impl Action for DbQuery {
             return Ok(None);
         };
 
+        let judged = params.statement.classification(engine);
         let mut shown = serde_json::to_value(&*params)
             .map_err(|error| ActionError::Failed(error.to_string()))?;
-        let classified = params.classification(engine);
 
         if let Some(fields) = shown.as_object_mut() {
             fields.retain(|_, value| !value.is_null());
-            fields.insert("judged".to_owned(), json!(classified));
+            fields.insert(JUDGED.to_owned(), json!(judged));
         }
 
         Ok(Some(shown))
@@ -109,8 +98,9 @@ impl Action for DbQuery {
             return Risk::Privileged;
         };
 
-        self.databases
-            .risk(target, params.classification(engine).effect)
+        let judged = params.statement.classification(engine);
+
+        self.databases.risk(target, judged.effect)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, _params: &QueryParams) -> Option<String> {
@@ -138,24 +128,22 @@ impl Action for DbQuery {
         context: &Context,
         params: QueryParams,
     ) -> Result<QueryResult, ActionError> {
-        let engine = self
-            .databases
-            .engine(context.target())
-            .ok_or_else(|| ActionError::failed("the target is no longer a database"))?;
-        let classified = params.classification(engine);
-        let access = classified.access();
+        let engine = self.databases.current_engine(context)?;
+        let judged = params.statement.classification(engine);
+        let access = judged.access();
+        let page = params.page();
         let started = Instant::now();
 
         let rows = self
             .databases
             .with(context, params.timeout(), async |database| {
-                params.run(database, access).await
+                params.statement.run(database, access, page).await
             })
             .await?;
 
         Ok(QueryResult {
-            kind: classified.kind,
-            effect: classified.effect,
+            kind: judged.kind,
+            effect: judged.effect,
             rows,
             duration_ms: milliseconds(started.elapsed()),
         })
@@ -163,76 +151,6 @@ impl Action for DbQuery {
 }
 
 impl QueryParams {
-    pub(crate) fn classification(&self, engine: Engine) -> Classification {
-        match (&self.command, &self.sql) {
-            (Some(words), _) => Classification::of_command(words),
-            (None, Some(sql)) => Classification::of_sql(engine, sql),
-            (None, None) => Classification::of_command::<String>(&[]),
-        }
-    }
-
-    async fn run(&self, database: &mut Database, access: Access) -> Result<Rows, DbError> {
-        let page = self.page();
-
-        if let Some(words) = &self.command {
-            return database.command(words, page).await;
-        }
-
-        let query = Query {
-            text: self.sql.as_deref().unwrap_or_default(),
-            params: &self.params,
-            access,
-            page,
-        };
-
-        database.query(&query).await
-    }
-
-    fn check_statement(&self, engine: Engine) -> Result<(), ActionError> {
-        match (&self.sql, &self.command) {
-            (Some(sql), None) if sql.trim().is_empty() => invalid("sql is empty"),
-            (None, Some(words)) if words.is_empty() => invalid("command is empty"),
-            (None, Some(_)) if !self.params.is_empty() => {
-                invalid("a redis command carries its values in the command itself, not in params")
-            }
-            (Some(_), None) if engine == Engine::Redis => {
-                invalid("redis takes a command, such as [\"GET\", \"user:1\"], not sql")
-            }
-            (None, Some(_)) if engine.speaks_sql() => {
-                invalid("this database takes sql, not a command")
-            }
-            (Some(_), None) | (None, Some(_)) => Ok(()),
-            _ => invalid("give either sql or command"),
-        }
-    }
-
-    fn check_limits(&self) -> Result<(), ActionError> {
-        if self
-            .limit
-            .is_some_and(|limit| limit == 0 || limit > MOST_ROWS)
-        {
-            return invalid(&format!("limit must be between 1 and {MOST_ROWS}"));
-        }
-
-        if self
-            .max_bytes
-            .is_some_and(|bytes| bytes == 0 || bytes > MOST_BYTES)
-        {
-            return invalid(&format!("max_bytes must be between 1 and {MOST_BYTES}"));
-        }
-
-        if self
-            .timeout_seconds
-            .is_some_and(|seconds| seconds == 0 || seconds > LONGEST_TIMEOUT)
-        {
-            return invalid(&format!(
-                "timeout_seconds must be between 1 and {LONGEST_TIMEOUT}"
-            ));
-        }
-
-        Ok(())
-    }
-
     fn page(&self) -> Page {
         Page::new(
             self.limit.unwrap_or(DEFAULT_ROWS),
@@ -246,6 +164,95 @@ impl QueryParams {
     }
 }
 
-fn invalid(reason: &str) -> Result<(), ActionError> {
-    Err(ActionError::InvalidParams(reason.to_owned()))
+impl TryFrom<QueryFields> for QueryParams {
+    type Error = DbActionError;
+
+    fn try_from(fields: QueryFields) -> Result<Self, DbActionError> {
+        within("limit", fields.limit, MOST_ROWS)?;
+        within("max_bytes", fields.max_bytes, MOST_BYTES)?;
+        within("timeout_seconds", fields.timeout_seconds, LONGEST_TIMEOUT)?;
+
+        let statement = Statement::new(fields.sql, fields.command, fields.params)?;
+
+        Ok(Self {
+            statement,
+            limit: fields.limit,
+            max_bytes: fields.max_bytes,
+            offset: fields.offset,
+            timeout_seconds: fields.timeout_seconds,
+        })
+    }
+}
+
+fn within<N>(field: &'static str, given: Option<N>, most: N) -> Result<(), DbActionError>
+where
+    N: Copy + PartialOrd + Default + TryInto<u64>,
+{
+    let Some(given) = given else {
+        return Ok(());
+    };
+
+    if given > N::default() && given <= most {
+        return Ok(());
+    }
+
+    Err(DbActionError::OutOfRange {
+        field,
+        most: most.try_into().unwrap_or(u64::MAX),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{Value, json};
+
+    use super::QueryParams;
+
+    fn parse(params: Value) -> Result<QueryParams, String> {
+        serde_json::from_value(params).map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn limits_outside_their_range_are_refused() {
+        for params in [
+            json!({ "sql": "SELECT 1", "limit": 0 }),
+            json!({ "sql": "SELECT 1", "limit": 10_001 }),
+            json!({ "sql": "SELECT 1", "max_bytes": 0 }),
+            json!({ "sql": "SELECT 1", "timeout_seconds": 3601 }),
+        ] {
+            assert!(parse(params.clone()).is_err(), "{params}");
+        }
+    }
+
+    #[test]
+    fn a_range_error_names_the_field_and_its_bounds() {
+        let error = parse(json!({ "sql": "SELECT 1", "limit": 0 })).unwrap_err();
+
+        assert_eq!(error, "limit must be between 1 and 10000");
+    }
+
+    #[test]
+    fn params_are_shown_as_they_were_given() {
+        let given = json!({ "sql": "SELECT $1", "params": [7], "limit": 5 });
+
+        let shown = serde_json::to_value(parse(given).expect("params")).expect("shown");
+
+        assert_eq!(
+            shown,
+            json!({
+                "sql": "SELECT $1",
+                "command": null,
+                "params": [7],
+                "limit": 5,
+                "max_bytes": null,
+                "offset": 0,
+                "timeout_seconds": null,
+            })
+        );
+    }
+
+    #[test]
+    fn unknown_fields_are_refused() {
+        assert!(parse(json!({ "sql": "SELECT 1", "rows": 5 })).is_err());
+    }
 }

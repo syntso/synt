@@ -8,6 +8,7 @@ use synt_db::{Classification, Effect, Engine, StatementKind};
 use synt_journal::ResourceRef;
 
 use super::Databases;
+use super::error::DbActionError;
 use super::recorded::recorded_statement;
 use crate::clock::milliseconds;
 
@@ -22,10 +23,10 @@ pub(crate) struct DbExplain {
 #[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ExplainParams {
-    pub sql: String,
+    sql: String,
 
     #[serde(default)]
-    pub params: Vec<Value>,
+    params: Vec<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -56,8 +57,9 @@ impl Action for DbExplain {
         params: &ExplainParams,
     ) -> Result<(), ActionError> {
         let engine = self.databases.check_target(target)?;
+        params.classification(engine)?;
 
-        one_statement(engine, &params.sql).map(|_| ())
+        Ok(())
     }
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &ExplainParams) -> Risk {
@@ -81,11 +83,8 @@ impl Action for DbExplain {
         context: &Context,
         params: ExplainParams,
     ) -> Result<ExplainResult, ActionError> {
-        let engine = self
-            .databases
-            .engine(context.target())
-            .ok_or_else(|| ActionError::failed("the target is no longer a database"))?;
-        let classified = one_statement(engine, &params.sql)?;
+        let engine = self.databases.current_engine(context)?;
+        let classified = params.classification(engine)?;
         let started = Instant::now();
 
         let plan = self
@@ -103,27 +102,22 @@ impl Action for DbExplain {
     }
 }
 
-fn one_statement(engine: Engine, sql: &str) -> Result<Classification, ActionError> {
-    if !engine.speaks_sql() {
-        return Err(ActionError::InvalidParams(
-            "redis has no query plans to explain".to_owned(),
-        ));
+impl ExplainParams {
+    fn classification(&self, engine: Engine) -> Result<Classification, DbActionError> {
+        if !engine.speaks_sql() {
+            return Err(DbActionError::NoPlans);
+        }
+
+        let classified = Classification::of_sql(engine, &self.sql);
+
+        if !classified.is_one_statement() {
+            return Err(DbActionError::NotOneStatement(classified.kind));
+        }
+
+        if classified.kind.is(EXPLAIN) {
+            return Err(DbActionError::AlreadyExplained);
+        }
+
+        Ok(classified)
     }
-
-    let classified = Classification::of_sql(engine, sql);
-
-    if !classified.is_one_statement() {
-        return Err(ActionError::InvalidParams(format!(
-            "db.explain takes one statement the parser understands, got {}",
-            classified.kind
-        )));
-    }
-
-    if classified.kind.is(EXPLAIN) {
-        return Err(ActionError::InvalidParams(
-            "give the statement itself; db.explain adds EXPLAIN".to_owned(),
-        ));
-    }
-
-    Ok(classified)
 }
