@@ -5,9 +5,11 @@ use clusters::Clusters;
 use synt_kube::{ClusterSpec, KubeconfigSource};
 use synt_ssh::Target;
 
+use synt_sync::ProjectFolder;
+
 use super::{
-    ClusterResource, HostResource, Problem, ProjectInfo, ProjectPlace, ProjectSource, Resolved,
-    ResolvedDatabase, Resource, ResourceEntry, ResourceListing,
+    ClusterResource, HostResource, Problem, ProjectInfo, ProjectSource, Resolved, ResolvedDatabase,
+    Resource, ResourceEntry, ResourceListing, ResourceName,
 };
 use crate::CoreError;
 
@@ -56,7 +58,7 @@ impl Personal {
 
     fn host(alias: &str) -> Result<ResourceEntry, CoreError> {
         let target = Target::resolve(alias)?;
-        let host = HostResource::of_target(&target);
+        let host = HostResource::of_target(&target)?;
 
         Ok(ResourceEntry::new(alias, Resource::Host(host)))
     }
@@ -96,7 +98,9 @@ impl Personal {
                 continue;
             }
 
-            let cluster = ClusterResource::of_context(context.name);
+            let Ok(cluster) = ClusterResource::of_context(&context.name) else {
+                continue;
+            };
             clusters
                 .entries
                 .push(ResourceEntry::new(&name, Resource::Cluster(cluster)));
@@ -168,7 +172,8 @@ impl ProjectSource for Personal {
         })
     }
 
-    fn resource(&self, name: &str) -> Result<ResourceEntry, CoreError> {
+    fn resource(&self, name: &ResourceName) -> Result<ResourceEntry, CoreError> {
+        let name = name.as_str();
         let aliases = Self::aliases()?;
 
         if aliases.iter().any(|alias| alias == name) {
@@ -178,7 +183,8 @@ impl ProjectSource for Personal {
         self.cluster(&aliases, name)
     }
 
-    fn resolve(&self, name: &str) -> Result<Resolved, CoreError> {
+    fn resolve(&self, name: &ResourceName) -> Result<Resolved, CoreError> {
+        let name = name.as_str();
         let aliases = Self::aliases()?;
 
         if aliases.iter().any(|alias| alias == name) {
@@ -190,29 +196,33 @@ impl ProjectSource for Personal {
         };
 
         Ok(Resolved::Cluster {
-            spec: self.spec(cluster.context),
+            spec: self.spec(cluster.context.map(String::from)),
             via: None,
         })
     }
 
-    fn database(&self, _name: &str) -> Result<ResolvedDatabase, CoreError> {
+    fn database(&self, _name: &ResourceName) -> Result<ResolvedDatabase, CoreError> {
         Err(CoreError::PersonalHasNoDatabases)
     }
 
     fn put(
         &mut self,
-        _name: &str,
+        _name: &ResourceName,
         _admitted: Option<&str>,
         _resource: Resource,
     ) -> Result<ResourceEntry, CoreError> {
         Err(CoreError::PersonalReadOnly(Self::config_path()))
     }
 
-    fn remove(&mut self, _name: &str, _admitted: Option<&str>) -> Result<ResourceEntry, CoreError> {
+    fn remove(
+        &mut self,
+        _name: &ResourceName,
+        _admitted: Option<&str>,
+    ) -> Result<ResourceEntry, CoreError> {
         Err(CoreError::PersonalReadOnly(Self::config_path()))
     }
 
-    fn place(&self) -> Result<ProjectPlace, CoreError> {
+    fn place(&self) -> Result<&ProjectFolder, CoreError> {
         Err(CoreError::PersonalHasNoFiles)
     }
 

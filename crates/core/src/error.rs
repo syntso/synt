@@ -312,6 +312,9 @@ pub enum CoreError {
     TomlWrite(#[from] toml::ser::Error),
 
     #[error("{0}")]
+    ResourceFields(#[source] serde_json::Error),
+
+    #[error("{0}")]
     Unreadable(#[source] io::Error),
 
     #[error("a name must be 1 to {0} characters")]
@@ -338,11 +341,8 @@ pub enum CoreError {
     )]
     NotAnIdentity(String),
 
-    #[error("{field} must be a host name or address, got {value:?}")]
-    NotAnAddress { field: &'static str, value: String },
-
-    #[error("{0} must be between 1 and 65535")]
-    PortZero(&'static str),
+    #[error("{0:?} is not a host name or address")]
+    NotAnAddress(String),
 
     #[error("user must be a login name, got {0:?}")]
     NotALogin(String),
@@ -355,15 +355,6 @@ pub enum CoreError {
 
     #[error("context must be a context name, got {0:?}")]
     NotAContext(String),
-
-    #[error(
-        "namespace must be lowercase letters, digits and '-', at most {longest} characters, \
-         got {namespace:?}"
-    )]
-    NotANamespace { namespace: String, longest: usize },
-
-    #[error("remote must be host:port, such as orders-db:5432, got {0:?}")]
-    NotARemote(String),
 
     #[error("there is no home folder to expand ~ in: {0}")]
     NoHome(#[source] io::Error),

@@ -5,18 +5,18 @@ use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use synt_platform::Lock;
 use tokio::sync::broadcast;
 
-use super::{ProjectChange, ProjectFolder, ResourceFolder};
+use super::{LoadedProject, ProjectChange, ResourceFolder};
 use crate::CoreError;
 use crate::log::log;
 
 pub(crate) struct OpenProject {
-    folder: Arc<Mutex<ProjectFolder>>,
+    folder: Arc<Mutex<LoadedProject>>,
     _watcher: RecommendedWatcher,
 }
 
 impl OpenProject {
     pub(crate) fn start(
-        folder: ProjectFolder,
+        folder: LoadedProject,
         changes: broadcast::Sender<ProjectChange>,
     ) -> Result<Self, CoreError> {
         let path = folder.path().to_owned();
@@ -29,12 +29,12 @@ impl OpenProject {
         })
     }
 
-    pub(crate) fn lock(&self) -> MutexGuard<'_, ProjectFolder> {
+    pub(crate) fn lock(&self) -> MutexGuard<'_, LoadedProject> {
         self.folder.locked()
     }
 
     fn watch(
-        folder: &Arc<Mutex<ProjectFolder>>,
+        folder: &Arc<Mutex<LoadedProject>>,
         path: &Path,
         changes: broadcast::Sender<ProjectChange>,
     ) -> Result<RecommendedWatcher, CoreError> {
@@ -62,7 +62,7 @@ impl OpenProject {
     }
 
     fn changed(
-        watched: &Weak<Mutex<ProjectFolder>>,
+        watched: &Weak<Mutex<LoadedProject>>,
         event: notify::Result<Event>,
         changes: &broadcast::Sender<ProjectChange>,
     ) {

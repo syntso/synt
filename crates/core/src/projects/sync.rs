@@ -1,11 +1,11 @@
 use synt_sync::{OpenProjects, ProjectFolder, SyncError};
 
-use super::Projects;
+use super::{ProjectSlug, Projects};
 
 impl OpenProjects for Projects {
     fn folder(&self, project: &str) -> Result<ProjectFolder, SyncError> {
-        let place = self.place(project)?;
+        let slug = ProjectSlug::named(project)?;
 
-        Ok(ProjectFolder::new(place.id, place.path))
+        Ok(self.place(&slug)?)
     }
 }

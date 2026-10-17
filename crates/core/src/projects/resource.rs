@@ -1,27 +1,32 @@
+mod address;
 mod cluster;
+mod context_name;
 mod database;
 mod entry;
 mod folder;
 mod host;
+mod identity;
 mod listing;
+mod login;
 mod name;
-mod spec;
 mod tunnel;
 
+pub(crate) use address::Address;
 pub use cluster::ClusterResource;
-
+pub(crate) use context_name::ContextName;
 pub use database::DatabaseResource;
 pub use entry::ResourceEntry;
 pub(crate) use folder::ResourceFolder;
 pub use host::HostResource;
+pub(crate) use identity::Identity;
 pub use listing::ResourceListing;
+pub(crate) use login::Login;
 pub(crate) use name::ResourceName;
 pub use tunnel::TunnelResource;
 
-use spec::ResourceSpec;
-
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 use crate::CoreError;
 
@@ -42,24 +47,31 @@ impl Resource {
         Ok(resource)
     }
 
+    pub(crate) fn from_fields(fields: Map<String, Value>) -> Result<Self, CoreError> {
+        let resource: Self =
+            serde_json::from_value(Value::Object(fields)).map_err(CoreError::ResourceFields)?;
+
+        resource.check()?;
+        Ok(resource)
+    }
+
     pub(crate) fn to_toml(&self) -> Result<String, CoreError> {
         Ok(toml::to_string(self)?)
     }
 
     pub(crate) fn check(&self) -> Result<(), CoreError> {
-        self.spec().check()
+        match self {
+            Self::Database(database) => database.check(),
+            Self::Host(_) | Self::Tunnel(_) | Self::Cluster(_) => Ok(()),
+        }
     }
 
     pub(crate) fn kind(&self) -> &'static str {
-        self.spec().kind()
-    }
-
-    fn spec(&self) -> &dyn ResourceSpec {
         match self {
-            Self::Host(host) => host,
-            Self::Tunnel(tunnel) => tunnel,
-            Self::Cluster(cluster) => cluster,
-            Self::Database(database) => database,
+            Self::Host(_) => "host",
+            Self::Tunnel(_) => "tunnel",
+            Self::Cluster(_) => "cluster",
+            Self::Database(_) => "database",
         }
     }
 }

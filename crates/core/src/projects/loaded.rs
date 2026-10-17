@@ -1,28 +1,29 @@
 use std::collections::BTreeMap;
+use std::num::NonZeroU16;
 use std::path::{Path, PathBuf};
 
 use synt_ssh::Target;
+use synt_sync::ProjectFolder;
 
 use super::{
-    HostResource, Problem, ProjectFile, ProjectId, ProjectInfo, ProjectPlace, ProjectSlug,
-    ProjectSource, Resolved, ResolvedDatabase, Resource, ResourceEntry, ResourceFolder,
-    ResourceListing, ResourceName,
+    HostResource, Problem, ProjectFile, ProjectId, ProjectInfo, ProjectSlug, ProjectSource,
+    Resolved, ResolvedDatabase, Resource, ResourceEntry, ResourceFolder, ResourceListing,
+    ResourceName,
 };
 use crate::CoreError;
 
 const LONGEST_VIA_CHAIN: usize = 8;
 
 #[derive(Debug)]
-pub(crate) struct ProjectFolder {
-    id: ProjectId,
+pub(crate) struct LoadedProject {
+    place: ProjectFolder,
     name: String,
     slug: ProjectSlug,
-    path: PathBuf,
-    resources: BTreeMap<String, Resource>,
-    problems: BTreeMap<String, String>,
+    resources: BTreeMap<ResourceName, Resource>,
+    problems: BTreeMap<String, Problem>,
 }
 
-impl ProjectFolder {
+impl LoadedProject {
     pub(crate) fn load(path: &Path, slug: ProjectSlug) -> Result<Self, CoreError> {
         let file = ProjectFile::read_or_create(path, &slug)?;
         let id = file
@@ -32,21 +33,20 @@ impl ProjectFolder {
 
         ResourceFolder::prepare(path)?;
 
-        let mut folder = Self {
-            id,
+        let mut project = Self {
+            place: ProjectFolder::new(id, path.to_owned()),
             name: file.name().map_or_else(|| slug.to_string(), str::to_owned),
             slug,
-            path: path.to_owned(),
             resources: BTreeMap::new(),
             problems: BTreeMap::new(),
         };
-        folder.rescan();
+        project.rescan();
 
-        Ok(folder)
+        Ok(project)
     }
 
     pub(crate) fn id(&self) -> &ProjectId {
-        &self.id
+        self.place.id()
     }
 
     pub(crate) fn slug(&self) -> &ProjectSlug {
@@ -54,13 +54,13 @@ impl ProjectFolder {
     }
 
     pub(crate) fn path(&self) -> &Path {
-        &self.path
+        self.place.root()
     }
 
     pub(crate) fn rescan(&mut self) -> Vec<String> {
         let mut changes = self.reread_project_file();
 
-        let found = match ResourceFolder::of(&self.path).list() {
+        let found = match ResourceFolder::of(self.path()).list() {
             Ok(found) => found,
             Err(error) => {
                 changes.push(format!("cannot read {}: {error}", ResourceFolder::NAME));
@@ -77,25 +77,25 @@ impl ProjectFolder {
         changes
     }
 
-    fn find(&self, name: &str) -> Result<&Resource, CoreError> {
+    fn find(&self, name: &ResourceName) -> Result<&Resource, CoreError> {
         if let Some(resource) = self.resources.get(name) {
             return Ok(resource);
         }
 
         let slug = self.slug.to_string();
-        let name = name.to_owned();
+        let name = name.to_string();
 
         match self.problems.get(&ResourceFolder::file_label(&name)) {
             Some(problem) => Err(CoreError::BrokenFile {
                 slug,
                 name,
-                problem: problem.clone(),
+                problem: problem.error.clone(),
             }),
             None => Err(CoreError::NoResource { slug, name }),
         }
     }
 
-    fn host_target(&self, name: &str) -> Result<Target, CoreError> {
+    fn host_target(&self, name: &ResourceName) -> Result<Target, CoreError> {
         let chain = self.via_chain(name)?;
         let mut hops = Vec::with_capacity(chain.len());
 
@@ -112,14 +112,14 @@ impl ProjectFolder {
 
     fn via_chain<'a>(
         &'a self,
-        name: &'a str,
-    ) -> Result<Vec<(&'a str, &'a HostResource)>, CoreError> {
-        let mut chain = Vec::new();
+        name: &'a ResourceName,
+    ) -> Result<Vec<(&'a ResourceName, &'a HostResource)>, CoreError> {
+        let mut chain: Vec<(&ResourceName, &HostResource)> = Vec::new();
         let mut next = Some(name);
 
         while let Some(current) = next {
             if chain.iter().any(|(known, _)| *known == current) {
-                return Err(self.broken(name, CoreError::LoopingChain(current.to_owned())));
+                return Err(self.broken(name, CoreError::LoopingChain(current.to_string())));
             }
 
             if chain.len() > LONGEST_VIA_CHAIN {
@@ -128,38 +128,38 @@ impl ProjectFolder {
 
             let host = self.host(current)?;
 
-            next = host.via.as_deref();
+            next = host.via.as_ref();
             chain.push((current, host));
         }
 
         Ok(chain)
     }
 
-    fn host(&self, name: &str) -> Result<&HostResource, CoreError> {
+    fn host(&self, name: &ResourceName) -> Result<&HostResource, CoreError> {
         match self.find(name)? {
             Resource::Host(host) => Ok(host),
             other => Err(CoreError::NotAHost {
                 slug: self.slug.to_string(),
-                name: name.to_owned(),
+                name: name.to_string(),
                 kind: other.kind(),
             }),
         }
     }
 
-    fn via(&self, via: Option<&str>) -> Result<Option<Target>, CoreError> {
+    fn via(&self, via: Option<&ResourceName>) -> Result<Option<Target>, CoreError> {
         via.map(|via| self.host_target(via)).transpose()
     }
 
-    fn broken(&self, name: &str, reason: CoreError) -> CoreError {
+    fn broken(&self, name: &ResourceName, reason: CoreError) -> CoreError {
         CoreError::BrokenResource {
             slug: self.slug.to_string(),
-            name: name.to_owned(),
+            name: name.to_string(),
             reason: Box::new(reason),
         }
     }
 
-    fn check_admitted(&self, name: &str, admitted: Option<&str>) -> Result<(), CoreError> {
-        let actual = format!("@{}/{name}", self.id);
+    fn check_admitted(&self, name: &ResourceName, admitted: Option<&str>) -> Result<(), CoreError> {
+        let actual = format!("@{}/{name}", self.id());
 
         if admitted == Some(actual.as_str()) {
             return Ok(());
@@ -167,30 +167,24 @@ impl ProjectFolder {
 
         Err(CoreError::AdmittedElsewhere {
             slug: self.slug.to_string(),
-            name: name.to_owned(),
+            name: name.to_string(),
             actual,
         })
     }
 
     fn problems(&self) -> Vec<Problem> {
-        self.problems
-            .iter()
-            .map(|(file, error)| Problem {
-                file: file.clone(),
-                error: error.clone(),
-            })
-            .collect()
+        self.problems.values().cloned().collect()
     }
 
     fn reread_project_file(&mut self) -> Vec<String> {
-        let file = match ProjectFile::read(&ProjectFile::path_in(&self.path)) {
+        let file = match ProjectFile::read(&ProjectFile::path_in(self.path())) {
             Ok(Some(file)) => file,
             Ok(None) => return self.note_problem(ProjectFile::NAME, "the file is missing"),
             Err(error) => return self.note_problem(ProjectFile::NAME, &error.to_string()),
         };
 
-        if file.id() != Some(&self.id) {
-            let reason = format!("the id cannot change; {} stays in use", self.id);
+        if file.id() != Some(self.id()) {
+            let reason = format!("the id cannot change; {} stays in use", self.id());
             return self.note_problem(ProjectFile::NAME, &reason);
         }
 
@@ -208,10 +202,10 @@ impl ProjectFolder {
     }
 
     fn forget_missing(&mut self, found: &BTreeMap<String, PathBuf>) -> Vec<String> {
-        let missing: Vec<String> = self
+        let missing: Vec<ResourceName> = self
             .resources
             .keys()
-            .filter(|name| !found.contains_key(*name))
+            .filter(|name| !found.contains_key(name.as_str()))
             .cloned()
             .collect();
 
@@ -226,59 +220,72 @@ impl ProjectFolder {
             .into_iter()
             .map(|name| {
                 self.resources.remove(&name);
-                format!("removed {}", ResourceFolder::file_label(&name))
+                format!("removed {}", ResourceFolder::file_label(name.as_str()))
             })
             .collect()
     }
 
     fn reload(&mut self, name: &str, path: &Path) -> Vec<String> {
         let file = ResourceFolder::file_label(name);
-        let known = self.resources.contains_key(name);
 
-        let parsed = ResourceName::parse(name).and_then(|_| ResourceFolder::read(path));
-        let resource = match parsed {
-            Ok(resource) => resource,
-            Err(error) => {
-                let kept = if known {
-                    "; the last good version stays in use"
-                } else {
-                    ""
-                };
-                return self.note_problem(&file, &format!("{error}{kept}"));
-            }
+        let parsed = ResourceName::parse(name)
+            .and_then(|name| ResourceFolder::read(path).map(|resource| (name, resource)));
+        let (name, resource) = match parsed {
+            Ok(parsed) => parsed,
+            Err(error) => return self.note_broken(name, &file, &error),
         };
 
+        let known = self.resources.contains_key(&name);
         let solved = self.problems.remove(&file).is_some();
 
-        if self.resources.get(name) == Some(&resource) && !solved {
+        if self.resources.get(&name) == Some(&resource) && !solved {
             return Vec::new();
         }
 
         let verb = if known { "reloaded" } else { "loaded" };
-        self.resources.insert(name.to_owned(), resource);
+        self.resources.insert(name, resource);
 
         vec![format!("{verb} {file}")]
     }
 
+    fn note_broken(&mut self, name: &str, file: &str, error: &CoreError) -> Vec<String> {
+        let known = self.resources.keys().any(|known| known.as_str() == name);
+        let kept = if known {
+            "; the last good version stays in use"
+        } else {
+            ""
+        };
+
+        self.note_problem(file, &format!("{error}{kept}"))
+    }
+
     fn note_problem(&mut self, file: &str, error: &str) -> Vec<String> {
-        if self.problems.get(file).map(String::as_str) == Some(error) {
+        if self
+            .problems
+            .get(file)
+            .is_some_and(|known| known.error == error)
+        {
             return Vec::new();
         }
 
         let change = format!("{file} is broken: {error}");
-        self.problems.insert(file.to_owned(), error.to_owned());
+        let problem = Problem {
+            file: file.to_owned(),
+            error: error.to_owned(),
+        };
+        self.problems.insert(file.to_owned(), problem);
 
         vec![change]
     }
 }
 
-impl ProjectSource for ProjectFolder {
+impl ProjectSource for LoadedProject {
     fn info(&self) -> Result<ProjectInfo, CoreError> {
         Ok(ProjectInfo {
-            id: self.id.to_string(),
+            id: self.id().to_string(),
             name: self.name.clone(),
             slug: self.slug.to_string(),
-            path: self.path.display().to_string(),
+            path: self.path().display().to_string(),
             read_only: false,
             resources: self.resources.len(),
             problems: self.problems(),
@@ -289,7 +296,7 @@ impl ProjectSource for ProjectFolder {
         let resources = self
             .resources
             .iter()
-            .map(|(name, resource)| ResourceEntry::new(name, resource.clone()))
+            .map(|(name, resource)| ResourceEntry::new(name.as_str(), resource.clone()))
             .collect();
 
         Ok(ResourceListing {
@@ -299,97 +306,94 @@ impl ProjectSource for ProjectFolder {
         })
     }
 
-    fn resource(&self, name: &str) -> Result<ResourceEntry, CoreError> {
+    fn resource(&self, name: &ResourceName) -> Result<ResourceEntry, CoreError> {
         let resource = self.find(name)?;
 
-        Ok(ResourceEntry::new(name, resource.clone()))
+        Ok(ResourceEntry::new(name.as_str(), resource.clone()))
     }
 
-    fn resolve(&self, name: &str) -> Result<Resolved, CoreError> {
+    fn resolve(&self, name: &ResourceName) -> Result<Resolved, CoreError> {
         match self.find(name)? {
             Resource::Host(_) => Ok(Resolved::Host(self.host_target(name)?)),
             Resource::Tunnel(tunnel) => Ok(Resolved::Tunnel {
                 host: self.host_target(&tunnel.host)?,
-                remote: tunnel
-                    .destination()
-                    .map_err(|reason| self.broken(name, reason))?,
-                local: tunnel.local,
+                remote: tunnel.remote.clone(),
+                local: tunnel.local.map(NonZeroU16::get),
             }),
             Resource::Cluster(cluster) => Ok(Resolved::Cluster {
                 spec: cluster.spec().map_err(|reason| self.broken(name, reason))?,
-                via: self.via(cluster.via.as_deref())?,
+                via: self.via(cluster.via.as_ref())?,
             }),
             Resource::Database(_) => Err(CoreError::IsADatabase {
                 slug: self.slug.to_string(),
-                name: name.to_owned(),
+                name: name.to_string(),
             }),
         }
     }
 
-    fn database(&self, name: &str) -> Result<ResolvedDatabase, CoreError> {
+    fn database(&self, name: &ResourceName) -> Result<ResolvedDatabase, CoreError> {
         let found = self.find(name)?;
 
         let Resource::Database(database) = found else {
             return Err(CoreError::NotADatabase {
                 slug: self.slug.to_string(),
-                name: name.to_owned(),
+                name: name.to_string(),
                 kind: found.kind(),
             });
         };
 
         Ok(ResolvedDatabase {
             resource: database.clone(),
-            via: self.via(database.via.as_deref())?,
+            via: self.via(database.via.as_ref())?,
         })
     }
 
     fn put(
         &mut self,
-        name: &str,
+        name: &ResourceName,
         admitted: Option<&str>,
         resource: Resource,
     ) -> Result<ResourceEntry, CoreError> {
         self.check_admitted(name, admitted)?;
-
-        let checked = ResourceName::parse(name)?;
         resource.check()?;
 
-        ResourceFolder::of(&self.path)
-            .write(&checked, &resource)
+        ResourceFolder::of(self.path())
+            .write(name, &resource)
             .map_err(|reason| CoreError::ResourceWrite {
-                name: name.to_owned(),
+                name: name.to_string(),
                 reason: Box::new(reason),
             })?;
 
-        self.resources.insert(name.to_owned(), resource.clone());
-        self.problems.remove(&ResourceFolder::file_label(name));
+        self.resources.insert(name.clone(), resource.clone());
+        self.problems
+            .remove(&ResourceFolder::file_label(name.as_str()));
 
-        Ok(ResourceEntry::new(name, resource))
+        Ok(ResourceEntry::new(name.as_str(), resource))
     }
 
-    fn remove(&mut self, name: &str, admitted: Option<&str>) -> Result<ResourceEntry, CoreError> {
+    fn remove(
+        &mut self,
+        name: &ResourceName,
+        admitted: Option<&str>,
+    ) -> Result<ResourceEntry, CoreError> {
         self.check_admitted(name, admitted)?;
 
-        let checked = ResourceName::parse(name)?;
         let resource = self.find(name)?.clone();
 
-        ResourceFolder::of(&self.path).remove(&checked)?;
+        ResourceFolder::of(self.path()).remove(name)?;
 
         self.resources.remove(name);
-        self.problems.remove(&ResourceFolder::file_label(name));
+        self.problems
+            .remove(&ResourceFolder::file_label(name.as_str()));
 
-        Ok(ResourceEntry::new(name, resource))
+        Ok(ResourceEntry::new(name.as_str(), resource))
     }
 
-    fn place(&self) -> Result<ProjectPlace, CoreError> {
-        Ok(ProjectPlace {
-            id: self.id.clone(),
-            slug: self.slug.clone(),
-            path: self.path.clone(),
-        })
+    fn place(&self) -> Result<&ProjectFolder, CoreError> {
+        Ok(&self.place)
     }
 
     fn canonical_name(&self) -> String {
-        self.id.to_string()
+        self.id().to_string()
     }
 }

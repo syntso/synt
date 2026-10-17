@@ -1,97 +1,56 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use synt_kube::{ClusterSpec, KubeconfigSource};
+use synt_kube::{ClusterSpec, KubeconfigSource, Namespace};
 
-use super::{ResourceName, ResourceSpec};
+use super::{ContextName, ResourceName};
 use crate::CoreError;
 use crate::projects::LocalPath;
-
-const LONGEST_NAMESPACE: usize = 63;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ClusterResource {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kubeconfig: Option<String>,
+    pub(crate) kubeconfig: Option<LocalPath>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub context: Option<String>,
+    pub(crate) context: Option<ContextName>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub namespace: Option<String>,
+    #[schemars(with = "Option<String>")]
+    pub(crate) namespace: Option<Namespace>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub via: Option<String>,
+    pub(crate) via: Option<ResourceName>,
 }
 
 impl ClusterResource {
-    pub(crate) fn of_context(context: String) -> Self {
-        Self {
+    pub(crate) fn of_context(context: &str) -> Result<Self, CoreError> {
+        Ok(Self {
             kubeconfig: None,
-            context: Some(context),
+            context: Some(ContextName::parse(context)?),
             namespace: None,
             via: None,
-        }
+        })
     }
 
     pub(crate) fn spec(&self) -> Result<ClusterSpec, CoreError> {
         let source = match &self.kubeconfig {
-            Some(path) => {
-                let path = LocalPath::parse(path)
-                    .map_err(|reason| CoreError::field("kubeconfig", reason))?;
-
-                KubeconfigSource::File(path.into_path())
-            }
+            Some(path) => KubeconfigSource::File(path.path()?),
             None => KubeconfigSource::Default,
         };
 
         Ok(ClusterSpec {
             kubeconfig: source,
-            context: self.context.clone(),
-            namespace: self.namespace.clone(),
+            context: self
+                .context
+                .as_ref()
+                .map(|context| context.as_str().to_owned()),
+            namespace: self
+                .namespace
+                .as_ref()
+                .map(|namespace| namespace.as_str().to_owned()),
         })
     }
-}
-
-impl ResourceSpec for ClusterResource {
-    fn kind(&self) -> &'static str {
-        "cluster"
-    }
-
-    fn check(&self) -> Result<(), CoreError> {
-        if let Some(context) = &self.context
-            && (context.is_empty() || context.contains(char::is_control))
-        {
-            return Err(CoreError::NotAContext(context.clone()));
-        }
-
-        if let Some(namespace) = &self.namespace
-            && !is_namespace(namespace)
-        {
-            return Err(CoreError::NotANamespace {
-                namespace: namespace.clone(),
-                longest: LONGEST_NAMESPACE,
-            });
-        }
-
-        if let Some(via) = &self.via {
-            ResourceName::check(via, "via")?;
-        }
-
-        self.spec().map(drop)
-    }
-}
-
-pub(crate) fn is_namespace(text: &str) -> bool {
-    let allowed = |character: char| {
-        character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
-    };
-
-    !text.is_empty()
-        && text.len() <= LONGEST_NAMESPACE
-        && text.chars().all(allowed)
-        && !text.starts_with('-')
-        && !text.ends_with('-')
 }
 
 #[cfg(test)]
@@ -117,7 +76,7 @@ mod tests {
         );
         assert_eq!(spec.context.as_deref(), Some("prod-eu"));
         assert_eq!(spec.namespace.as_deref(), Some("orders"));
-        assert_eq!(cluster.via.as_deref(), Some("bastion"));
+        assert_eq!(cluster.via.map(String::from).as_deref(), Some("bastion"));
     }
 
     #[test]
@@ -148,7 +107,8 @@ mod tests {
 
     #[test]
     fn a_cluster_writes_back_only_what_it_holds() {
-        let resource = Resource::Cluster(ClusterResource::of_context("kind-synt".to_owned()));
+        let resource =
+            Resource::Cluster(ClusterResource::of_context("kind-synt").expect("a context"));
 
         assert_eq!(
             resource.to_toml().expect("toml"),

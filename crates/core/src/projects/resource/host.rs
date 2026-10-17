@@ -1,166 +1,113 @@
-use std::path::PathBuf;
+use std::num::NonZeroU16;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use synt_ssh::Target;
 
-use super::{ResourceName, ResourceSpec};
+use super::{Address, Identity, Login, ResourceName};
 use crate::CoreError;
 use crate::projects::LocalPath;
-use crate::ssh_keys::KeyName;
 
 const DEFAULT_PORT: u16 = 22;
-const AGENT: &str = "agent";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HostResource {
-    pub address: String,
+    pub(crate) address: Address,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub port: Option<u16>,
+    pub(crate) port: Option<NonZeroU16>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub user: Option<String>,
+    pub(crate) user: Option<Login>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub via: Option<String>,
+    pub(crate) via: Option<ResourceName>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub identity: Option<String>,
+    pub(crate) identity: Option<Identity>,
 }
 
 impl HostResource {
-    pub(crate) fn of_target(target: &Target) -> Self {
-        let via = target
-            .jumps()
-            .iter()
-            .map(Target::label)
-            .collect::<Vec<_>>()
-            .join(",");
+    pub(crate) fn of_target(target: &Target) -> Result<Self, CoreError> {
+        let identity = target
+            .identity_files()
+            .first()
+            .and_then(|path| LocalPath::of_path(path).ok())
+            .map(Identity::File);
 
-        Self {
-            address: target.host().to_owned(),
-            port: Some(target.port()),
-            user: Some(target.user().to_owned()),
-            via: (!via.is_empty()).then_some(via),
-            identity: target
-                .identity_files()
-                .first()
-                .map(|path| path.display().to_string()),
-        }
+        Ok(Self {
+            address: Address::parse(target.host())?,
+            port: NonZeroU16::new(target.port()),
+            user: Login::parse(target.user()).ok(),
+            via: None,
+            identity,
+        })
     }
 
     pub(crate) fn target(&self) -> Result<Target, CoreError> {
         let user = self
             .user
-            .clone()
+            .as_ref()
+            .map(|user| user.as_str().to_owned())
             .or_else(synt_platform::user_name)
             .ok_or(CoreError::NoLocalUser)?;
 
-        let target = Target::new(&self.address, self.port.unwrap_or(DEFAULT_PORT), user)
-            .with_identity_files(self.identity_files()?);
+        let port = self.port.map_or(DEFAULT_PORT, NonZeroU16::get);
+        let target = Target::new(self.address.as_str(), port, user);
 
-        match self.vault_key()? {
+        let Some(identity) = &self.identity else {
+            return Ok(target);
+        };
+
+        let target = target.with_identity_files(identity.files()?);
+
+        match identity.vault_key() {
             Some(name) => Ok(target.with_vault_key(name.as_str())),
             None => Ok(target),
         }
-    }
-
-    fn vault_key(&self) -> Result<Option<KeyName>, CoreError> {
-        let Some(identity) = self.identity.as_deref() else {
-            return Ok(None);
-        };
-
-        let named = KeyName::from_reference(identity).transpose();
-
-        named.map_err(|reason| CoreError::IdentityName {
-            identity: identity.to_owned(),
-            reason: Box::new(reason),
-        })
-    }
-
-    fn identity_files(&self) -> Result<Vec<PathBuf>, CoreError> {
-        let Some(identity) = self.identity.as_deref() else {
-            return Ok(Vec::new());
-        };
-
-        if identity == AGENT || KeyName::from_reference(identity).is_some() {
-            return Ok(Vec::new());
-        }
-
-        let path = LocalPath::parse(identity)
-            .map_err(|_| CoreError::NotAnIdentity(identity.to_owned()))?;
-
-        Ok(vec![path.into_path()])
-    }
-
-    fn is_plain_word(text: &str) -> bool {
-        !text.is_empty()
-            && !text.contains(|character: char| character.is_whitespace() || character.is_control())
-    }
-}
-
-impl ResourceSpec for HostResource {
-    fn kind(&self) -> &'static str {
-        "host"
-    }
-
-    fn check(&self) -> Result<(), CoreError> {
-        if !Self::is_plain_word(&self.address) {
-            return Err(CoreError::NotAnAddress {
-                field: "address",
-                value: self.address.clone(),
-            });
-        }
-
-        if self.port == Some(0) {
-            return Err(CoreError::PortZero("port"));
-        }
-
-        if let Some(user) = &self.user
-            && (!Self::is_plain_word(user) || user.contains('@'))
-        {
-            return Err(CoreError::NotALogin(user.clone()));
-        }
-
-        if let Some(via) = &self.via {
-            ResourceName::check(via, "via")?;
-        }
-
-        self.vault_key()?;
-        self.identity_files().map(drop)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{HostResource, ResourceSpec};
+    use serde_json::json;
 
-    fn host(identity: &str) -> HostResource {
-        HostResource {
-            address: "203.0.113.7".to_owned(),
-            port: None,
-            user: Some("root".to_owned()),
-            via: None,
-            identity: Some(identity.to_owned()),
-        }
+    use super::HostResource;
+
+    fn host(identity: &str) -> Result<HostResource, serde_json::Error> {
+        serde_json::from_value(json!({
+            "address": "203.0.113.7",
+            "user": "root",
+            "identity": identity,
+        }))
     }
 
     #[test]
     fn a_secret_identity_names_a_vault_key_and_no_files() {
-        let resource = host("secret://night");
+        let resource = host("secret://night").expect("a host");
 
         let target = resource.target().expect("target");
 
-        assert!(resource.check().is_ok());
         assert_eq!(target.vault_key(), Some("night"));
         assert!(target.identity_files().is_empty());
     }
 
     #[test]
     fn a_secret_identity_with_a_bad_name_is_refused() {
-        assert!(host("secret://../night").check().is_err());
-        assert!(host("secret://").target().is_err());
+        assert!(host("secret://../night").is_err());
+        assert!(host("secret://").is_err());
+    }
+
+    #[test]
+    fn a_zero_port_and_a_login_with_a_host_are_refused() {
+        let with = |field: &str, value| {
+            serde_json::from_value::<HostResource>(json!({ "address": "db", field: value }))
+        };
+
+        assert!(with("port", json!(0)).is_err());
+        assert!(with("user", json!("root@db")).is_err());
+        assert!(with("via", json!("../bastion")).is_err());
+        assert!(with("port", json!(2222)).is_ok());
     }
 }
