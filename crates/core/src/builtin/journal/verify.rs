@@ -4,7 +4,7 @@ use synt_journal::{JournalReader, JournalWriter, Verification};
 use super::read::read;
 
 #[derive(Clone)]
-pub struct JournalVerify {
+pub(crate) struct JournalVerify {
     journal: JournalWriter,
 }
 

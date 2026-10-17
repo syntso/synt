@@ -36,6 +36,6 @@ impl Action for SyncStatus {
         _context: &Context,
         params: ProjectParams,
     ) -> Result<StatusReport, ActionError> {
-        Ok(self.syncer.status(&params.project).await?)
+        Ok(self.syncer.status(params.project.as_str()).await?)
     }
 }

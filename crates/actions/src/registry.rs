@@ -3,11 +3,11 @@ use std::sync::Arc;
 
 use synt_journal::ActionId;
 
-use crate::{Action, ActionDescription, ActionError, Catalog, Handle};
+use crate::{Action, ActionDescription, ActionError, Catalog, RegisteredAction};
 
 #[derive(Clone, Default)]
 pub struct Registry {
-    actions: HashMap<ActionId, Handle>,
+    actions: HashMap<ActionId, RegisteredAction>,
     catalogs: Vec<Arc<dyn Catalog>>,
 }
 
@@ -23,7 +23,8 @@ impl Registry {
             return Err(ActionError::Duplicate(A::ID));
         }
 
-        self.actions.insert(id.clone(), Handle::new(id, action));
+        self.actions
+            .insert(id.clone(), RegisteredAction::new(id, action));
         Ok(())
     }
 
@@ -31,7 +32,7 @@ impl Registry {
         self.catalogs.push(catalog);
     }
 
-    pub fn get(&self, id: &ActionId) -> Option<Handle> {
+    pub fn get(&self, id: &ActionId) -> Option<RegisteredAction> {
         if let Some(handle) = self.actions.get(id) {
             return Some(handle.clone());
         }
@@ -48,7 +49,7 @@ impl Registry {
         let mut descriptions: Vec<ActionDescription> = self
             .actions
             .values()
-            .map(Handle::describe)
+            .map(RegisteredAction::describe)
             .chain(attached)
             .collect();
 
@@ -68,7 +69,8 @@ mod tests {
 
     use super::Registry;
     use crate::{
-        Action, ActionDescription, ActionError, Catalog, Context, DynamicAction, Handle, Risk,
+        Action, ActionDescription, ActionError, Catalog, Context, DynamicAction, RegisteredAction,
+        Risk,
     };
 
     struct Echo;
@@ -167,11 +169,11 @@ mod tests {
     }
 
     struct Extra {
-        handle: Handle,
+        handle: RegisteredAction,
     }
 
     impl Catalog for Extra {
-        fn get(&self, id: &ActionId) -> Option<Handle> {
+        fn get(&self, id: &ActionId) -> Option<RegisteredAction> {
             (self.handle.id() == id).then(|| self.handle.clone())
         }
 
@@ -253,7 +255,7 @@ mod tests {
     async fn attached_catalogs_add_their_actions() {
         let mut registry = registry();
         let id = ActionId::new("extra.shout").unwrap();
-        let handle = Handle::dynamic(id.clone(), Holler);
+        let handle = RegisteredAction::dynamic(id.clone(), Holler);
         registry.attach(Arc::new(Extra { handle }));
 
         let shout = registry.get(&id).unwrap();

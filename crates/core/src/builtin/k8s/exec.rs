@@ -5,14 +5,14 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::{ExecOutcome, ExecRequest};
 use synt_proto::ExecLimits;
+use synt_ssh::RemoteCommand;
 
-use super::Kube;
+use super::K8sActions;
 use crate::CoreError;
-use crate::builtin::ssh::escalates;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sExec {
-    kube: Kube,
+    kube: K8sActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -25,7 +25,7 @@ pub(crate) struct ExecParams {
 }
 
 impl K8sExec {
-    pub(super) fn new(kube: Kube) -> Self {
+    pub(super) fn new(kube: K8sActions) -> Self {
         Self { kube }
     }
 
@@ -53,7 +53,7 @@ impl Action for K8sExec {
     }
 
     fn risk(&self, target: Option<&ResourceRef>, params: &ExecParams) -> Risk {
-        if escalates(&params.request.command.line()) {
+        if RemoteCommand::new(params.request.command.line()).escalates() {
             return Risk::Privileged;
         }
 

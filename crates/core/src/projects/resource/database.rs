@@ -1,4 +1,5 @@
 use std::fmt;
+use std::num::NonZeroU16;
 use std::path::PathBuf;
 
 use schemars::JsonSchema;
@@ -7,38 +8,38 @@ use synt_db::{Engine, Server, TlsMode};
 use synt_platform::SecretName;
 use zeroize::Zeroizing;
 
-use super::{ResourceName, ResourceSpec};
+use super::{Address, Login, ResourceName};
 use crate::CoreError;
 use crate::projects::LocalPath;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DatabaseResource {
-    pub engine: Engine,
+    pub(crate) engine: Engine,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub host: Option<String>,
+    pub(crate) host: Option<Address>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub port: Option<u16>,
+    pub(crate) port: Option<NonZeroU16>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub database: Option<String>,
+    pub(crate) database: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub path: Option<String>,
+    pub(crate) path: Option<LocalPath>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub user: Option<String>,
+    pub(crate) user: Option<Login>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub password: Option<String>,
+    pub(crate) password: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub via: Option<String>,
+    pub(crate) via: Option<ResourceName>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tls: Option<TlsMode>,
+    pub(crate) tls: Option<TlsMode>,
 }
 
 impl DatabaseResource {
@@ -63,8 +64,17 @@ impl DatabaseResource {
 
     pub(crate) fn port(&self) -> u16 {
         self.port
+            .map(NonZeroU16::get)
             .or_else(|| self.engine.default_port())
             .unwrap_or_default()
+    }
+
+    pub(crate) fn check(&self) -> Result<(), CoreError> {
+        if self.engine == Engine::Sqlite {
+            return self.check_file();
+        }
+
+        self.check_network()
     }
 
     pub(crate) fn server(&self, password: Option<Zeroizing<String>>) -> Result<Server, CoreError> {
@@ -74,11 +84,13 @@ impl DatabaseResource {
 
         let host = self.host.clone().ok_or(CoreError::MissingField("host"))?;
 
-        Ok(Server::network(self.engine, host, self.port())
-            .with_database(self.database.clone())
-            .with_user(self.user.clone())
-            .with_password(password)
-            .with_tls(self.tls()))
+        Ok(
+            Server::network(self.engine, String::from(host), self.port())
+                .with_database(self.database.clone())
+                .with_user(self.user.clone().map(String::from))
+                .with_password(password)
+                .with_tls(self.tls()),
+        )
     }
 
     fn check_file(&self) -> Result<(), CoreError> {
@@ -104,30 +116,8 @@ impl DatabaseResource {
             return Err(CoreError::NetworkTakesHost(self.engine));
         }
 
-        let host = self
-            .host
-            .as_deref()
-            .ok_or(CoreError::MissingField("host"))?;
-
-        if !Self::is_plain_word(host) {
-            return Err(CoreError::NotAnAddress {
-                field: "host",
-                value: host.to_owned(),
-            });
-        }
-
-        if self.port == Some(0) {
-            return Err(CoreError::PortZero("port"));
-        }
-
-        if let Some(user) = &self.user
-            && !Self::is_plain_word(user)
-        {
-            return Err(CoreError::NotALogin(user.clone()));
-        }
-
-        if let Some(via) = &self.via {
-            ResourceName::check(via, "via")?;
+        if self.host.is_none() {
+            return Err(CoreError::MissingField("host"));
         }
 
         self.check_engine_rules()?;
@@ -150,35 +140,9 @@ impl DatabaseResource {
     }
 
     fn file(&self) -> Result<PathBuf, CoreError> {
-        let path = self
-            .path
-            .as_deref()
-            .ok_or(CoreError::MissingField("path"))?;
+        let path = self.path.as_ref().ok_or(CoreError::MissingField("path"))?;
 
-        let file = LocalPath::parse(path).map_err(|reason| CoreError::field("path", reason))?;
-
-        Ok(file.into_path())
-    }
-
-    fn is_plain_word(text: &str) -> bool {
-        !text.is_empty()
-            && !text.contains(|character: char| {
-                character.is_whitespace() || character.is_control() || character == '@'
-            })
-    }
-}
-
-impl ResourceSpec for DatabaseResource {
-    fn kind(&self) -> &'static str {
-        "database"
-    }
-
-    fn check(&self) -> Result<(), CoreError> {
-        if self.engine == Engine::Sqlite {
-            return self.check_file();
-        }
-
-        self.check_network()
+        path.path()
     }
 }
 
@@ -188,16 +152,19 @@ impl fmt::Display for DatabaseResource {
             return write!(
                 formatter,
                 "sqlite {}",
-                self.path.as_deref().unwrap_or_default()
+                self.path
+                    .as_ref()
+                    .map(LocalPath::as_str)
+                    .unwrap_or_default()
             );
         }
 
         let user = self
             .user
-            .as_deref()
-            .map(|user| format!("{user}@"))
+            .as_ref()
+            .map(|user| format!("{}@", user.as_str()))
             .unwrap_or_default();
-        let host = self.host.as_deref().unwrap_or_default();
+        let host = self.host.as_ref().map(Address::as_str).unwrap_or_default();
         let database = self
             .database
             .as_deref()
@@ -218,18 +185,19 @@ impl fmt::Display for DatabaseResource {
 mod tests {
     use synt_db::{Engine, TlsMode};
 
-    use super::{DatabaseResource, ResourceSpec};
+    use super::{Address, DatabaseResource, Login, ResourceName};
+    use crate::projects::LocalPath;
 
     fn postgres() -> DatabaseResource {
         DatabaseResource {
             engine: Engine::Postgres,
-            host: Some("10.0.2.5".to_owned()),
+            host: Some(Address::parse("10.0.2.5").unwrap()),
             port: None,
             database: Some("orders".to_owned()),
             path: None,
-            user: Some("app".to_owned()),
+            user: Some(Login::parse("app").unwrap()),
             password: Some("secret://orders-db".to_owned()),
-            via: Some("api-1".to_owned()),
+            via: Some(ResourceName::parse("api-1").unwrap()),
             tls: Some(TlsMode::Require),
         }
     }
@@ -240,7 +208,7 @@ mod tests {
             host: None,
             port: None,
             database: None,
-            path: Some(path.to_owned()),
+            path: Some(LocalPath::parse(path).unwrap()),
             user: None,
             password: None,
             via: None,
@@ -285,10 +253,10 @@ mod tests {
     #[test]
     fn sqlite_takes_an_absolute_path_and_nothing_of_the_network() {
         assert!(sqlite("/var/lib/app.sqlite").check().is_ok());
-        assert!(sqlite("app.sqlite").check().is_err());
+        assert!(LocalPath::parse("app.sqlite").is_err());
 
         let with_host = DatabaseResource {
-            host: Some("x".to_owned()),
+            host: Some(Address::parse("x").unwrap()),
             ..sqlite("/var/lib/app.sqlite")
         };
         assert!(with_host.check().unwrap_err().to_string().contains("host"));

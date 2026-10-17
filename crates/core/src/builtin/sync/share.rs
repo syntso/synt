@@ -36,6 +36,9 @@ impl Action for SyncShare {
         _context: &Context,
         params: MemberParams,
     ) -> Result<MembershipChange, ActionError> {
-        Ok(self.syncer.share(&params.project, params.member).await?)
+        Ok(self
+            .syncer
+            .share(params.project.as_str(), params.member)
+            .await?)
     }
 }

@@ -7,8 +7,9 @@ use std::path::Path;
 
 use common::{Approver, Grounds, Harness, rejection};
 use serde_json::{Value, json};
+use synt_actions::ActionGroup;
 use synt_client::Client;
-use synt_core::{Broker, Core, Databases, ProjectOpen, Projects, SecretPut, Secrets};
+use synt_core::{Broker, Core, DbActions, ProjectOpen, Projects, SecretPut, Secrets};
 use synt_journal::EventKind;
 use synt_proto::{ActionCall, ApprovalDecision, ErrorCode, Risk};
 use synt_ssh::Pool;
@@ -65,7 +66,7 @@ fn core(grounds: &Grounds) -> Core {
         .register(ProjectOpen::new(projects.clone()))
         .unwrap();
     registry.register(SecretPut::new(secrets.clone())).unwrap();
-    Databases::new(Pool::new(), projects, secrets)
+    DbActions::new(Pool::new(), projects, secrets)
         .register(&mut registry)
         .unwrap();
 

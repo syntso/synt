@@ -5,6 +5,7 @@ use synt_actions::{Action, ActionError, Context, Risk, blocking};
 use synt_journal::ResourceRef;
 
 use crate::CoreError;
+use crate::projects::ProjectSlug;
 use crate::runbooks::{RunbookDocument, RunbookEntry, RunbookName, Runbooks};
 
 #[derive(Debug, Clone)]
@@ -15,9 +16,9 @@ pub struct RunbookPut {
 #[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RunbookPutParams {
-    pub project: String,
-    pub name: RunbookName,
-    pub runbook: RunbookDocument,
+    pub(crate) project: ProjectSlug,
+    pub(crate) name: RunbookName,
+    pub(crate) runbook: RunbookDocument,
 }
 
 impl RunbookPut {

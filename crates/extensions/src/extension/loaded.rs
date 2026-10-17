@@ -1,6 +1,6 @@
 use std::sync::{Arc, OnceLock};
 
-use synt_actions::{ActionDescription, Handle, Risk};
+use synt_actions::{ActionDescription, RegisteredAction, Risk};
 use synt_journal::ActionId;
 
 use super::{ActionSpec, ExtensionAction, Guest};
@@ -12,7 +12,7 @@ pub(crate) struct Loaded {
     guest: Arc<Guest>,
     installed: Installed,
     ceiling: Risk,
-    handles: Vec<Handle>,
+    handles: Vec<RegisteredAction>,
     lane: OnceLock<Lane>,
 }
 
@@ -77,7 +77,7 @@ impl Loaded {
         });
     }
 
-    pub(crate) fn handle(&self, id: &ActionId) -> Option<Handle> {
+    pub(crate) fn handle(&self, id: &ActionId) -> Option<RegisteredAction> {
         self.handles
             .iter()
             .find(|handle| handle.id() == id)
@@ -85,7 +85,10 @@ impl Loaded {
     }
 
     pub(crate) fn describe(&self) -> Vec<ActionDescription> {
-        self.handles.iter().map(Handle::describe).collect()
+        self.handles
+            .iter()
+            .map(RegisteredAction::describe)
+            .collect()
     }
 
     pub(crate) fn action_ids(&self) -> Vec<String> {

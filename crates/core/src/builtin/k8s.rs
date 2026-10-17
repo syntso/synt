@@ -36,7 +36,7 @@ use watch::K8sWatch;
 use std::future::Future;
 use std::sync::Arc;
 
-use synt_actions::{ActionError, Context, Registry, Risk, blocking};
+use synt_actions::{ActionError, ActionGroup, Context, Registry, Risk, blocking};
 use synt_journal::{JournalWriter, ResourceRef};
 use synt_kube::{Cluster, ContextInfo, Kind, KindName, KubeError};
 use synt_ssh::Pool;
@@ -47,14 +47,14 @@ use crate::CoreError;
 use crate::projects::Projects;
 
 #[derive(Debug, Clone)]
-pub struct Kube {
+pub struct K8sActions {
     projects: Projects,
     clusters: Clusters,
     forwards: Forwards,
     streams: Streams,
 }
 
-impl Kube {
+impl K8sActions {
     pub fn new(pool: Pool, projects: Projects, journal: JournalWriter) -> Self {
         Self {
             projects,
@@ -62,24 +62,6 @@ impl Kube {
             forwards: Forwards::default(),
             streams: Streams::new(journal),
         }
-    }
-
-    pub fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
-        registry.register(K8sContexts::new(self.clone()))?;
-        registry.register(K8sList::new(self.clone()))?;
-        registry.register(K8sGet::new(self.clone()))?;
-        registry.register(K8sEvents::new(self.clone()))?;
-        registry.register(K8sLogs::new(self.clone()))?;
-        registry.register(K8sWatch::new(self.clone()))?;
-        registry.register(K8sStreamClose::new(self.clone()))?;
-        registry.register(K8sApply::new(self.clone()))?;
-        registry.register(K8sScale::new(self.clone()))?;
-        registry.register(K8sRolloutRestart::new(self.clone()))?;
-        registry.register(K8sDelete::new(self.clone()))?;
-        registry.register(K8sExec::new(self.clone()))?;
-        registry.register(K8sPortForward::new(self.clone()))?;
-        registry.register(K8sPortForwardList::new(self.clone()))?;
-        registry.register(K8sPortForwardClose::new(self.clone()))
     }
 
     pub(crate) fn is_busy(&self) -> bool {
@@ -194,5 +176,25 @@ impl Kube {
         let runtime = Handle::try_current().map_err(|_| CoreError::OutsideCore)?;
 
         Ok(runtime.block_on(future))
+    }
+}
+
+impl ActionGroup for K8sActions {
+    fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
+        registry.register(K8sContexts::new(self.clone()))?;
+        registry.register(K8sList::new(self.clone()))?;
+        registry.register(K8sGet::new(self.clone()))?;
+        registry.register(K8sEvents::new(self.clone()))?;
+        registry.register(K8sLogs::new(self.clone()))?;
+        registry.register(K8sWatch::new(self.clone()))?;
+        registry.register(K8sStreamClose::new(self.clone()))?;
+        registry.register(K8sApply::new(self.clone()))?;
+        registry.register(K8sScale::new(self.clone()))?;
+        registry.register(K8sRolloutRestart::new(self.clone()))?;
+        registry.register(K8sDelete::new(self.clone()))?;
+        registry.register(K8sExec::new(self.clone()))?;
+        registry.register(K8sPortForward::new(self.clone()))?;
+        registry.register(K8sPortForwardList::new(self.clone()))?;
+        registry.register(K8sPortForwardClose::new(self.clone()))
     }
 }

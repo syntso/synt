@@ -2,15 +2,15 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_kube::ContextInfo;
 
-use super::Kube;
+use super::K8sActions;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sContexts {
-    kube: Kube,
+    kube: K8sActions,
 }
 
 impl K8sContexts {
-    pub(super) fn new(kube: Kube) -> Self {
+    pub(super) fn new(kube: K8sActions) -> Self {
         Self { kube }
     }
 }

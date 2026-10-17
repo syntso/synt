@@ -18,7 +18,7 @@ mod tunnels;
 
 pub use config::UserConfig;
 pub use error::SshError;
-pub use exec::ExecOutcome;
+pub use exec::{ExecOutcome, RemoteCommand};
 pub use pool::{ConnectionState, ConnectionStatus, Lease, Pool, PoolBuilder};
 pub use session::Algorithms;
 pub use sftp::{Directory, Download, FileEntry, FileKind, FileSessions, Sftp, Upload, WriteMode};

@@ -3,11 +3,11 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::{Files, PathParams};
+use super::{PathParams, SftpActions};
 
 #[derive(Debug, Clone)]
 pub(crate) struct SftpRemove {
-    files: Files,
+    sftp: SftpActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -17,8 +17,8 @@ pub(crate) struct Removed {
 }
 
 impl SftpRemove {
-    pub(super) fn new(files: Files) -> Self {
-        Self { files }
+    pub(super) fn new(sftp: SftpActions) -> Self {
+        Self { sftp }
     }
 }
 
@@ -32,11 +32,11 @@ impl Action for SftpRemove {
     type Output = Removed;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &PathParams) -> Risk {
-        self.files.per_call_risk(target, Self::RISK)
+        self.sftp.per_call_risk(target, Self::RISK)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, _params: &PathParams) -> Option<String> {
-        self.files.destination(target)
+        self.sftp.destination(target)
     }
 
     fn summary(&self, output: &Removed) -> Value {
@@ -47,7 +47,7 @@ impl Action for SftpRemove {
         let path = params.path.as_str();
 
         let kind = self
-            .files
+            .sftp
             .run(context, move |sftp| async move { sftp.remove(path).await })
             .await?;
 

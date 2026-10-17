@@ -1,11 +1,10 @@
 mod change;
 mod file;
-mod folder;
 mod info;
+mod loaded;
 mod local_path;
 mod open;
 mod personal;
-mod place;
 mod problem;
 mod resolved;
 mod resource;
@@ -18,7 +17,6 @@ mod text;
 
 pub use change::ProjectChange;
 pub use info::ProjectInfo;
-pub(crate) use place::ProjectPlace;
 pub use problem::Problem;
 pub(crate) use resolved::{Resolved, ResolvedDatabase};
 pub use resource::{
@@ -28,15 +26,15 @@ pub use resource::{
 pub(crate) use resource::{ResourceFolder, ResourceName};
 pub use slug::ProjectSlug;
 pub use synt_sync::ProjectId;
+pub(crate) use target_ref::TargetRef;
 
 use file::ProjectFile;
-use folder::ProjectFolder;
+use loaded::LoadedProject;
 use local_path::LocalPath;
 use open::OpenProject;
 use personal::Personal;
 use source::ProjectSource;
 use table::ProjectTable;
-use target_ref::TargetRef;
 use text::Text;
 
 use std::collections::BTreeMap;
@@ -47,6 +45,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use synt_kube::{ClusterSpec, KubeconfigSource};
 use synt_platform::Lock;
 use synt_ssh::Target;
+use synt_sync::ProjectFolder;
 use tokio::sync::broadcast;
 
 use crate::CoreError;
@@ -96,7 +95,7 @@ impl Projects {
             return Self::already_open(&open.lock(), &path);
         }
 
-        let folder = ProjectFolder::load(&path, slug.clone())?;
+        let folder = LoadedProject::load(&path, slug.clone())?;
         let info = folder.info()?;
 
         if let Some((other, _)) = opened
@@ -115,8 +114,8 @@ impl Projects {
         Ok(info)
     }
 
-    pub(crate) fn close(&self, project: &str) -> Result<ProjectInfo, CoreError> {
-        if Personal::is_named(project) {
+    pub(crate) fn close(&self, project: &ProjectSlug) -> Result<ProjectInfo, CoreError> {
+        if Personal::is_named(project.as_str()) {
             return Err(CoreError::PersonalCannotClose);
         }
 
@@ -125,7 +124,7 @@ impl Projects {
 
         let closed = opened
             .remove(&slug)
-            .ok_or_else(|| CoreError::ProjectNotOpen(project.to_owned()))?;
+            .ok_or_else(|| CoreError::ProjectNotOpen(project.to_string()))?;
         let info = closed.lock().info()?;
 
         self.table.forget(Path::new(&info.path))?;
@@ -145,22 +144,24 @@ impl Projects {
         Ok(infos)
     }
 
-    pub(crate) fn listing(&self, project: &str) -> Result<ResourceListing, CoreError> {
+    pub(crate) fn listing(&self, project: &ProjectSlug) -> Result<ResourceListing, CoreError> {
         self.with_source(project, |source| source.listing())
     }
 
-    pub(crate) fn resource(&self, project: &str, name: &str) -> Result<ResourceEntry, CoreError> {
+    pub(crate) fn resource(
+        &self,
+        project: &ProjectSlug,
+        name: &ResourceName,
+    ) -> Result<ResourceEntry, CoreError> {
         self.with_source(project, |source| source.resource(name))
     }
 
     pub(crate) fn put(
         &self,
-        target: &str,
+        target: &TargetRef,
         admitted: Option<&str>,
         resource: Resource,
     ) -> Result<ResourceEntry, CoreError> {
-        let target = TargetRef::require(target)?;
-
         self.with_source(target.project(), |source| {
             source.put(target.resource(), admitted, resource)
         })
@@ -168,28 +169,31 @@ impl Projects {
 
     pub(crate) fn remove(
         &self,
-        target: &str,
+        target: &TargetRef,
         admitted: Option<&str>,
     ) -> Result<ResourceEntry, CoreError> {
-        let target = TargetRef::require(target)?;
-
         self.with_source(target.project(), |source| {
             source.remove(target.resource(), admitted)
         })
     }
 
-    pub(crate) fn place(&self, project: &str) -> Result<ProjectPlace, CoreError> {
-        self.with_source(project, |source| source.place())
+    pub(crate) fn place(&self, project: &ProjectSlug) -> Result<ProjectFolder, CoreError> {
+        self.with_source(project, |source| source.place().cloned())
+    }
+
+    pub(crate) fn slug(&self, project: &ProjectSlug) -> Result<ProjectSlug, CoreError> {
+        Self::find_slug(&self.lock(), project)
     }
 
     pub(crate) fn resolve(&self, text: &str) -> Result<Resolved, CoreError> {
-        let Some(target) = TargetRef::parse(text) else {
-            return Ok(Resolved::Host(Target::resolve(text)?));
-        };
+        match TargetRef::parse(text) {
+            Some(target) => self.resolve_target(&target?),
+            None => Ok(Resolved::Host(Target::resolve(text)?)),
+        }
+    }
 
-        let target = target?;
-
-        if Personal::is_named(target.project()) {
+    pub(crate) fn resolve_target(&self, target: &TargetRef) -> Result<Resolved, CoreError> {
+        if Personal::is_named(target.project().as_str()) {
             return self.personal.resolve(target.resource());
         }
 
@@ -241,7 +245,7 @@ impl Projects {
 
         let project = self
             .with_source(target.project(), |source| Ok(source.canonical_name()))
-            .unwrap_or_else(|_| target.project().to_owned());
+            .unwrap_or_else(|_| target.project().to_string());
 
         format!("@{project}/{}", target.resource())
     }
@@ -264,10 +268,10 @@ impl Projects {
 
     fn with_source<T>(
         &self,
-        project: &str,
+        project: &ProjectSlug,
         work: impl FnOnce(&mut dyn ProjectSource) -> Result<T, CoreError>,
     ) -> Result<T, CoreError> {
-        if Personal::is_named(project) {
+        if Personal::is_named(project.as_str()) {
             return work(&mut self.personal.clone());
         }
 
@@ -275,7 +279,7 @@ impl Projects {
         let slug = Self::find_slug(&opened, project)?;
         let open = opened
             .get(&slug)
-            .ok_or_else(|| CoreError::ProjectNotOpen(project.to_owned()))?;
+            .ok_or_else(|| CoreError::ProjectNotOpen(project.to_string()))?;
 
         work(&mut *open.lock())
     }
@@ -310,7 +314,7 @@ impl Projects {
         })
     }
 
-    fn already_open(folder: &ProjectFolder, path: &Path) -> Result<ProjectInfo, CoreError> {
+    fn already_open(folder: &LoadedProject, path: &Path) -> Result<ProjectInfo, CoreError> {
         if folder.path() == path {
             return folder.info();
         }
@@ -321,14 +325,14 @@ impl Projects {
         })
     }
 
-    fn find_slug(opened: &Opened, project: &str) -> Result<ProjectSlug, CoreError> {
-        let not_open = || CoreError::ProjectNotOpen(project.to_owned());
+    fn find_slug(opened: &Opened, project: &ProjectSlug) -> Result<ProjectSlug, CoreError> {
+        let not_open = || CoreError::ProjectNotOpen(project.to_string());
 
-        if let Some((slug, _)) = opened.iter().find(|(slug, _)| slug.as_str() == project) {
-            return Ok(slug.clone());
+        if opened.contains_key(project) {
+            return Ok(project.clone());
         }
 
-        let id = ProjectId::parse(project).map_err(|_| not_open())?;
+        let id = ProjectId::parse(project.as_str()).map_err(|_| not_open())?;
 
         opened
             .iter()

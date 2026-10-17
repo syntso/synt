@@ -5,12 +5,9 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
-use synt_actions::Registry;
+use synt_actions::{ActionGroup, Registry};
 use synt_client::{Autostart, Client, ClientError};
-use synt_core::{
-    Broker, ClusterResource, Core, HostResource, Kube, ProjectOpen, Projects, Resource,
-    ResourceList, State,
-};
+use synt_core::{Broker, Core, K8sActions, ProjectOpen, Projects, Resource, ResourceList, State};
 use synt_journal::{Event, EventKind, Filter, Journal, JournalWriter, MemoryKeyStore, Seq};
 use synt_kube::KubeconfigSource;
 use synt_platform::Endpoint;
@@ -62,7 +59,7 @@ impl Lab {
         registry
             .register(ResourceList::new(projects.clone()))
             .unwrap();
-        Kube::new(pool, projects, journal.clone())
+        K8sActions::new(pool, projects, journal.clone())
             .register(&mut registry)
             .unwrap();
 
@@ -314,31 +311,38 @@ fn write_project(directory: &Path, servers: &KubeServers, namespace: &str) -> Pa
 
 fn resources(servers: &KubeServers, namespace: &str) -> [(&'static str, Resource); 3] {
     let kubeconfig = servers.kubeconfig().display().to_string();
-    let cluster = |context: &str, via: Option<&str>| ClusterResource {
-        kubeconfig: Some(kubeconfig.clone()),
-        context: Some(context.to_owned()),
-        namespace: Some(namespace.to_owned()),
-        via: via.map(str::to_owned),
+    let cluster = |context: &str, via: Option<&str>| {
+        resource(json!({
+            "kind": "cluster",
+            "kubeconfig": kubeconfig,
+            "context": context,
+            "namespace": namespace,
+            "via": via,
+        }))
     };
-    let bastion = HostResource {
-        address: KubeServers::BASTION_ADDRESS.to_owned(),
-        port: Some(servers.bastion_port()),
-        user: Some(KubeServers::USER.to_owned()),
-        via: None,
-        identity: Some(servers.client_key().display().to_string()),
-    };
+    let bastion = resource(json!({
+        "kind": "host",
+        "address": KubeServers::BASTION_ADDRESS,
+        "port": servers.bastion_port(),
+        "user": KubeServers::USER,
+        "identity": servers.client_key().display().to_string(),
+    }));
 
     [
-        ("bastion", Resource::Host(bastion)),
-        (
-            "direct",
-            Resource::Cluster(cluster(KubeServers::DIRECT, None)),
-        ),
-        (
-            "inside",
-            Resource::Cluster(cluster(KubeServers::INSIDE, Some("bastion"))),
-        ),
+        ("bastion", bastion),
+        ("direct", cluster(KubeServers::DIRECT, None)),
+        ("inside", cluster(KubeServers::INSIDE, Some("bastion"))),
     ]
+}
+
+fn resource(fields: Value) -> Resource {
+    let mut fields = fields;
+
+    if let Value::Object(map) = &mut fields {
+        map.retain(|_, value| !value.is_null());
+    }
+
+    serde_json::from_value(fields).unwrap()
 }
 
 fn unique_namespace() -> String {

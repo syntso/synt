@@ -5,13 +5,13 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::{Replicas, Scaled};
 
-use super::{Kube, ObjectParams};
+use super::{K8sActions, ObjectParams};
 
 use crate::CoreError;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sScale {
-    kube: Kube,
+    kube: K8sActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -22,7 +22,7 @@ pub(crate) struct ScaleParams {
 }
 
 impl K8sScale {
-    pub(super) fn new(kube: Kube) -> Self {
+    pub(super) fn new(kube: K8sActions) -> Self {
         Self { kube }
     }
 

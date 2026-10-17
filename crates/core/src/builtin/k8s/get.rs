@@ -4,13 +4,13 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::{KindFacts, Kube, ObjectParams};
+use super::{K8sActions, KindFacts, ObjectParams};
 
 use crate::CoreError;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sGet {
-    kube: Kube,
+    kube: K8sActions,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -24,7 +24,7 @@ pub(crate) struct GetParams {
 }
 
 impl K8sGet {
-    pub(super) fn new(kube: Kube) -> Self {
+    pub(super) fn new(kube: K8sActions) -> Self {
         Self { kube }
     }
 

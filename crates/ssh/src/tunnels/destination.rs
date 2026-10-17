@@ -1,9 +1,12 @@
 use std::fmt::{self, Display, Formatter};
 use std::num::NonZeroU16;
 
+use serde::{Deserialize, Serialize};
+
 use crate::SshError;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub struct Destination {
     host: String,
     port: NonZeroU16,
@@ -40,6 +43,20 @@ impl Destination {
     }
 }
 
+impl TryFrom<String> for Destination {
+    type Error = SshError;
+
+    fn try_from(text: String) -> Result<Self, SshError> {
+        Self::parse(&text)
+    }
+}
+
+impl From<Destination> for String {
+    fn from(destination: Destination) -> Self {
+        destination.to_string()
+    }
+}
+
 impl Display for Destination {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         if self.host.contains(':') {
@@ -72,7 +89,13 @@ mod tests {
         assert_eq!((bracketed.host(), bracketed.port()), ("::1", 6379));
         assert_eq!(bracketed.to_string(), "[::1]:6379");
 
-        for text in ["orders-db", "orders-db:0", ":5432", "orders-db:http"] {
+        for text in [
+            "orders-db",
+            "orders-db:0",
+            ":5432",
+            "orders-db:http",
+            "a b:1",
+        ] {
             assert!(Destination::parse(text).is_err(), "{text}");
         }
     }

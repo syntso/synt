@@ -95,14 +95,11 @@ impl OpenParams {
         };
 
         if port == 0 {
-            return Err(CoreError::PortZero("remote_port"));
+            return Err(CoreError::RemotePortZero);
         }
 
-        let destination =
-            Destination::new(host.trim(), port).map_err(|_| CoreError::NotAnAddress {
-                field: "remote_host",
-                value: host.clone(),
-            })?;
+        let destination = Destination::new(host.trim(), port)
+            .map_err(|_| CoreError::NotARemoteHost(host.clone()))?;
 
         Ok(Some(destination))
     }

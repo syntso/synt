@@ -1,7 +1,7 @@
 use serde::Serialize;
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
-use synt_ssh::{ConnectionStatus, Pool};
+use synt_ssh::{ConnectionState, ConnectionStatus, Pool};
 
 #[derive(Debug, Clone)]
 pub struct SshConnections {
@@ -12,7 +12,7 @@ pub struct SshConnections {
 pub struct ConnectionInfo {
     pub target: String,
     pub via: Option<String>,
-    pub state: String,
+    pub state: ConnectionState,
     pub leases: usize,
     pub error: Option<String>,
 }
@@ -34,7 +34,7 @@ impl Action for SshConnections {
     fn summary(&self, output: &Vec<ConnectionInfo>) -> Value {
         let connected = output
             .iter()
-            .filter(|connection| connection.state == "connected")
+            .filter(|connection| connection.state == ConnectionState::Connected)
             .count();
 
         json!({ "connections": output.len(), "connected": connected })
@@ -52,7 +52,7 @@ impl From<ConnectionStatus> for ConnectionInfo {
         Self {
             target: status.target,
             via: status.via,
-            state: status.state.name().to_owned(),
+            state: status.state,
             leases: status.leases,
             error: status.error,
         }

@@ -7,13 +7,13 @@ use synt_db::{Effect, TableName};
 use synt_journal::ResourceRef;
 use synt_proto::Millis;
 
-use super::Databases;
+use super::DbActions;
 
 const LIMIT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
 pub(crate) struct DbTables {
-    databases: Databases,
+    databases: DbActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -23,7 +23,7 @@ pub(crate) struct TablesResult {
 }
 
 impl DbTables {
-    pub(super) fn new(databases: Databases) -> Self {
+    pub(super) fn new(databases: DbActions) -> Self {
         Self { databases }
     }
 }

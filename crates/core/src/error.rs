@@ -5,6 +5,7 @@ use std::time::Duration;
 use serde_json::Value;
 use synt_actions::ActionError;
 use synt_db::{DbError, Engine, StatementKind};
+use synt_extensions::ExtensionError;
 use synt_journal::{ActionId, JournalError, JournalId, ResourceRef, Seq};
 use synt_kube::KubeError;
 use synt_platform::{KeyPlace, PlatformError, SecretName};
@@ -14,7 +15,7 @@ use synt_sync::SyncError;
 use thiserror::Error;
 use tokio::task::JoinError;
 
-use crate::builtin::{ForwardId, ssh_failure};
+use crate::builtin::ForwardId;
 use crate::runbooks::{ParamName, RunbookName};
 use crate::ssh_keys::KeyName;
 use crate::terminals::SessionId;
@@ -45,11 +46,11 @@ pub enum CoreError {
     #[error("state database: {0}")]
     State(#[from] rusqlite::Error),
 
-    #[error("ssh: {0}")]
-    Ssh(#[from] synt_ssh::SshError),
+    #[error("{}", Self::ssh_reason(.0))]
+    Ssh(#[from] SshError),
 
     #[error("{0}")]
-    KeyImport(#[source] synt_ssh::SshError),
+    KeyImport(#[source] SshError),
 
     #[error("system random source: {0}")]
     Random(#[from] getrandom::Error),
@@ -58,7 +59,7 @@ pub enum CoreError {
     Stopped(#[from] JoinError),
 
     #[error("{0}")]
-    Shell(#[source] synt_ssh::SshError),
+    Shell(#[source] SshError),
 
     #[error("{0}")]
     Pty(#[source] PlatformError),
@@ -117,6 +118,9 @@ pub enum CoreError {
          the core will not start a new journal over it"
     )]
     UnknownJournal { journal: PathBuf, place: KeyPlace },
+
+    #[error("term must be 1 to {longest} letters, digits or -_.+")]
+    BadTerm { longest: usize },
 
     #[error("there is already a key named {0}; remove it first")]
     KeyExists(KeyName),
@@ -258,6 +262,9 @@ pub enum CoreError {
     #[error(transparent)]
     Sync(#[from] SyncError),
 
+    #[error(transparent)]
+    Extension(#[from] ExtensionError),
+
     #[error("{} must be a plain folder, not a link", .0.display())]
     LinkedFolder(PathBuf),
 
@@ -317,6 +324,9 @@ pub enum CoreError {
     TomlWrite(#[from] toml::ser::Error),
 
     #[error("{0}")]
+    ResourceFields(#[source] serde_json::Error),
+
+    #[error("{0}")]
     Unreadable(#[source] io::Error),
 
     #[error("a name must be 1 to {0} characters")]
@@ -343,17 +353,20 @@ pub enum CoreError {
     )]
     NotAnIdentity(String),
 
-    #[error("{field} must be a host name or address, got {value:?}")]
-    NotAnAddress { field: &'static str, value: String },
-
-    #[error("{0} must be between 1 and 65535")]
-    PortZero(&'static str),
+    #[error("{0:?} is not a host name or address")]
+    NotAnAddress(String),
 
     #[error("local_port must be between 1 and 65535; leave it out to pick a free port")]
     LocalPortZero,
 
     #[error("remote_host and remote_port go together")]
     RemoteApart,
+
+    #[error("remote_host must be a host name or address, got {0:?}")]
+    NotARemoteHost(String),
+
+    #[error("remote_port must be between 1 and 65535")]
+    RemotePortZero,
 
     #[error("user must be a login name, got {0:?}")]
     NotALogin(String),
@@ -366,15 +379,6 @@ pub enum CoreError {
 
     #[error("context must be a context name, got {0:?}")]
     NotAContext(String),
-
-    #[error(
-        "namespace must be lowercase letters, digits and '-', at most {longest} characters, \
-         got {namespace:?}"
-    )]
-    NotANamespace { namespace: String, longest: usize },
-
-    #[error("remote must be host:port, such as orders-db:5432, got {0:?}")]
-    NotARemote(String),
 
     #[error("there is no home folder to expand ~ in: {0}")]
     NoHome(#[source] io::Error),
@@ -666,9 +670,6 @@ pub enum CoreError {
     Database(#[from] DbError),
 
     #[error(transparent)]
-    Tunnel(SshError),
-
-    #[error(transparent)]
     Action(#[from] ActionError),
 
     #[error("{0}")]
@@ -899,6 +900,34 @@ impl CoreError {
                 | Self::FollowWithoutStream
         )
     }
+
+    fn ssh_reason(error: &SshError) -> String {
+        match error {
+            SshError::HostKeyUnknown { host, fingerprint } => format!(
+                "the host key of {host} is not in known_hosts (fingerprint {fingerprint}); \
+                 check the fingerprint and add the key to ~/.ssh/known_hosts before trying again"
+            ),
+            SshError::HostKeyChanged { host, fingerprint } => format!(
+                "the host key of {host} does not match known_hosts (server sent {fingerprint}); \
+                 someone may be intercepting the connection, so it was refused"
+            ),
+            SshError::HostKeyOtherType { host, fingerprint } => format!(
+                "{host} presented a key of a type not pinned in known_hosts (fingerprint \
+                 {fingerprint}), while a key of another type is pinned; do not replace the pinned \
+                 key without checking the new one out of band"
+            ),
+            SshError::Timeout(limit) => format!(
+                "the host did not answer within {} s, so nothing was started",
+                limit.as_secs()
+            ),
+            SshError::CommandTimeout { .. }
+            | SshError::Sftp { .. }
+            | SshError::SftpLost { .. }
+            | SshError::SftpClosed
+            | SshError::Listen { .. } => error.to_string(),
+            other => format!("ssh: {other}"),
+        }
+    }
 }
 
 impl From<PlatformError> for CoreError {
@@ -920,7 +949,6 @@ impl From<CoreError> for ActionError {
 
         match error {
             CoreError::Action(action) => action,
-            CoreError::Tunnel(ssh) => ssh_failure(ssh),
             CoreError::Database(DbError::InvalidInput(reason))
             | CoreError::Kube(KubeError::Invalid(reason)) => Self::InvalidParams(reason),
             CoreError::Database(DbError::Server {

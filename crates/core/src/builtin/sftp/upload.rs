@@ -8,14 +8,14 @@ use synt_journal::ResourceRef;
 use synt_proto::StreamId;
 use synt_ssh::{Upload, WriteMode};
 
-use super::files::failed;
-use super::{Files, RemotePath};
+use super::{RemotePath, SftpActions};
+use crate::CoreError;
 use crate::link::Inbound;
 use crate::link::Link;
 
 #[derive(Debug, Clone)]
 pub(crate) struct SftpUpload {
-    files: Files,
+    sftp: SftpActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -38,8 +38,8 @@ pub(crate) struct Uploaded {
 }
 
 impl SftpUpload {
-    pub(super) fn new(files: Files) -> Self {
-        Self { files }
+    pub(super) fn new(sftp: SftpActions) -> Self {
+        Self { sftp }
     }
 
     async fn open(&self, context: &Context, params: &UploadParams) -> Result<Upload, ActionError> {
@@ -54,7 +54,7 @@ impl SftpUpload {
             truncate: offset == 0,
         };
 
-        self.files
+        self.sftp
             .run(context, move |sftp| async move {
                 sftp.upload(path, offset, mode, true).await
             })
@@ -68,7 +68,7 @@ impl SftpUpload {
         offset: u64,
     ) -> Result<(), ActionError> {
         let entry = self
-            .files
+            .sftp
             .run(context, move |sftp| async move { sftp.stat(path).await })
             .await?;
 
@@ -97,11 +97,11 @@ impl Action for SftpUpload {
     type Output = Uploaded;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &UploadParams) -> Risk {
-        self.files.per_call_risk(target, Self::RISK)
+        self.sftp.per_call_risk(target, Self::RISK)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, _params: &UploadParams) -> Option<String> {
-        self.files.destination(target)
+        self.sftp.destination(target)
     }
 
     fn summary(&self, output: &Uploaded) -> Value {
@@ -114,14 +114,14 @@ impl Action for SftpUpload {
     }
 
     async fn run(&self, context: &Context, params: UploadParams) -> Result<Uploaded, ActionError> {
-        let _slot = self.files.transfer_slot().await?;
+        let _slot = self.sftp.transfer_slot().await?;
         let link = Link::of_call(context, "the file")?;
 
         let mut inbound = Inbound::open(&link, params.stream).await?;
         let mut upload = self.open(context, &params).await?;
 
         let sha256 = receive(&mut inbound, &mut upload, params.size).await?;
-        upload.finish().await.map_err(failed)?;
+        upload.finish().await.map_err(CoreError::from)?;
 
         Ok(Uploaded {
             path: params.path.into_string(),
@@ -156,7 +156,7 @@ async fn receive(
         }
 
         hasher.update(&data);
-        upload.write(&data).await.map_err(failed)?;
+        upload.write(&data).await.map_err(CoreError::from)?;
     }
 
     Ok(HEXLOWER.encode(&hasher.finalize()))

@@ -59,8 +59,8 @@ impl PortForward {
         })
     }
 
-    pub(super) fn login_user(&self) -> &str {
-        self.lease.target().user()
+    pub(super) fn logs_in_as_root(&self) -> bool {
+        self.lease.target().logs_in_as_root()
     }
 
     pub(super) fn status(&self) -> TunnelStatus {

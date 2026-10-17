@@ -5,7 +5,7 @@ use synt_ssh::Tunnels;
 use super::TunnelInfo;
 
 #[derive(Debug, Clone)]
-pub struct TunnelList {
+pub(crate) struct TunnelList {
     tunnels: Tunnels,
 }
 

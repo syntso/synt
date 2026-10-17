@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use common::{ExecStub, Grounds, Harness, rejection};
 use serde_json::{Value, json};
-use synt_actions::Action;
+use synt_actions::{Action, ActionGroup};
 use synt_core::{Broker, Core, CoreCaller, CoreScreen};
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Actor, EventKind, Filter, Name, ResourceRef, Seq};

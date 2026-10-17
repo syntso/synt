@@ -7,7 +7,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::{AppliedObject, Change, Manifest};
 
-use super::Kube;
+use super::K8sActions;
 
 use crate::CoreError;
 
@@ -16,7 +16,7 @@ const NO_DRY_RUN: &str = "not run: the cluster is reached through a root login, 
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sApply {
-    kube: Kube,
+    kube: K8sActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
@@ -33,7 +33,7 @@ pub(crate) struct Applied {
 }
 
 impl K8sApply {
-    pub(super) fn new(kube: Kube) -> Self {
+    pub(super) fn new(kube: K8sActions) -> Self {
         Self { kube }
     }
 

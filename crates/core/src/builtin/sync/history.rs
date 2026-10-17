@@ -4,6 +4,8 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_sync::{DocumentPath, RevisionInfo, Syncer};
 
+use crate::projects::ProjectSlug;
+
 pub struct DocumentHistory {
     syncer: Syncer,
 }
@@ -11,7 +13,7 @@ pub struct DocumentHistory {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HistoryParams {
-    pub project: String,
+    pub(crate) project: ProjectSlug,
     #[schemars(with = "String")]
     pub path: DocumentPath,
 }
@@ -39,6 +41,9 @@ impl Action for DocumentHistory {
         _context: &Context,
         params: HistoryParams,
     ) -> Result<Vec<RevisionInfo>, ActionError> {
-        Ok(self.syncer.history(&params.project, params.path).await?)
+        Ok(self
+            .syncer
+            .history(params.project.as_str(), params.path)
+            .await?)
     }
 }

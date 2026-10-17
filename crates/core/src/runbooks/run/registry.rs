@@ -1,15 +1,11 @@
-mod active;
-mod guard;
-
-pub(crate) use guard::RunGuard;
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use synt_platform::Lock;
 use tokio_util::sync::CancellationToken;
 
-use active::ActiveRun;
+use super::RunGuard;
+use super::active::ActiveRun;
 
 use crate::CoreError;
 

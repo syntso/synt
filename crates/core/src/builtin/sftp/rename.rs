@@ -4,11 +4,11 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::{Files, RemotePath};
+use super::{RemotePath, SftpActions};
 
 #[derive(Debug, Clone)]
 pub(crate) struct SftpRename {
-    files: Files,
+    sftp: SftpActions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -24,8 +24,8 @@ pub(crate) struct Renamed {
 }
 
 impl SftpRename {
-    pub(super) fn new(files: Files) -> Self {
-        Self { files }
+    pub(super) fn new(sftp: SftpActions) -> Self {
+        Self { sftp }
     }
 }
 
@@ -39,11 +39,11 @@ impl Action for SftpRename {
     type Output = Renamed;
 
     fn risk(&self, target: Option<&ResourceRef>, _params: &RenameParams) -> Risk {
-        self.files.per_call_risk(target, Self::RISK)
+        self.sftp.per_call_risk(target, Self::RISK)
     }
 
     fn destination(&self, target: Option<&ResourceRef>, _params: &RenameParams) -> Option<String> {
-        self.files.destination(target)
+        self.sftp.destination(target)
     }
 
     fn summary(&self, output: &Renamed) -> Value {
@@ -53,7 +53,7 @@ impl Action for SftpRename {
     async fn run(&self, context: &Context, params: RenameParams) -> Result<Renamed, ActionError> {
         let (from, to) = (params.from.as_str(), params.to.as_str());
 
-        self.files
+        self.sftp
             .run(
                 context,
                 move |sftp| async move { sftp.rename(from, to).await },

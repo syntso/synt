@@ -1,5 +1,5 @@
 use serde_json::{Value, json};
-use synt_actions::{Handle, Registry};
+use synt_actions::{RegisteredAction, Registry};
 use synt_journal::{ActionId, Details, ResourceRef, Seq};
 use synt_proto::{ActionCall, RpcError};
 
@@ -7,7 +7,7 @@ const WILDCARDS: [char; 2] = ['*', '?'];
 
 pub(super) struct ParsedCall {
     pub(super) action: ActionId,
-    pub(super) handle: Option<Handle>,
+    pub(super) handle: Option<RegisteredAction>,
     pub(super) target: Option<ResourceRef>,
     pub(super) details: Details,
     pub(super) params: Value,

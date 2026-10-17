@@ -13,7 +13,7 @@ use refusal::Refusal;
 use std::sync::Arc;
 
 use serde_json::Value;
-use synt_actions::{ActionError, Handle, Prepared, Registry};
+use synt_actions::{ActionError, Prepared, RegisteredAction, Registry};
 use synt_journal::{ActionId, Actor, EventKind, JournalWriter, NewEvent, ResourceRef, Seq};
 use synt_proto::{
     ActionCall, ActionDescription, ActionOutcome, ApprovalAnswer, ErrorCode, RequestSeq, RpcError,
@@ -99,7 +99,7 @@ impl Core {
         &self.broker
     }
 
-    pub(crate) fn action(&self, id: &ActionId) -> Option<Handle> {
+    pub(crate) fn action(&self, id: &ActionId) -> Option<RegisteredAction> {
         self.registry.get(id)
     }
 
@@ -150,7 +150,7 @@ impl Core {
 
     async fn screen(
         call: &Call<'_>,
-        handle: Option<Handle>,
+        handle: Option<RegisteredAction>,
         params: Value,
     ) -> Result<Prepared, Refusal> {
         let Some(handle) = handle else {
@@ -183,7 +183,7 @@ impl Core {
     }
 
     async fn prepare(
-        handle: &Handle,
+        handle: &RegisteredAction,
         target: Option<&ResourceRef>,
         params: Value,
     ) -> Result<Prepared, ActionError> {

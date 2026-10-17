@@ -15,7 +15,7 @@ use registry::Registry;
 use slot::Slot;
 use synt_proto::ExecLimits;
 
-use crate::exec::RemoteCommand;
+use crate::exec::Invocation;
 use crate::known_hosts::KnownHosts;
 use crate::{ExecOutcome, SshError, Target};
 
@@ -57,7 +57,7 @@ impl Pool {
         limits: ExecLimits,
         stop: impl Future<Output = ()>,
     ) -> Result<ExecOutcome, SshError> {
-        RemoteCommand::run(self, target, command, limits, stop).await
+        Invocation::run(self, target, command, limits, stop).await
     }
 
     pub fn connections(&self) -> Vec<ConnectionStatus> {

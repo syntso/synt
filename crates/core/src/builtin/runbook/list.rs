@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use crate::CoreError;
+use crate::projects::ProjectSlug;
 use crate::runbooks::{RunbookListing, Runbooks};
 
 #[derive(Debug, Clone)]
@@ -14,7 +15,7 @@ pub struct RunbookList {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RunbookListParams {
-    pub project: String,
+    pub(crate) project: ProjectSlug,
 }
 
 impl RunbookList {

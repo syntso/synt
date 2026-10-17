@@ -1,10 +1,16 @@
 use std::fmt;
 
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
 use crate::CoreError;
 
 const LONGEST_NAME: usize = 64;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(try_from = "String", into = "String")]
 pub(crate) struct ResourceName(String);
 
 impl ResourceName {
@@ -23,14 +29,22 @@ impl ResourceName {
         Ok(Self(name.to_owned()))
     }
 
-    pub(crate) fn check(name: &str, field: &'static str) -> Result<(), CoreError> {
-        Self::parse(name)
-            .map(drop)
-            .map_err(|reason| CoreError::field(field, reason))
-    }
-
     pub(crate) fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl TryFrom<String> for ResourceName {
+    type Error = CoreError;
+
+    fn try_from(name: String) -> Result<Self, CoreError> {
+        Self::parse(&name)
+    }
+}
+
+impl From<ResourceName> for String {
+    fn from(name: ResourceName) -> Self {
+        name.0
     }
 }
 

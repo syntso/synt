@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use synt_journal::{Journal, JournalBuilder, JournalId, KeyStore};
-use synt_platform::Vault;
+use synt_journal::{Journal, JournalBuilder, JournalId, JournalWriter, KeyStore};
+use synt_platform::{Vault, WeakVault, open_vault};
 
 use crate::CoreError;
 use crate::grants::GrantSeal;
@@ -22,34 +22,30 @@ pub struct Storage {
 }
 
 impl Storage {
-    pub fn prepare(data: &Path, vault: Box<dyn Vault>) -> Result<Self, CoreError> {
-        let journals = data.join(JOURNALS);
-        synt_platform::create_private_directory(&journals)?;
+    pub fn open(data: &Path, weak_vault: WeakVault) -> Result<Self, CoreError> {
+        let vault = open_vault(data, weak_vault)?;
+        let place = vault.place();
+        eprintln!("journal keys are kept in {place}");
 
-        let state = data.join(STATE);
-        synt_platform::create_private_directory(&state)?;
+        if let Some(weakness) = place.weakness() {
+            eprintln!("warning: {weakness}");
+            eprintln!("warning: {}", weak_vault.reason());
+        }
 
-        Ok(Self {
-            journals,
-            state,
-            vault: Arc::from(vault),
-        })
+        Self::prepare(data, vault)
     }
 
-    pub fn journal(&self) -> Result<Journal, CoreError> {
-        let path = self.journals.join(JOURNAL_FILE);
-        let keys = Arc::new(JournalKeys::new(Arc::clone(&self.vault)));
-        let exists = path.try_exists()?;
+    pub fn open_journal(&self) -> Result<JournalWriter, CoreError> {
+        let journal = self.journal()?;
 
-        match self.remembered_id()? {
-            Some(id) if exists => Ok(Journal::open(&path, id, keys)?),
-            Some(id) => self.resume(&path, id, keys),
-            None if exists => Err(CoreError::UnknownJournal {
-                journal: path,
-                place: self.vault.place(),
-            }),
-            None => self.create(&path, keys),
-        }
+        eprintln!(
+            "journal {} at {}, last event {}",
+            journal.id(),
+            journal.path().display(),
+            journal.anchors().head.seq
+        );
+
+        Ok(JournalWriter::spawn(journal)?)
     }
 
     pub fn state(&self) -> Result<State, CoreError> {
@@ -66,6 +62,36 @@ impl Storage {
 
     pub fn grant_seal(&self) -> Result<GrantSeal, CoreError> {
         GrantSeal::open(Arc::clone(&self.vault))
+    }
+
+    fn prepare(data: &Path, vault: Box<dyn Vault>) -> Result<Self, CoreError> {
+        let journals = data.join(JOURNALS);
+        synt_platform::create_private_directory(&journals)?;
+
+        let state = data.join(STATE);
+        synt_platform::create_private_directory(&state)?;
+
+        Ok(Self {
+            journals,
+            state,
+            vault: Arc::from(vault),
+        })
+    }
+
+    fn journal(&self) -> Result<Journal, CoreError> {
+        let path = self.journals.join(JOURNAL_FILE);
+        let keys = Arc::new(JournalKeys::new(Arc::clone(&self.vault)));
+        let exists = path.try_exists()?;
+
+        match self.remembered_id()? {
+            Some(id) if exists => Ok(Journal::open(&path, id, keys)?),
+            Some(id) => self.resume(&path, id, keys),
+            None if exists => Err(CoreError::UnknownJournal {
+                journal: path,
+                place: self.vault.place(),
+            }),
+            None => self.create(&path, keys),
+        }
     }
 
     fn create(&self, path: &Path, keys: Arc<JournalKeys>) -> Result<Journal, CoreError> {

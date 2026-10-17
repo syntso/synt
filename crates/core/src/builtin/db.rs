@@ -10,7 +10,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
-use synt_actions::{ActionError, Context, Registry, Risk, blocking};
+use synt_actions::{ActionError, ActionGroup, Context, Registry, Risk, blocking};
 use synt_db::{Database, DbError, Effect, Engine, Server};
 use synt_journal::ResourceRef;
 use synt_ssh::{Destination, Pool, Target, Tunnels};
@@ -26,21 +26,20 @@ use self::query::DbQuery;
 use self::schema::DbSchema;
 use self::tables::DbTables;
 use crate::CoreError;
-use crate::builtin::ssh::is_root;
 use crate::projects::{Projects, ResolvedDatabase};
 use crate::secrets::Secrets;
 
 const CONCURRENT_CALLS: usize = 8;
 
 #[derive(Debug, Clone)]
-pub struct Databases {
+pub struct DbActions {
     projects: Projects,
     secrets: Secrets,
     tunnels: Tunnels,
     calls: Arc<Semaphore>,
 }
 
-impl Databases {
+impl DbActions {
     pub fn new(pool: Pool, projects: Projects, secrets: Secrets) -> Self {
         Self {
             projects,
@@ -48,14 +47,6 @@ impl Databases {
             tunnels: Tunnels::new(pool),
             calls: Arc::new(Semaphore::new(CONCURRENT_CALLS)),
         }
-    }
-
-    pub fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
-        registry.register(DbQuery::new(self.clone()))?;
-        registry.register(DbExplain::new(self.clone()))?;
-        registry.register(DbSchema::new(self.clone()))?;
-        registry.register(DbTables::new(self.clone()))?;
-        registry.register(DbPing::new(self.clone()))
     }
 
     fn check_target(&self, target: Option<&ResourceRef>) -> Result<Engine, CoreError> {
@@ -84,7 +75,7 @@ impl Databases {
             return Risk::Privileged;
         };
 
-        if resolved.via.as_ref().is_some_and(|via| is_root(via.user())) {
+        if resolved.via.as_ref().is_some_and(Target::logs_in_as_root) {
             return Risk::Privileged;
         }
 
@@ -150,7 +141,7 @@ impl Databases {
         let text = target.as_str().to_owned();
         let resolved = blocking::<_, _, CoreError>(move || projects.database(&text)).await?;
 
-        if resolved.via.as_ref().is_some_and(|via| is_root(via.user()))
+        if resolved.via.as_ref().is_some_and(Target::logs_in_as_root)
             && context.risk() != Risk::Privileged
         {
             return Err(CoreError::RootLogin {
@@ -198,20 +189,30 @@ impl Databases {
         resolved: &ResolvedDatabase,
         stop: CancellationToken,
     ) -> Result<SocketAddr, CoreError> {
-        let host = resolved.resource.host.clone().unwrap_or_default();
-        let destination =
-            Destination::new(host, resolved.resource.port()).map_err(CoreError::Tunnel)?;
+        let host = resolved
+            .resource
+            .host
+            .clone()
+            .map(String::from)
+            .unwrap_or_default();
+        let destination = Destination::new(host, resolved.resource.port())?;
 
-        let opened = self
-            .tunnels
-            .open(via, destination, None, stop)
-            .await
-            .map_err(CoreError::Tunnel)?;
+        let opened = self.tunnels.open(via, destination, None, stop).await?;
 
         Ok(SocketAddr::from((Ipv4Addr::LOCALHOST, opened.local_port)))
     }
 
     fn resolve(&self, target: Option<&ResourceRef>) -> Option<ResolvedDatabase> {
         self.projects.database(target?.as_str()).ok()
+    }
+}
+
+impl ActionGroup for DbActions {
+    fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
+        registry.register(DbQuery::new(self.clone()))?;
+        registry.register(DbExplain::new(self.clone()))?;
+        registry.register(DbSchema::new(self.clone()))?;
+        registry.register(DbTables::new(self.clone()))?;
+        registry.register(DbPing::new(self.clone()))
     }
 }

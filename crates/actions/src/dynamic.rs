@@ -83,7 +83,7 @@ mod tests {
     use serde_json::{Value, json};
     use synt_journal::{ActionId, Actor, ResourceRef, Seq};
 
-    use crate::{ActionError, Context, DynamicAction, Handle, Risk};
+    use crate::{ActionError, Context, DynamicAction, RegisteredAction, Risk};
 
     struct Greet;
 
@@ -120,8 +120,8 @@ mod tests {
         }
     }
 
-    fn handle() -> Handle {
-        Handle::dynamic(ActionId::new("hello.greet").unwrap(), Greet)
+    fn handle() -> RegisteredAction {
+        RegisteredAction::dynamic(ActionId::new("hello.greet").unwrap(), Greet)
     }
 
     fn target() -> ResourceRef {

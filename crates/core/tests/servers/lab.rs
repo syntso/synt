@@ -3,14 +3,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde_json::{Value, json};
-use synt_actions::Registry;
+use serde_json::{Map, Value, json};
+use synt_actions::{ActionGroup, Registry};
 use synt_client::{Autostart, Client, ClientError};
 use synt_core::{
-    Broker, Core, DatabaseResource, Databases, Files, HostResource, ProjectOpen, Projects,
-    Resource, RunbookActions, Runbooks, SecretPut, Secrets, SessionBlocks, SessionClose,
-    SessionList, SshConnections, SshExec, SshKeys, SshSessionOpen, State, Terminals, TunnelClose,
-    TunnelOpen, TunnelResource,
+    Broker, Core, DbActions, ProjectOpen, Projects, Resource, RunbookActions, Runbooks, SecretPut,
+    Secrets, SessionBlocks, SessionClose, SessionList, SftpActions, SshConnections, SshExec,
+    SshKeys, SshSessionOpen, State, Terminals, TunnelClose, TunnelOpen,
 };
 use synt_db::{Engine, TlsMode};
 use synt_journal::{Event, EventKind, Filter, Journal, JournalWriter, MemoryKeyStore, Seq};
@@ -243,11 +242,11 @@ fn registry(
     registry
         .register(SessionList::new(terminals.clone()))
         .unwrap();
-    Files::new(pool.clone(), projects.clone())
+    SftpActions::new(pool.clone(), projects.clone())
         .register(&mut registry)
         .unwrap();
     registry.register(SecretPut::new(secrets.clone())).unwrap();
-    Databases::new(pool.clone(), projects.clone(), secrets.clone())
+    DbActions::new(pool.clone(), projects.clone(), secrets.clone())
         .register(&mut registry)
         .unwrap();
 
@@ -293,53 +292,62 @@ fn resources(servers: &SshServers) -> [(&'static str, Resource); 5] {
         Some(servers.bastion_port()),
         &key,
     );
-    let echo = TunnelResource {
-        host: "inner".to_owned(),
-        remote: format!("127.0.0.1:{}", SshServers::ECHO_PORT),
-        local: None,
-    };
+    let inner = Value::Object(
+        host(SshServers::TARGET_NAME, None, &key)
+            .into_iter()
+            .chain([("via".to_owned(), json!("bastion"))])
+            .collect(),
+    );
+    let vaulted = Value::Object(
+        bastion
+            .clone()
+            .into_iter()
+            .chain([("identity".to_owned(), json!("secret://night"))])
+            .collect(),
+    );
+    let echo = json!({
+        "kind": "tunnel",
+        "host": "inner",
+        "remote": format!("127.0.0.1:{}", SshServers::ECHO_PORT),
+    });
 
     [
-        ("bastion", Resource::Host(bastion.clone())),
-        (
-            "inner",
-            Resource::Host(HostResource {
-                via: Some("bastion".to_owned()),
-                ..host(SshServers::TARGET_NAME, None, &key)
-            }),
-        ),
-        (
-            "vaulted",
-            Resource::Host(HostResource {
-                identity: Some("secret://night".to_owned()),
-                ..bastion
-            }),
-        ),
-        ("echo", Resource::Tunnel(echo)),
-        ("postgres", Resource::Database(postgres())),
+        ("bastion", resource(Value::Object(bastion))),
+        ("inner", resource(inner)),
+        ("vaulted", resource(vaulted)),
+        ("echo", resource(echo)),
+        ("postgres", resource(postgres())),
     ]
 }
 
-fn postgres() -> DatabaseResource {
-    DatabaseResource {
-        engine: Engine::Postgres,
-        host: Some(POSTGRES_HOST.to_owned()),
-        port: None,
-        database: Some(DbServers::DATABASE.to_owned()),
-        path: None,
-        user: Some(DbServers::USER.to_owned()),
-        password: Some(format!("secret://{POSTGRES_PASSWORD}")),
-        via: Some("inner".to_owned()),
-        tls: Some(TlsMode::Require),
-    }
+fn postgres() -> Value {
+    json!({
+        "kind": "database",
+        "engine": Engine::Postgres,
+        "host": POSTGRES_HOST,
+        "database": DbServers::DATABASE,
+        "user": DbServers::USER,
+        "password": format!("secret://{POSTGRES_PASSWORD}"),
+        "via": "inner",
+        "tls": TlsMode::Require,
+    })
 }
 
-fn host(address: &str, port: Option<u16>, key: &str) -> HostResource {
-    HostResource {
-        address: address.to_owned(),
-        port,
-        user: Some(SshServers::USER.to_owned()),
-        via: None,
-        identity: Some(key.to_owned()),
+fn host(address: &str, port: Option<u16>, key: &str) -> Map<String, Value> {
+    let mut fields = Map::new();
+
+    fields.insert("kind".to_owned(), json!("host"));
+    fields.insert("address".to_owned(), json!(address));
+    fields.insert("user".to_owned(), json!(SshServers::USER));
+    fields.insert("identity".to_owned(), json!(key));
+
+    if let Some(port) = port {
+        fields.insert("port".to_owned(), json!(port));
     }
+
+    fields
+}
+
+fn resource(fields: Value) -> Resource {
+    serde_json::from_value(fields).unwrap()
 }
