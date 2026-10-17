@@ -87,10 +87,7 @@ impl K8sLogs {
                 ended
             });
 
-        Ok(Logs::Followed(StreamStarted {
-            request: context.request().get(),
-            stream: stream.0,
-        }))
+        Ok(Logs::Followed(StreamStarted::new(context, stream)))
     }
 }
 

@@ -1,3 +1,4 @@
+mod chunk;
 mod close;
 mod end;
 mod entry;
@@ -6,6 +7,7 @@ mod pump;
 mod started;
 mod tally;
 
+use chunk::Chunk;
 pub(crate) use close::K8sStreamClose;
 use end::{EndReason, StreamEnd};
 use entry::StreamEntry;

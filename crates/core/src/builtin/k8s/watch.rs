@@ -53,10 +53,7 @@ impl K8sWatch {
                 ended
             });
 
-        Ok(StreamStarted {
-            request: context.request().get(),
-            stream: params.stream.0,
-        })
+        Ok(StreamStarted::new(context, params.stream))
     }
 }
 
