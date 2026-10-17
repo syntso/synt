@@ -247,7 +247,10 @@ mod tests {
         secrets
             .read_text_for(&name, "the database postgres db:5432")
             .unwrap();
-        let refused = secrets.reveal("grafana/token", "grafana").unwrap_err();
+        let refused = secrets
+            .reveal("grafana/token", "grafana")
+            .unwrap_err()
+            .to_string();
 
         assert!(
             refused.contains("kept for the database postgres db:5432"),
