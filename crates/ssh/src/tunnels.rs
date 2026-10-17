@@ -47,8 +47,15 @@ impl Tunnels {
     ) -> Result<TunnelStatus, SshError> {
         let id = TunnelId::from(self.issued.fetch_add(1, Ordering::Relaxed) + 1);
 
-        let forward = PortForward::open(id, &self.pool, target, destination, local_port, stop.clone())
-            .await?;
+        let forward = PortForward::open(
+            id,
+            &self.pool,
+            target,
+            destination,
+            local_port,
+            stop.clone(),
+        )
+        .await?;
         let status = forward.status();
 
         self.open.locked().insert(id, forward);
@@ -58,7 +65,11 @@ impl Tunnels {
     }
 
     pub fn list(&self) -> Vec<TunnelStatus> {
-        self.open.locked().values().map(PortForward::status).collect()
+        self.open
+            .locked()
+            .values()
+            .map(PortForward::status)
+            .collect()
     }
 
     pub fn login_user(&self, id: TunnelId) -> Option<String> {

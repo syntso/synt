@@ -19,7 +19,8 @@ impl Spec {
             Some((user, endpoint)) => (Some(user.to_owned()), endpoint),
             None => (None, address),
         };
-        let (host, port) = Self::split_port(endpoint).map_err(|reason| Self::invalid(text, reason))?;
+        let (host, port) =
+            Self::split_port(endpoint).map_err(|reason| Self::invalid(text, reason))?;
 
         if host.is_empty() {
             return Err(Self::invalid(text, "the host is empty"));

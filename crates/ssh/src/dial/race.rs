@@ -64,7 +64,9 @@ impl Race {
 
         let stream = time::timeout(ATTEMPT_LIMIT, connecting)
             .await
-            .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, format!("{address} timed out")))??;
+            .map_err(|_| {
+                io::Error::new(io::ErrorKind::TimedOut, format!("{address} timed out"))
+            })??;
 
         stream.set_nodelay(true)?;
 

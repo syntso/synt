@@ -40,7 +40,8 @@ impl Traffic {
     }
 
     pub(super) fn add_received(&self, bytes: usize) {
-        self.received.fetch_add(Self::widen(bytes), Ordering::Relaxed);
+        self.received
+            .fetch_add(Self::widen(bytes), Ordering::Relaxed);
     }
 
     pub(super) fn begin(&self) {

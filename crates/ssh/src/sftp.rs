@@ -210,7 +210,12 @@ impl Sftp {
     }
 
     async fn read_directory(&self, path: &str) -> Result<Vec<FileEntry>, SshError> {
-        let handle = self.session.opendir(path).await.during("list", path)?.handle;
+        let handle = self
+            .session
+            .opendir(path)
+            .await
+            .during("list", path)?
+            .handle;
         let directory = RemoteFile::new(Arc::clone(&self.session), handle, path);
 
         let mut entries = Vec::new();

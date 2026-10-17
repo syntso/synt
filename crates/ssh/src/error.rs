@@ -80,10 +80,16 @@ pub enum SshError {
     NoKeyFile { path: PathBuf },
 
     #[error("{} cannot be a key file: {cause}", path.display())]
-    NotKeyFile { path: PathBuf, cause: Arc<io::Error> },
+    NotKeyFile {
+        path: PathBuf,
+        cause: Arc<io::Error>,
+    },
 
     #[error("{} cannot be read: {cause}", path.display())]
-    UnreadableKeyFile { path: PathBuf, cause: Arc<io::Error> },
+    UnreadableKeyFile {
+        path: PathBuf,
+        cause: Arc<io::Error>,
+    },
 
     #[error("the system random source failed: {0}")]
     Random(getrandom::Error),

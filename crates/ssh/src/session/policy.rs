@@ -62,9 +62,8 @@ impl<'a> Policy<'a> {
     }
 
     fn host_keys(&self) -> Vec<Algorithm> {
-        let (known, rest): (Vec<&Algorithm>, Vec<&Algorithm>) = HOST_KEYS
-            .iter()
-            .partition(|offered| self.is_known(offered));
+        let (known, rest): (Vec<&Algorithm>, Vec<&Algorithm>) =
+            HOST_KEYS.iter().partition(|offered| self.is_known(offered));
 
         known.into_iter().chain(rest).cloned().collect()
     }

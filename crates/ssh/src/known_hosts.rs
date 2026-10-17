@@ -72,7 +72,10 @@ impl KnownHosts {
             return Verdict::Changed;
         }
 
-        let plain: Vec<&Entry> = matching.into_iter().filter(|entry| entry.is_plain()).collect();
+        let plain: Vec<&Entry> = matching
+            .into_iter()
+            .filter(|entry| entry.is_plain())
+            .collect();
 
         if plain.iter().any(|entry| entry.holds(key)) {
             return Verdict::Trusted;

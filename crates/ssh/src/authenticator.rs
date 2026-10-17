@@ -16,8 +16,8 @@ use tokio::task;
 use agent::Agent;
 use candidates::Candidates;
 pub(crate) use credentials::Credentials;
-use key::{Candidate, KeyFile};
 pub(crate) use key::KeyText;
+use key::{Candidate, KeyFile};
 pub(crate) use logins::Logins;
 
 use crate::{KeyVault, SshError, StoredKey, Target};
@@ -175,7 +175,10 @@ impl<'a> Authenticator<'a> {
         let bytes = match reading {
             Ok(Ok(Some(bytes))) => bytes,
             Ok(Ok(None)) => {
-                return Err(Self::vault_refusal(name, "there is no such key in the vault"));
+                return Err(Self::vault_refusal(
+                    name,
+                    "there is no such key in the vault",
+                ));
             }
             Ok(Err(cause)) => {
                 return Err(SshError::VaultRead {

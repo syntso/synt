@@ -22,7 +22,11 @@ impl SessionSlot {
         }
     }
 
-    pub(super) async fn session(&self, pool: &Pool, target: &Target) -> Result<Arc<Sftp>, SshError> {
+    pub(super) async fn session(
+        &self,
+        pool: &Pool,
+        target: &Target,
+    ) -> Result<Arc<Sftp>, SshError> {
         let session = self
             .session
             .get_or_try_init(|| async { Sftp::open(pool, target).await.map(Arc::new) })

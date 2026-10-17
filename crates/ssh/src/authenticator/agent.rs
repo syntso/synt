@@ -45,8 +45,7 @@ impl Agent {
 
     #[cfg(windows)]
     async fn client() -> Option<Client> {
-        let pipe =
-            std::env::var("SSH_AUTH_SOCK").unwrap_or_else(|_| OPENSSH_AGENT_PIPE.to_owned());
+        let pipe = std::env::var("SSH_AUTH_SOCK").unwrap_or_else(|_| OPENSSH_AGENT_PIPE.to_owned());
         let client = AgentClient::connect_named_pipe(pipe).await.ok()?;
 
         Some(client.dynamic())

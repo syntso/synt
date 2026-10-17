@@ -175,6 +175,11 @@ mod tests {
         let refused = StoredKey::import(&folder.path().join("none")).await;
 
         assert!(matches!(refused, Err(SshError::NoKeyFile { .. })));
-        assert!(refused.expect_err("refused").to_string().contains("no file"));
+        assert!(
+            refused
+                .expect_err("refused")
+                .to_string()
+                .contains("no file")
+        );
     }
 }
