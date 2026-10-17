@@ -1,26 +1,18 @@
-mod http;
-mod manifest;
-mod settings;
-mod view;
-
 use std::error::Error as StdError;
 use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
 
 use synt_actions::ActionError;
+use synt_platform::{PlatformError, SecretName};
+use synt_proto::ProtoError;
 use thiserror::Error;
 use tokio::task::JoinError;
 
-pub use http::HttpError;
-pub use manifest::ManifestError;
-pub use settings::SettingsError;
-pub use view::ViewError;
-
 use crate::files::FileAccess;
 use crate::interface::GuestError;
-use crate::manifest::Api;
-use crate::runtime::QuotaSpent;
+use crate::manifest::{Api, AssetPath, ExtensionId, HttpHost, LocalId, Suffix};
+use crate::runtime::Spend;
 
 #[derive(Debug, Error)]
 pub enum ExtensionError {
@@ -29,9 +21,6 @@ pub enum ExtensionError {
 
     #[error("extension state: {0}")]
     State(#[from] rusqlite::Error),
-
-    #[error("extension.toml: {0}")]
-    Manifest(#[from] ManifestError),
 
     #[error("extension.toml: {0}")]
     ManifestText(#[from] toml::de::Error),
@@ -111,14 +100,11 @@ pub enum ExtensionError {
     #[error("the extension ran past its time limit of {0:?}")]
     TimedOut(Duration),
 
-    #[error("the extension made {0}")]
-    OverQuota(QuotaSpent),
+    #[error("the extension made more than {} {} in one call", .0.most(), .0.what())]
+    OverQuota(Spend),
 
     #[error("{0}")]
-    Guest(#[from] GuestError),
-
-    #[error("{0}")]
-    Http(#[from] HttpError),
+    Guest(GuestError),
 
     #[error("{0}")]
     Secret(#[source] Box<dyn StdError + Send + Sync>),
@@ -190,9 +176,6 @@ pub enum ExtensionError {
     #[error("{extension} already holds {most} picked files; forget some first")]
     TooManyPicks { extension: String, most: u64 },
 
-    #[error("{0}")]
-    Settings(#[from] SettingsError),
-
     #[error("{0} contributes no settings")]
     NoSettings(String),
 
@@ -253,6 +236,222 @@ pub enum ExtensionError {
 
     #[error("system random source: {0}")]
     Random(getrandom::Error),
+
+    #[error("{method} is not one of {allowed}")]
+    Method { method: String, allowed: String },
+
+    #[error("a request carries at most {0} headers")]
+    TooManyHeaders(usize),
+
+    #[error("the core sets the {0} header itself")]
+    ReservedHeader(String),
+
+    #[error("the {0} header is filled from a secret and cannot be set as well")]
+    SecretClash(String),
+
+    #[error("timeout_ms is 1 to {longest}, not {asked}")]
+    Timeout { longest: u32, asked: u32 },
+
+    #[error("the body is not base64: {0}")]
+    BodyNotBase64(data_encoding::DecodeError),
+
+    #[error("{0:?} is not a header name")]
+    HeaderName(String),
+
+    #[error("the {0} header has a value that cannot be sent")]
+    HeaderValue(String),
+
+    #[error("the {0} header cannot carry this secret")]
+    SecretHeaderValue(String),
+
+    #[error("{url:?} is not a URL: {source}")]
+    NotUrl {
+        url: String,
+        source: ureq::http::uri::InvalidUri,
+    },
+
+    #[error("{0:?} must start with https:// or http://")]
+    Scheme(String),
+
+    #[error("{0:?} names no host this core may reach")]
+    NoHost(String),
+
+    #[error("{0:?} carries credentials; attach a secret instead")]
+    Credentials(String),
+
+    #[error("{0} is not listed in capabilities.http")]
+    HostNotListed(String),
+
+    #[error("the core keeps no secrets to attach")]
+    NoSecrets,
+
+    #[error("secrets go only over https or to this computer, not to http://{0}")]
+    SecretOverPlainHttp(String),
+
+    #[error("capabilities.secrets does not let secret://{secret} go to {destination}")]
+    SecretNotAllowed { secret: String, destination: String },
+
+    #[error("there is no secret secret://{0}")]
+    NoSuchSecret(String),
+
+    #[error("{0} is not text and cannot go in a header")]
+    SecretNotText(String),
+
+    #[error("{0} is empty or holds control characters and cannot go in a header")]
+    SecretNotHeader(String),
+
+    #[error("{url}: {source}")]
+    Request {
+        url: String,
+        source: ureq::http::Error,
+    },
+
+    #[error("{url}: {source}")]
+    Transport { url: String, source: ureq::Error },
+
+    #[error("the response body: {0}")]
+    ResponseBody(ureq::Error),
+
+    #[error("the response body is not base64: {0}")]
+    ResponseNotBase64(data_encoding::DecodeError),
+
+    #[error(
+        "id {0:?} must start with a lowercase letter and hold only lowercase letters, digits \
+         and dashes, at most {most} of them",
+        most = ExtensionId::LONGEST
+    )]
+    ExtensionId(String),
+
+    #[error(
+        "{0:?} must start with a lowercase letter and hold only lowercase letters, digits, \
+         '-' and '_', at most {most} of them",
+        most = LocalId::LONGEST
+    )]
+    LocalId(String),
+
+    #[error(transparent)]
+    NotOneLine(#[from] ProtoError),
+
+    #[error("description is too long or holds control characters")]
+    Description,
+
+    #[error(
+        "{0:?} is not a plain path of at most {most} bytes inside the bundle",
+        most = AssetPath::LONGEST
+    )]
+    AssetPath(String),
+
+    #[error(
+        "http host {0:?} must be a lowercase host name or IPv4 address, with an optional \
+         :port; patterns and schemes are not allowed"
+    )]
+    HttpHost(String),
+
+    #[error(transparent)]
+    SecretName(#[from] PlatformError),
+
+    #[error(
+        "document suffix {0:?} must be 1 to {most} lowercase letters and digits",
+        most = Suffix::LONGEST
+    )]
+    Suffix(String),
+
+    #[error("action {action:?}: {source}")]
+    ActionName { action: String, source: ProtoError },
+
+    #[error("action {0:?}: name one action, not a pattern")]
+    ActionPattern(String),
+
+    #[error("api {api} is not supported; this core runs extensions for api {supported}")]
+    UnsupportedApi { api: String, supported: String },
+
+    #[error(
+        "contributes and the capabilities http, secrets, documents, events, timers and files \
+         need api 0.2"
+    )]
+    NeedsNewerApi,
+
+    #[error("call {0:?}: an extension runs its own actions without calling them")]
+    CallsItself(String),
+
+    #[error("secret {0} names no host it may be sent to")]
+    SecretWithoutHost(SecretName),
+
+    #[error("secret {secret} may go to {host}, which is not listed in capabilities.http")]
+    SecretHostNotListed { secret: SecretName, host: HttpHost },
+
+    #[error("capabilities.documents needs at least one contributes.document type")]
+    DocumentsWithoutType,
+
+    #[error("contributes.document needs documents = true in capabilities")]
+    TypeWithoutDocuments,
+
+    #[error(
+        "contributes names the action {0}; commands and menus run the extension's own actions \
+         only"
+    )]
+    ForeignCommand(String),
+
+    #[error("contributes.{point} has {size} entries; the most is {most}")]
+    TooManyEntries {
+        point: &'static str,
+        size: usize,
+        most: usize,
+    },
+
+    #[error("{field} {value:?} is used twice")]
+    Duplicate { field: &'static str, value: String },
+
+    #[error("a document type opens in panel {0}, which is not contributed")]
+    MissingPanel(LocalId),
+
+    #[error("panel {0} needs either a native view or a web entry, not both")]
+    PanelKind(LocalId),
+
+    #[error("settings.schema must be a JSON Schema of type object with properties")]
+    SettingsSchema,
+
+    #[error("settings hold at most {0} bytes")]
+    SettingsTooLarge(usize),
+
+    #[error("settings are an object")]
+    SettingsNotObject,
+
+    #[error("the setting {0} is required")]
+    RequiredSetting(String),
+
+    #[error("{0} is not a setting of this extension")]
+    UnknownSetting(String),
+
+    #[error("the setting {name} must be of type {kind}")]
+    SettingType { name: String, kind: String },
+
+    #[error("the setting {0} must be one of its listed values")]
+    SettingNotListed(String),
+
+    #[error("{0}")]
+    MalformedView(#[source] serde_json::Error),
+
+    #[error("a view holds at most {most} nodes, {deepest} deep")]
+    ViewTooLarge { most: usize, deepest: usize },
+
+    #[error("a log holds at most {0} lines of text")]
+    LongLog(usize),
+
+    #[error("every table row holds one plain value per column")]
+    RaggedTable,
+
+    #[error("a key-value item needs a plain value")]
+    KeyValue,
+
+    #[error("a view may bind only the extension's own actions, not {0}")]
+    ForeignBinding(String),
+
+    #[error("a view patch holds 1 to {0} operations")]
+    PatchSize(usize),
+
+    #[error("every view patch operation needs a JSON pointer path")]
+    PatchPath,
 }
 
 impl From<wasmtime::Error> for ExtensionError {
@@ -264,6 +463,12 @@ impl From<wasmtime::Error> for ExtensionError {
 impl From<minisign_verify::Error> for ExtensionError {
     fn from(error: minisign_verify::Error) -> Self {
         Self::Signature(error.to_string())
+    }
+}
+
+impl From<GuestError> for ExtensionError {
+    fn from(error: GuestError) -> Self {
+        Self::Guest(error)
     }
 }
 

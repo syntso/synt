@@ -7,7 +7,7 @@ use ureq::http::request::Builder;
 use ureq::http::{HeaderName, HeaderValue, Method, Request};
 
 use super::{Header, Revealed, SecretHeader};
-use crate::error::HttpError;
+use crate::ExtensionError;
 
 const METHODS: [&str; 7] = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 const READING_METHODS: [&str; 3] = ["GET", "HEAD", "OPTIONS"];
@@ -90,9 +90,9 @@ impl HttpRequest {
         READING_METHODS.contains(&method.as_str())
     }
 
-    pub(crate) fn checked_method(&self) -> Result<Method, HttpError> {
+    pub(crate) fn checked_method(&self) -> Result<Method, ExtensionError> {
         let upper = self.method.to_ascii_uppercase();
-        let refused = || HttpError::Method {
+        let refused = || ExtensionError::Method {
             method: self.method.clone(),
             allowed: METHODS.join(", "),
         };
@@ -104,35 +104,35 @@ impl HttpRequest {
         Method::from_bytes(upper.as_bytes()).map_err(|_| refused())
     }
 
-    pub(crate) fn check_headers(&self) -> Result<(), HttpError> {
+    pub(crate) fn check_headers(&self) -> Result<(), ExtensionError> {
         if self.headers.len() + self.secrets.len() > MOST_HEADERS {
-            return Err(HttpError::TooManyHeaders(MOST_HEADERS));
+            return Err(ExtensionError::TooManyHeaders(MOST_HEADERS));
         }
 
         self.check_reserved()?;
         self.check_secret_clash()
     }
 
-    pub(crate) fn timeout(&self) -> Result<Duration, HttpError> {
+    pub(crate) fn timeout(&self) -> Result<Duration, ExtensionError> {
         match self.timeout_ms {
             None => Ok(DEFAULT_TIMEOUT),
             Some(milliseconds) if (1..=LONGEST_TIMEOUT_MS).contains(&milliseconds) => {
                 Ok(Duration::from_millis(u64::from(milliseconds)))
             }
-            Some(asked) => Err(HttpError::Timeout {
+            Some(asked) => Err(ExtensionError::Timeout {
                 longest: LONGEST_TIMEOUT_MS,
                 asked,
             }),
         }
     }
 
-    pub(crate) fn decoded_body(&self) -> Result<Option<Vec<u8>>, HttpError> {
+    pub(crate) fn decoded_body(&self) -> Result<Option<Vec<u8>>, ExtensionError> {
         self.body
             .as_deref()
             .map(|body| {
                 BASE64
                     .decode(body.as_bytes())
-                    .map_err(HttpError::BodyNotBase64)
+                    .map_err(ExtensionError::BodyNotBase64)
             })
             .transpose()
     }
@@ -141,12 +141,12 @@ impl HttpRequest {
         &self,
         method: Method,
         revealed: &[Revealed],
-    ) -> Result<Builder, HttpError> {
+    ) -> Result<Builder, ExtensionError> {
         let mut builder = Request::builder().method(method).uri(&self.url);
 
         for header in &self.headers {
             let value = HeaderValue::from_str(header.value())
-                .map_err(|_| HttpError::HeaderValue(header.name().to_owned()))?;
+                .map_err(|_| ExtensionError::HeaderValue(header.name().to_owned()))?;
 
             builder = builder.header(Self::header_name(header.name())?, value);
         }
@@ -154,7 +154,7 @@ impl HttpRequest {
         for secret in revealed {
             let text = secret.header_value()?;
             let mut value = HeaderValue::from_str(&text)
-                .map_err(|_| HttpError::SecretHeaderValue(secret.header().to_owned()))?;
+                .map_err(|_| ExtensionError::SecretHeaderValue(secret.header().to_owned()))?;
 
             value.set_sensitive(true);
             builder = builder.header(Self::header_name(secret.header())?, value);
@@ -163,7 +163,7 @@ impl HttpRequest {
         Ok(builder)
     }
 
-    fn check_reserved(&self) -> Result<(), HttpError> {
+    fn check_reserved(&self) -> Result<(), ExtensionError> {
         let names = self
             .headers
             .iter()
@@ -174,14 +174,14 @@ impl HttpRequest {
             let lower = name.to_ascii_lowercase();
 
             if RESERVED_HEADERS.contains(&lower.as_str()) {
-                return Err(HttpError::ReservedHeader(name.to_owned()));
+                return Err(ExtensionError::ReservedHeader(name.to_owned()));
             }
         }
 
         Ok(())
     }
 
-    fn check_secret_clash(&self) -> Result<(), HttpError> {
+    fn check_secret_clash(&self) -> Result<(), ExtensionError> {
         let secret_names: Vec<String> = self
             .secrets
             .iter()
@@ -194,12 +194,13 @@ impl HttpRequest {
             .find(|header| secret_names.contains(&header.name().to_ascii_lowercase()));
 
         match clash {
-            Some(header) => Err(HttpError::SecretClash(header.name().to_owned())),
+            Some(header) => Err(ExtensionError::SecretClash(header.name().to_owned())),
             None => Ok(()),
         }
     }
 
-    fn header_name(name: &str) -> Result<HeaderName, HttpError> {
-        HeaderName::from_bytes(name.as_bytes()).map_err(|_| HttpError::HeaderName(name.to_owned()))
+    fn header_name(name: &str) -> Result<HeaderName, ExtensionError> {
+        HeaderName::from_bytes(name.as_bytes())
+            .map_err(|_| ExtensionError::HeaderName(name.to_owned()))
     }
 }

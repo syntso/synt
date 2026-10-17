@@ -2,7 +2,7 @@ use std::net::Ipv4Addr;
 
 use ureq::http::Uri;
 
-use crate::error::HttpError;
+use crate::ExtensionError;
 use crate::manifest::Capabilities;
 
 const HTTPS_PORT: u16 = 443;
@@ -17,8 +17,8 @@ pub(crate) struct Destination {
 }
 
 impl Destination {
-    pub(crate) fn parse(url: &str) -> Result<Self, HttpError> {
-        let uri: Uri = url.parse().map_err(|source| HttpError::NotUrl {
+    pub(crate) fn parse(url: &str) -> Result<Self, ExtensionError> {
+        let uri: Uri = url.parse().map_err(|source| ExtensionError::NotUrl {
             url: url.to_owned(),
             source,
         })?;
@@ -26,20 +26,20 @@ impl Destination {
         let secure = match uri.scheme_str() {
             Some("https") => true,
             Some("http") => false,
-            _ => return Err(HttpError::Scheme(url.to_owned())),
+            _ => return Err(ExtensionError::Scheme(url.to_owned())),
         };
 
         let host = uri
             .host()
             .filter(|host| !host.is_empty() && !host.starts_with('['))
-            .ok_or_else(|| HttpError::NoHost(url.to_owned()))?
+            .ok_or_else(|| ExtensionError::NoHost(url.to_owned()))?
             .to_ascii_lowercase();
 
         let has_user = uri
             .authority()
             .is_some_and(|authority| authority.as_str().contains('@'));
         if has_user {
-            return Err(HttpError::Credentials(url.to_owned()));
+            return Err(ExtensionError::Credentials(url.to_owned()));
         }
 
         let port = uri.port_u16().unwrap_or(Self::port_for(secure));
@@ -47,11 +47,14 @@ impl Destination {
         Ok(Self { secure, host, port })
     }
 
-    pub(crate) fn listed_in(url: &str, capabilities: &Capabilities) -> Result<Self, HttpError> {
+    pub(crate) fn listed_in(
+        url: &str,
+        capabilities: &Capabilities,
+    ) -> Result<Self, ExtensionError> {
         let destination = Self::parse(url)?;
 
         if !destination.is_listed_in(capabilities) {
-            return Err(HttpError::NotListed(destination.listed()));
+            return Err(ExtensionError::HostNotListed(destination.listed()));
         }
 
         Ok(destination)

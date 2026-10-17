@@ -26,7 +26,7 @@ use style::Style;
 use submit::Submit;
 
 use super::check::ViewCheck;
-use crate::error::ViewError;
+use crate::ExtensionError;
 
 const MOST_LINES: usize = 5_000;
 
@@ -77,11 +77,15 @@ pub(super) enum ViewNode {
 }
 
 impl ViewNode {
-    pub(super) fn parse(value: &Value) -> Result<Self, ViewError> {
-        Ok(Self::deserialize(value)?)
+    pub(super) fn parse(value: &Value) -> Result<Self, ExtensionError> {
+        Self::deserialize(value).map_err(ExtensionError::MalformedView)
     }
 
-    pub(super) fn check(&self, census: &mut ViewCheck<'_>, depth: usize) -> Result<(), ViewError> {
+    pub(super) fn check(
+        &self,
+        census: &mut ViewCheck<'_>,
+        depth: usize,
+    ) -> Result<(), ExtensionError> {
         census.count(depth)?;
 
         match self {
@@ -104,15 +108,15 @@ impl ViewNode {
         }
     }
 
-    fn check_log(lines: &[String]) -> Result<(), ViewError> {
+    fn check_log(lines: &[String]) -> Result<(), ExtensionError> {
         if lines.len() > MOST_LINES {
-            return Err(ViewError::LongLog(MOST_LINES));
+            return Err(ExtensionError::LongLog(MOST_LINES));
         }
 
         Ok(())
     }
 
-    fn check_table(columns: &[String], rows: &[Vec<Value>]) -> Result<(), ViewError> {
+    fn check_table(columns: &[String], rows: &[Vec<Value>]) -> Result<(), ExtensionError> {
         let plain = |cells: &Vec<Value>| {
             cells.len() == columns.len()
                 && cells
@@ -121,7 +125,7 @@ impl ViewNode {
         };
 
         if !rows.iter().all(plain) {
-            return Err(ViewError::RaggedTable);
+            return Err(ExtensionError::RaggedTable);
         }
 
         Ok(())

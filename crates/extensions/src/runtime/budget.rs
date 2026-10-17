@@ -3,7 +3,6 @@ use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 use wasmtime::Trap;
 
-use super::QuotaSpent;
 use crate::ExtensionError;
 use crate::interface::GuestError;
 
@@ -39,8 +38,8 @@ impl Budget {
             return ExtensionError::Guest(failure.clone());
         }
 
-        if let Some(spent) = error.downcast_ref::<QuotaSpent>() {
-            return ExtensionError::OverQuota(*spent);
+        if let Some(ExtensionError::OverQuota(spend)) = error.downcast_ref::<ExtensionError>() {
+            return ExtensionError::OverQuota(*spend);
         }
 
         match error.downcast_ref::<Trap>() {

@@ -6,7 +6,7 @@ use synt_actions::Risk;
 use synt_platform::SecretName;
 
 use super::{ActionName, EventTopic, HttpHost};
-use crate::ManifestError;
+use crate::ExtensionError;
 use crate::files::FileAccess;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,19 +102,19 @@ impl Capabilities {
             || self.files.is_some()
     }
 
-    pub(crate) fn check_secret_hosts(&self) -> Result<(), ManifestError> {
+    pub(crate) fn check_secret_hosts(&self) -> Result<(), ExtensionError> {
         self.secrets
             .iter()
             .try_for_each(|(secret, hosts)| self.check_secret(secret, hosts))
     }
 
-    fn check_secret(&self, secret: &SecretName, hosts: &[HttpHost]) -> Result<(), ManifestError> {
+    fn check_secret(&self, secret: &SecretName, hosts: &[HttpHost]) -> Result<(), ExtensionError> {
         if hosts.is_empty() {
-            return Err(ManifestError::SecretWithoutHost(secret.clone()));
+            return Err(ExtensionError::SecretWithoutHost(secret.clone()));
         }
 
         match hosts.iter().find(|host| !self.http.contains(host)) {
-            Some(host) => Err(ManifestError::SecretHostNotListed {
+            Some(host) => Err(ExtensionError::SecretHostNotListed {
                 secret: secret.clone(),
                 host: host.clone(),
             }),

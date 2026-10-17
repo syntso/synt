@@ -21,7 +21,7 @@ mod view;
 pub use background::ExtensionEvent;
 pub use call::{CallFailure, CallFuture, Caller, ExtensionCall, FailureCode};
 pub use documents::MergeSides;
-pub use error::{ExtensionError, ManifestError};
+pub use error::ExtensionError;
 pub use extensions::Extensions;
 pub use files::FileAccess;
 pub use http::SecretSource;

@@ -1,5 +1,5 @@
 use super::{Revealed, SecretHeader, SecretSource};
-use crate::error::HttpError;
+use crate::ExtensionError;
 use crate::http::Destination;
 use crate::manifest::{Capabilities, ExtensionId};
 
@@ -18,9 +18,9 @@ impl<'a> SecretAccess<'a> {
         attached: &[SecretHeader],
         destination: &Destination,
         capabilities: &Capabilities,
-    ) -> Result<Vec<Revealed>, HttpError> {
+    ) -> Result<Vec<Revealed>, ExtensionError> {
         if !destination.keeps_secrets_private() {
-            return Err(HttpError::SecretOverPlainHttp(destination.listed()));
+            return Err(ExtensionError::SecretOverPlainHttp(destination.listed()));
         }
 
         attached
@@ -34,22 +34,21 @@ impl<'a> SecretAccess<'a> {
         attached: &SecretHeader,
         destination: &Destination,
         capabilities: &Capabilities,
-    ) -> Result<Revealed, HttpError> {
+    ) -> Result<Revealed, ExtensionError> {
         let secret = attached.secret();
 
         let name = capabilities
             .secret_named(secret)
             .filter(|_| destination.may_carry(secret, capabilities))
-            .ok_or_else(|| HttpError::SecretNotAllowed {
+            .ok_or_else(|| ExtensionError::SecretNotAllowed {
                 secret: secret.to_owned(),
                 destination: destination.listed(),
             })?;
 
         let value = self
             .source
-            .reveal(name, self.extension)
-            .map_err(|error| HttpError::SecretUnreadable(error.to_string()))?
-            .ok_or_else(|| HttpError::NoSuchSecret(secret.to_owned()))?;
+            .reveal(name, self.extension)?
+            .ok_or_else(|| ExtensionError::NoSuchSecret(secret.to_owned()))?;
 
         Ok(Revealed::new(attached, value))
     }

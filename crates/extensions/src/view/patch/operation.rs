@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::error::ViewError;
+use crate::ExtensionError;
 use crate::view::ViewCheck;
 
 #[derive(Debug, Deserialize)]
@@ -13,14 +13,14 @@ pub(super) enum Operation {
 }
 
 impl Operation {
-    pub(super) fn check(&self, owns: &dyn Fn(&str) -> bool) -> Result<(), ViewError> {
+    pub(super) fn check(&self, owns: &dyn Fn(&str) -> bool) -> Result<(), ExtensionError> {
         let (path, value) = match self {
             Self::Add { path, value } | Self::Replace { path, value } => (path, Some(value)),
             Self::Remove { path } => (path, None),
         };
 
         if !path.is_empty() && !path.starts_with('/') {
-            return Err(ViewError::PatchPath);
+            return Err(ExtensionError::PatchPath);
         }
 
         match value {

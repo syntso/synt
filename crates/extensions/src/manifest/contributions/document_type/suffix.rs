@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ManifestError;
+use crate::ExtensionError;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -17,15 +17,15 @@ impl Suffix {
 }
 
 impl TryFrom<String> for Suffix {
-    type Error = ManifestError;
+    type Error = ExtensionError;
 
-    fn try_from(text: String) -> Result<Self, ManifestError> {
+    fn try_from(text: String) -> Result<Self, ExtensionError> {
         let plain = text
             .chars()
             .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit());
 
         if text.is_empty() || text.len() > Self::LONGEST || !plain {
-            return Err(ManifestError::Suffix(text));
+            return Err(ExtensionError::Suffix(text));
         }
 
         Ok(Self(text))

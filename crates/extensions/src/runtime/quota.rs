@@ -1,8 +1,8 @@
 mod spend;
-mod spent;
 
 pub(crate) use spend::Spend;
-pub(crate) use spent::QuotaSpent;
+
+use crate::ExtensionError;
 
 pub(super) struct Quota {
     calls: u32,
@@ -19,12 +19,14 @@ impl Quota {
         }
     }
 
-    pub(super) fn take(&mut self, spend: Spend) -> Result<(), QuotaSpent> {
+    pub(super) fn take(&mut self, spend: Spend) -> Result<(), ExtensionError> {
         let Some(left) = self.counter(spend) else {
             return Ok(());
         };
 
-        *left = left.checked_sub(1).ok_or(QuotaSpent::new(spend))?;
+        *left = left
+            .checked_sub(1)
+            .ok_or(ExtensionError::OverQuota(spend))?;
 
         Ok(())
     }
