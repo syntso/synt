@@ -3,11 +3,10 @@ use std::path::PathBuf;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 use synt_journal::ResourceRef;
 
 use crate::Extensions;
-use crate::blocking::Blocking;
 use crate::builtin::ExtensionInfo;
 use crate::extension::Candidate;
 
@@ -92,6 +91,6 @@ impl Action for ExtensionInstallLocal {
             .ok_or_else(|| ActionError::failed("the build was not checked before install"))?;
         let extensions = self.extensions.clone();
 
-        Blocking::run(move || extensions.install(candidate)).await
+        blocking(move || extensions.install(candidate)).await
     }
 }

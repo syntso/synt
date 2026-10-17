@@ -3,11 +3,11 @@ use std::sync::Arc;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 use synt_journal::ResourceRef;
+use tokio::runtime::Handle;
 
 use crate::Extensions;
-use crate::blocking::Blocking;
 use crate::builtin::CallingActor;
 
 #[derive(Clone)]
@@ -75,8 +75,9 @@ impl Action for ExtensionPanelMessage {
 
         let message = params.message.to_string();
         let context = context.clone();
+        let runtime = Handle::current();
 
-        let reply = Blocking::run_with_runtime(move |runtime| {
+        let reply = blocking::<_, _, ActionError>(move || {
             guest.panel_message(&params.panel, &message, context, runtime)
         })
         .await?;

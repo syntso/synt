@@ -3,11 +3,10 @@ mod requests;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use super::Drafted;
 use crate::CoreError;
-use crate::blocking::blocking;
 use crate::runbooks::{OneLine, RunbookError, Runbooks};
 use requests::Requests;
 
@@ -66,7 +65,7 @@ impl Action for RunbookFromJournal {
             None => OneLine::new(DEFAULT_NAME)?,
         };
 
-        let runbook = blocking::<_, CoreError>(move || {
+        let runbook = blocking::<_, _, CoreError>(move || {
             let reader = journal.reader()?;
 
             Requests::new(&reader).draft(&params.events, name)

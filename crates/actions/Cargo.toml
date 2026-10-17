@@ -17,6 +17,7 @@ serde_json.workspace = true
 synt-journal.workspace = true
 synt-proto.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["rt"] }
 tokio-util.workspace = true
 
 [dev-dependencies]

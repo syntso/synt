@@ -1,10 +1,9 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use super::entry::FileEntry;
-use crate::blocking::Blocking;
 use crate::files::{FileAccess, Picked};
 use crate::{ExtensionError, Extensions};
 
@@ -65,6 +64,6 @@ impl Action for ExtensionFilePick {
     async fn run(&self, _context: &Context, params: PickParams) -> Result<FileEntry, ActionError> {
         let action = self.clone();
 
-        Blocking::run(move || action.pick(&params)).await
+        blocking(move || action.pick(&params)).await
     }
 }

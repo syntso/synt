@@ -11,7 +11,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
-use synt_actions::{ActionError, Context, Registry, Risk};
+use synt_actions::{ActionError, Context, Registry, Risk, blocking};
 use synt_db::{Database, DbError, Effect, Engine, Server};
 use synt_journal::ResourceRef;
 use synt_ssh::{Destination, Pool, Target, Tunnels};
@@ -27,7 +27,6 @@ use self::ping::DbPing;
 use self::query::DbQuery;
 use self::schema::DbSchema;
 use self::tables::DbTables;
-use crate::blocking::blocking;
 use crate::builtin::ssh::is_root;
 use crate::projects::{Projects, ResolvedDatabase};
 use crate::secrets::Secrets;
@@ -150,7 +149,7 @@ impl Databases {
     ) -> Result<ResolvedDatabase, DbActionError> {
         let projects = self.projects.clone();
         let text = target.as_str().to_owned();
-        let resolved = blocking::<_, DbActionError>(move || projects.database(&text)).await?;
+        let resolved = blocking::<_, _, DbActionError>(move || projects.database(&text)).await?;
 
         if resolved.via.as_ref().is_some_and(|via| is_root(via.user()))
             && context.risk() != Risk::Privileged
@@ -189,7 +188,8 @@ impl Databases {
         let secrets = self.secrets.clone();
         let used_for = format!("the database {resolved}");
         let password =
-            blocking::<_, DbActionError>(move || secrets.read_text_for(&name, &used_for)).await?;
+            blocking::<_, _, DbActionError>(move || secrets.read_text_for(&name, &used_for))
+                .await?;
 
         Ok(Some(password))
     }

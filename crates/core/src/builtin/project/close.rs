@@ -1,9 +1,8 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
-use crate::blocking::blocking;
 use crate::projects::{ProjectInfo, Projects};
 
 #[derive(Debug, Clone)]

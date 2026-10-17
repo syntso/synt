@@ -1,11 +1,10 @@
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 use synt_platform::Pty;
 use synt_ssh::TerminalSize;
 
 use super::open::CARRIED;
 use super::{AttachedSession, Dimensions, SessionOpenParams};
 use crate::CoreError;
-use crate::blocking::blocking;
 use crate::link::Link;
 use crate::terminals::{OpenConsole, Origin, SessionId, Terminals};
 
@@ -20,7 +19,7 @@ impl LocalSessionOpen {
     }
 
     async fn pty(term: String, size: TerminalSize) -> Result<OpenConsole, ActionError> {
-        let (pty, output) = blocking::<_, ActionError>(move || {
+        let (pty, output) = blocking::<_, _, ActionError>(move || {
             Pty::open(&term, size.columns, size.rows).map_err(CoreError::PtyStart)
         })
         .await?;

@@ -37,15 +37,14 @@ use watch::K8sWatch;
 use std::future::Future;
 use std::sync::Arc;
 
-use synt_actions::{ActionError, Context, Registry, Risk};
+use synt_actions::{ActionError, Context, Registry, Risk, blocking};
 use synt_journal::{JournalWriter, ResourceRef};
 use synt_kube::{Cluster, ContextInfo, Kind, KindName, KubeError};
 use synt_ssh::Pool;
 use tokio::runtime::Handle;
 use tokio::task;
 
-use crate::blocking::blocking;
-use crate::projects::Projects;
+use crate::{CoreError, projects::Projects};
 
 #[derive(Debug, Clone)]
 pub struct Kube {
@@ -156,7 +155,8 @@ impl Kube {
         let projects = self.projects.clone();
 
         let reach =
-            blocking::<_, K8sError>(move || Ok(Reach::resolve(&projects, &target))).await??;
+            blocking::<_, CoreError, K8sError>(move || Ok(Reach::resolve(&projects, &target)))
+                .await??;
         reach.check_admitted(context)?;
 
         self.clusters.connect(&reach).await

@@ -1,9 +1,8 @@
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use super::ExtensionInfo;
 use crate::Extensions;
-use crate::blocking::Blocking;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionList {
@@ -31,6 +30,6 @@ impl Action for ExtensionList {
     async fn run(&self, _context: &Context, (): ()) -> Result<Vec<ExtensionInfo>, ActionError> {
         let extensions = self.extensions.clone();
 
-        Blocking::run(move || extensions.list()).await
+        blocking(move || extensions.list()).await
     }
 }

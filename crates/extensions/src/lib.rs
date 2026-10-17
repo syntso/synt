@@ -1,6 +1,5 @@
 mod background;
 mod bindings;
-mod blocking;
 mod builtin;
 mod call;
 mod documents;

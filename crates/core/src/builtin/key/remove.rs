@@ -1,11 +1,10 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 use synt_ssh::Pool;
 
 use crate::CoreError;
-use crate::blocking::blocking;
 use crate::ssh_keys::{KeyInfo, KeyName, SshKeys};
 
 #[derive(Clone)]
@@ -42,7 +41,7 @@ impl Action for KeyRemove {
     async fn run(&self, _context: &Context, params: RemoveParams) -> Result<KeyInfo, ActionError> {
         let keys = self.keys.clone();
 
-        let removed = blocking::<_, CoreError>(move || keys.remove(&params.name)).await?;
+        let removed = blocking::<_, _, CoreError>(move || keys.remove(&params.name)).await?;
 
         self.pool.forget_vault_key(removed.name.as_str());
 

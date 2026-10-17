@@ -1,10 +1,10 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 use synt_journal::ResourceRef;
 
-use crate::blocking::blocking;
+use crate::CoreError;
 use crate::runbooks::{RunbookDocument, RunbookEntry, RunbookName, Runbooks};
 
 #[derive(Debug, Clone)]
@@ -67,7 +67,7 @@ impl Action for RunbookPut {
         let admitted = context.destination().map(str::to_owned);
         let runbooks = self.runbooks.clone();
 
-        blocking(move || {
+        blocking(move || -> Result<_, CoreError> {
             let folder = runbooks.folder(&params.project)?;
 
             Ok(folder.put(params.name, params.runbook, admitted.as_deref())?)

@@ -1,10 +1,9 @@
 use serde_json::Value;
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use super::ExtensionInfo;
 use super::params::IdParams;
 use crate::Extensions;
-use crate::blocking::Blocking;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionDisable {
@@ -37,6 +36,6 @@ impl Action for ExtensionDisable {
     ) -> Result<ExtensionInfo, ActionError> {
         let extensions = self.extensions.clone();
 
-        Blocking::run(move || extensions.disable(params.id())).await
+        blocking(move || extensions.disable(params.id())).await
     }
 }

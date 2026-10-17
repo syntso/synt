@@ -3,10 +3,9 @@ mod hit;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use crate::Extensions;
-use crate::blocking::Blocking;
 
 pub(crate) use hit::SearchHit;
 
@@ -46,6 +45,6 @@ impl Action for ExtensionSearch {
     ) -> Result<Vec<SearchHit>, ActionError> {
         let extensions = self.extensions.clone();
 
-        Blocking::run(move || extensions.search(params.query.as_deref())).await
+        blocking(move || extensions.search(params.query.as_deref())).await
     }
 }

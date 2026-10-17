@@ -1,9 +1,9 @@
 use serde::Serialize;
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use super::RunbookParams;
-use crate::blocking::blocking;
+use crate::CoreError;
 use crate::runbooks::{Runbooks, ShellScript};
 
 #[derive(Debug, Clone)]
@@ -42,7 +42,7 @@ impl Action for RunbookExport {
     ) -> Result<ExportedRunbook, ActionError> {
         let runbooks = self.runbooks.clone();
 
-        blocking(move || {
+        blocking(move || -> Result<_, CoreError> {
             let folder = runbooks.folder(&params.project)?;
             let document = folder.read(&params.name)?;
             let reference = folder.reference(&params.name);

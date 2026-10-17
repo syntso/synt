@@ -7,6 +7,7 @@ use synt_journal::{JournalError, JournalId, KeyStoreError};
 use synt_platform::{KeyPlace, PlatformError};
 use synt_sync::SyncError;
 use thiserror::Error;
+use tokio::task::JoinError;
 
 use crate::runbooks::RunbookError;
 use crate::secrets::SecretName;
@@ -34,7 +35,7 @@ pub enum CoreError {
     Random(#[from] getrandom::Error),
 
     #[error("the work stopped unexpectedly")]
-    Stopped,
+    Stopped(#[from] JoinError),
 
     #[error("{0}")]
     Shell(#[source] synt_ssh::SshError),

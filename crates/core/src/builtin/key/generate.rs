@@ -1,11 +1,11 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 use synt_ssh::StoredKey;
 
 use super::KeyKind;
-use crate::blocking::blocking;
+use crate::CoreError;
 use crate::ssh_keys::{KeyInfo, KeyName, SshKeys};
 
 const COMMENT_PREFIX: &str = "synt:";
@@ -51,7 +51,7 @@ impl Action for KeyGenerate {
     ) -> Result<KeyInfo, ActionError> {
         let keys = self.keys.clone();
 
-        blocking(move || {
+        blocking(move || -> Result<_, CoreError> {
             let comment = format!("{COMMENT_PREFIX}{}", params.name);
             let key = match params.kind {
                 KeyKind::Ed25519 => StoredKey::generate_ed25519(&comment)?,

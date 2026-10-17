@@ -1,9 +1,8 @@
-use synt_actions::{ActionError, Context, Risk};
+use synt_actions::{ActionError, Context, Risk, blocking};
 use synt_journal::ResourceRef;
 use synt_ssh::Target;
 
 use super::privilege::is_root;
-use crate::blocking::blocking;
 use crate::projects::{Projects, Resolved};
 
 impl Projects {

@@ -6,13 +6,12 @@ use std::sync::Arc;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use file::AssetFile;
 use mime::Mime;
 
 use crate::Extensions;
-use crate::blocking::Blocking;
 use crate::builtin::CallingActor;
 use crate::manifest::AssetPath;
 
@@ -71,7 +70,7 @@ impl Action for ExtensionPanelAsset {
         let guest = Arc::clone(self.extensions.loaded(&params.extension)?.guest());
         let wanted = path.as_str().to_owned();
 
-        let found = Blocking::run(move || guest.asset(&wanted)).await?;
+        let found = blocking::<_, _, ActionError>(move || guest.asset(&wanted)).await?;
         let data = found
             .filter(|data| data.len() <= LARGEST_ASSET)
             .ok_or_else(|| {

@@ -1,9 +1,8 @@
 use serde_json::Value;
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use super::values::SettingsValues;
 use crate::Extensions;
-use crate::blocking::Blocking;
 use crate::builtin::extension_params::ExtensionParams;
 
 #[derive(Clone)]
@@ -36,6 +35,6 @@ impl Action for ExtensionSettingsGet {
     ) -> Result<SettingsValues, ActionError> {
         let extensions = self.extensions.clone();
 
-        Blocking::run(move || SettingsValues::current(&extensions, params.extension())).await
+        blocking(move || SettingsValues::current(&extensions, params.extension())).await
     }
 }

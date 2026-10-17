@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use synt_actions::blocking;
 use synt_platform::Lock;
 use tokio_util::sync::CancellationToken;
 
@@ -9,7 +10,6 @@ use super::{
 };
 use crate::CoreError;
 use crate::access::AccessRequest;
-use crate::blocking::blocking;
 use crate::log::log;
 use crate::state::State;
 
@@ -63,7 +63,7 @@ impl AlwaysGrants {
     pub(crate) async fn revoke(&self, id: GrantId) -> Result<Option<Revocation>, CoreError> {
         let grants = self.clone();
 
-        let Some(grant) = blocking::<_, CoreError>(move || grants.forget(id)).await? else {
+        let Some(grant) = blocking::<_, _, CoreError>(move || grants.forget(id)).await? else {
             return Ok(None);
         };
 

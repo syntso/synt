@@ -1,10 +1,9 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use super::values::SettingsValues;
-use crate::blocking::Blocking;
 use crate::{ExtensionError, Extensions};
 
 #[derive(Clone)]
@@ -69,6 +68,6 @@ impl Action for ExtensionSettingsSet {
     ) -> Result<SettingsValues, ActionError> {
         let action = self.clone();
 
-        Blocking::run(move || action.save(&params)).await
+        blocking(move || action.save(&params)).await
     }
 }

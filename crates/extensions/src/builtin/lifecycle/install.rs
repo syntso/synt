@@ -3,12 +3,11 @@ mod local;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 use synt_journal::ResourceRef;
 
 use super::ExtensionInfo;
 use crate::Extensions;
-use crate::blocking::Blocking;
 use crate::extension::Candidate;
 
 pub(crate) use local::ExtensionInstallLocal;
@@ -68,6 +67,6 @@ impl Action for ExtensionInstall {
             .ok_or_else(|| ActionError::failed("the extension was not checked before install"))?;
         let extensions = self.extensions.clone();
 
-        Blocking::run(move || extensions.install(candidate)).await
+        blocking(move || extensions.install(candidate)).await
     }
 }

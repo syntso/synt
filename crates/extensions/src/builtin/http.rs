@@ -1,12 +1,12 @@
 use std::sync::{Arc, OnceLock};
 
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 use synt_journal::ResourceRef;
 
 use super::CallingActor;
+use crate::ExtensionError;
 use crate::Extensions;
-use crate::blocking::Blocking;
 use crate::http::{Exchange, HttpRequest, HttpResponse, RecordedParams, SecretAccess};
 
 #[derive(Clone)]
@@ -72,7 +72,7 @@ impl Action for ExtensionHttp {
         let secrets = self.extensions.services().secrets().cloned();
         let exchange = Arc::clone(&self.exchange);
 
-        Blocking::run(move || {
+        blocking(move || -> Result<_, ExtensionError> {
             let access = secrets
                 .as_deref()
                 .map(|source| SecretAccess::new(source, &extension));

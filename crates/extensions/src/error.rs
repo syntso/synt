@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use synt_actions::ActionError;
 use thiserror::Error;
+use tokio::task::JoinError;
 
 pub use http::HttpError;
 pub use manifest::ManifestError;
@@ -125,6 +126,9 @@ pub enum ExtensionError {
 
     #[error("the extension was stopped")]
     Stopped,
+
+    #[error("the work stopped unexpectedly")]
+    Interrupted(#[from] JoinError),
 
     #[error("the registry cannot be reached: {0}")]
     Fetch(String),
