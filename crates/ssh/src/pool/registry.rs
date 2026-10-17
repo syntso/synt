@@ -2,21 +2,22 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use synt_platform::Lock;
+
 use super::{ConnectionStatus, Lease, Slot};
 use crate::Target;
-use crate::locked::locked;
 use crate::session::Connector;
 
-pub(crate) struct Slots {
-    by_target: Mutex<HashMap<Target, Arc<Slot>>>,
+pub(crate) struct Registry {
+    slots: Mutex<HashMap<Target, Arc<Slot>>>,
     grace: Duration,
     connector: Connector,
 }
 
-impl Slots {
+impl Registry {
     pub(crate) fn new(grace: Duration, connector: Connector) -> Arc<Self> {
         Arc::new(Self {
-            by_target: Mutex::new(HashMap::new()),
+            slots: Mutex::new(HashMap::new()),
             grace,
             connector,
         })
@@ -31,7 +32,7 @@ impl Slots {
     }
 
     pub(crate) fn lease(self: &Arc<Self>, target: &Target) -> Lease {
-        let mut slots = locked(&self.by_target);
+        let mut slots = self.slots.locked();
 
         let reusable = slots
             .get(target)
@@ -48,7 +49,7 @@ impl Slots {
     }
 
     pub(crate) fn retire(&self, slot: &Arc<Slot>, release: u64) -> bool {
-        let mut slots = locked(&self.by_target);
+        let mut slots = self.slots.locked();
 
         if !slot.idle_since(release) {
             return false;
@@ -66,7 +67,7 @@ impl Slots {
     }
 
     pub(crate) fn forget(&self, matches: impl Fn(&Target) -> bool) -> usize {
-        let mut slots = locked(&self.by_target);
+        let mut slots = self.slots.locked();
         let before = slots.len();
 
         slots.retain(|target, _| !matches(target));
@@ -75,7 +76,7 @@ impl Slots {
     }
 
     pub(crate) fn statuses(&self) -> Vec<ConnectionStatus> {
-        let slots: Vec<Arc<Slot>> = locked(&self.by_target).values().map(Arc::clone).collect();
+        let slots: Vec<Arc<Slot>> = self.slots.locked().values().map(Arc::clone).collect();
 
         let mut statuses: Vec<ConnectionStatus> = slots.iter().map(|slot| slot.status()).collect();
         statuses.sort_by(|left, right| left.target.cmp(&right.target));

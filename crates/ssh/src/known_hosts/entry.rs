@@ -4,28 +4,23 @@ use super::{HostPatterns, Marker};
 
 #[derive(Debug, Clone)]
 pub(super) struct Entry {
-    pub(super) marker: Marker,
-    pub(super) key: PublicKey,
+    marker: Marker,
+    key: PublicKey,
     patterns: HostPatterns,
 }
 
 impl Entry {
     pub(super) fn parse(line: &str) -> Option<Self> {
         let line = line.trim();
+
         if line.is_empty() || line.starts_with('#') {
             return None;
         }
 
         let mut tokens = line.split_whitespace().peekable();
-        let marker = match tokens
-            .peek()
-            .copied()
-            .filter(|token| token.starts_with('@'))
-        {
-            Some(token) => {
-                tokens.next();
-                Marker::parse(token)?
-            }
+
+        let marker = match tokens.next_if(|token| token.starts_with('@')) {
+            Some(token) => Marker::parse(token)?,
             None => Marker::None,
         };
 
@@ -39,6 +34,22 @@ impl Entry {
             key,
             patterns,
         })
+    }
+
+    pub(super) fn key(&self) -> &PublicKey {
+        &self.key
+    }
+
+    pub(super) fn is_plain(&self) -> bool {
+        self.marker == Marker::None
+    }
+
+    pub(super) fn is_revoked(&self) -> bool {
+        self.marker == Marker::Revoked
+    }
+
+    pub(super) fn holds(&self, presented: &PublicKey) -> bool {
+        self.key.key_data() == presented.key_data()
     }
 
     pub(super) fn matches(&self, name: &str) -> bool {

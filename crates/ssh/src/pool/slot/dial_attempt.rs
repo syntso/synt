@@ -1,19 +1,19 @@
 use super::Slot;
 
-pub(crate) struct DialAttempt<'a> {
+pub(super) struct DialAttempt<'a> {
     slot: &'a Slot,
     settled: bool,
 }
 
 impl<'a> DialAttempt<'a> {
-    pub(crate) fn new(slot: &'a Slot) -> Self {
+    pub(super) fn new(slot: &'a Slot) -> Self {
         Self {
             slot,
             settled: false,
         }
     }
 
-    pub(crate) fn settle(mut self) {
+    pub(super) fn settle(mut self) {
         self.settled = true;
     }
 }

@@ -1,14 +1,26 @@
+mod builder;
+mod connection;
+mod lease;
+mod registry;
+mod slot;
+
 use std::fmt::{self, Debug, Formatter};
+use std::future::Future;
 use std::sync::Arc;
 
-use super::{ConnectionState, ConnectionStatus, Lease, PoolBuilder, Slots};
-use crate::directory::SshDirectory;
+pub use builder::PoolBuilder;
+pub use connection::{ConnectionState, ConnectionStatus};
+pub use lease::Lease;
+use registry::Registry;
+use slot::Slot;
+
+use crate::exec::RemoteCommand;
 use crate::known_hosts::KnownHosts;
-use crate::{SshError, Target};
+use crate::{ExecLimits, ExecOutput, SshError, Target};
 
 #[derive(Clone)]
 pub struct Pool {
-    slots: Arc<Slots>,
+    registry: Arc<Registry>,
 }
 
 impl Pool {
@@ -20,19 +32,16 @@ impl Pool {
         PoolBuilder::new()
     }
 
-    pub(super) fn from_slots(slots: Arc<Slots>) -> Self {
-        Self { slots }
-    }
-
     pub async fn acquire(&self, target: &Target) -> Result<Lease, SshError> {
-        let lease = self.slots.lease(target);
+        let lease = self.registry.lease(target);
         lease.connection().await?;
 
         Ok(lease)
     }
 
     pub async fn warm(&self, target: &Target) -> Result<ConnectionState, SshError> {
-        refuse_unknown_hops(target, self.slots.connector().directory()).await?;
+        let directory = self.registry.connector().directory();
+        KnownHosts::load(directory).await?.require_known(target)?;
 
         let lease = self.acquire(target).await?;
         lease.keep_spare_session().await?;
@@ -40,12 +49,26 @@ impl Pool {
         Ok(lease.state())
     }
 
+    pub async fn exec(
+        &self,
+        target: &Target,
+        command: &str,
+        limits: ExecLimits,
+        stop: impl Future<Output = ()>,
+    ) -> Result<ExecOutput, SshError> {
+        RemoteCommand::run(self, target, command, limits, stop).await
+    }
+
     pub fn connections(&self) -> Vec<ConnectionStatus> {
-        self.slots.statuses()
+        self.registry.statuses()
     }
 
     pub fn forget_vault_key(&self, name: &str) -> usize {
-        self.slots.forget(|target| target.uses_vault_key(name))
+        self.registry.forget(|target| target.uses_vault_key(name))
+    }
+
+    fn from_registry(registry: Arc<Registry>) -> Self {
+        Self { registry }
     }
 }
 
@@ -60,33 +83,9 @@ impl Debug for Pool {
         formatter
             .debug_struct("Pool")
             .field("connections", &self.connections().len())
-            .field("grace", &self.slots.grace())
+            .field("grace", &self.registry.grace())
             .finish()
     }
-}
-
-async fn refuse_unknown_hops(target: &Target, directory: &SshDirectory) -> Result<(), SshError> {
-    let known_hosts = KnownHosts::load(directory).await?;
-
-    let unknown = hops(target).into_iter().find(|hop| {
-        known_hosts
-            .known_algorithms(hop.host(), hop.port())
-            .is_empty()
-    });
-
-    match unknown {
-        Some(hop) => Err(SshError::NotKnownHost {
-            host: hop.address(),
-        }),
-        None => Ok(()),
-    }
-}
-
-fn hops(target: &Target) -> Vec<&Target> {
-    let mut all: Vec<&Target> = target.jumps().iter().flat_map(hops).collect();
-    all.push(target);
-
-    all
 }
 
 #[cfg(test)]
@@ -100,9 +99,9 @@ mod tests {
         let jumped = Target::new("inner.example", 22, "root").through(vec![keyed.clone()]);
         let plain = Target::new("plain.example", 22, "root");
 
-        drop(pool.slots.lease(&keyed));
-        drop(pool.slots.lease(&jumped));
-        drop(pool.slots.lease(&plain));
+        drop(pool.registry.lease(&keyed));
+        drop(pool.registry.lease(&jumped));
+        drop(pool.registry.lease(&plain));
 
         assert_eq!(pool.forget_vault_key("day"), 0);
         assert_eq!(pool.forget_vault_key("night"), 2);

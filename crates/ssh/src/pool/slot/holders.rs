@@ -1,19 +1,19 @@
 #[derive(Debug, Default)]
-pub(crate) struct Holders {
+pub(super) struct Holders {
     count: usize,
     releases: u64,
 }
 
 impl Holders {
-    pub(crate) fn count(&self) -> usize {
+    pub(super) fn count(&self) -> usize {
         self.count
     }
 
-    pub(crate) fn join(&mut self) {
+    pub(super) fn join(&mut self) {
         self.count += 1;
     }
 
-    pub(crate) fn leave(&mut self) -> Option<u64> {
+    pub(super) fn leave(&mut self) -> Option<u64> {
         self.count = self.count.saturating_sub(1);
 
         if self.count > 0 {
@@ -24,7 +24,7 @@ impl Holders {
         Some(self.releases)
     }
 
-    pub(crate) fn idle_since(&self, release: u64) -> bool {
+    pub(super) fn idle_since(&self, release: u64) -> bool {
         self.count == 0 && self.releases == release
     }
 }

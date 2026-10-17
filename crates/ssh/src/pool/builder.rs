@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::{Pool, Slots};
+use super::{Pool, Registry};
 use crate::KeyVault;
 use crate::directory::SshDirectory;
 use crate::session::Connector;
@@ -46,7 +46,7 @@ impl PoolBuilder {
     pub fn build(self) -> Pool {
         let connector = Connector::new(self.vault, self.directory);
 
-        Pool::from_slots(Slots::new(self.grace, connector))
+        Pool::from_registry(Registry::new(self.grace, connector))
     }
 }
 

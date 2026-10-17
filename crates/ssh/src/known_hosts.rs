@@ -1,11 +1,24 @@
-use std::io;
+mod entry;
+mod family;
+mod hashed_host;
+mod host_patterns;
+mod marker;
+mod verdict;
+
 use std::path::Path;
 
 use russh::keys::{Algorithm, PublicKey};
+use synt_platform::Found;
 
-use super::{Entry, Marker, Verdict};
-use crate::SshError;
+use entry::Entry;
+pub(crate) use family::Family;
+use hashed_host::HashedHost;
+use host_patterns::HostPatterns;
+use marker::Marker;
+pub(crate) use verdict::Verdict;
+
 use crate::directory::SshDirectory;
+use crate::{SshError, Target};
 
 const FILES: [&str; 2] = ["known_hosts", "known_hosts2"];
 const DEFAULT_PORT: u16 = 22;
@@ -21,7 +34,7 @@ impl KnownHosts {
         let mut entries = Vec::new();
 
         for file in FILES {
-            let text = read_if_present(&directory.join(file)).await?;
+            let text = Self::read_if_present(&directory.join(file)).await?;
             entries.extend(Self::parse(&text).entries);
         }
 
@@ -38,9 +51,9 @@ impl KnownHosts {
         let mut algorithms: Vec<Algorithm> = Vec::new();
 
         for entry in self.matching(host, port) {
-            let algorithm = entry.key.algorithm();
+            let algorithm = entry.key().algorithm();
 
-            if entry.marker == Marker::None && !algorithms.contains(&algorithm) {
+            if entry.is_plain() && !algorithms.contains(&algorithm) {
                 algorithms.push(algorithm);
             }
         }
@@ -53,68 +66,67 @@ impl KnownHosts {
 
         let revoked = matching
             .iter()
-            .any(|entry| entry.marker == Marker::Revoked && same_key(&entry.key, key));
+            .any(|entry| entry.is_revoked() && entry.holds(key));
+
         if revoked {
             return Verdict::Changed;
         }
 
-        let plain: Vec<&PublicKey> = matching
-            .iter()
-            .filter(|entry| entry.marker == Marker::None)
-            .map(|entry| &entry.key)
-            .collect();
+        let plain: Vec<&Entry> = matching.into_iter().filter(|entry| entry.is_plain()).collect();
 
-        if plain.iter().any(|known| same_key(known, key)) {
+        if plain.iter().any(|entry| entry.holds(key)) {
             return Verdict::Trusted;
         }
+
         if plain.is_empty() {
             return Verdict::Unknown;
         }
-        if plain
+
+        let same_family = plain
             .iter()
-            .any(|known| same_family(&known.algorithm(), &key.algorithm()))
-        {
+            .any(|entry| entry.key().algorithm().same_family(&key.algorithm()));
+
+        if same_family {
             return Verdict::Changed;
         }
 
         Verdict::OtherTypeKnown
     }
 
+    pub(crate) fn require_known(&self, target: &Target) -> Result<(), SshError> {
+        let unknown = target
+            .hops()
+            .into_iter()
+            .find(|hop| self.known_algorithms(hop.host(), hop.port()).is_empty());
+
+        match unknown {
+            Some(hop) => Err(SshError::NotKnownHost {
+                host: hop.address(),
+            }),
+            None => Ok(()),
+        }
+    }
+
     fn matching(&self, host: &str, port: u16) -> Vec<&Entry> {
-        let name = lookup_name(host, port);
+        let name = Self::lookup_name(host, port);
 
         self.entries
             .iter()
             .filter(|entry| entry.matches(&name))
             .collect()
     }
-}
 
-pub(crate) fn same_family(known: &Algorithm, offered: &Algorithm) -> bool {
-    let both_rsa = matches!(
-        (known, offered),
-        (Algorithm::Rsa { .. }, Algorithm::Rsa { .. })
-    );
+    fn lookup_name(host: &str, port: u16) -> String {
+        if port == DEFAULT_PORT {
+            return host.to_owned();
+        }
 
-    known == offered || both_rsa
-}
-
-fn lookup_name(host: &str, port: u16) -> String {
-    if port == DEFAULT_PORT {
-        return host.to_owned();
+        format!("[{host}]:{port}")
     }
 
-    format!("[{host}]:{port}")
-}
+    async fn read_if_present(path: &Path) -> Result<String, SshError> {
+        let text = tokio::fs::read_to_string(path).await.found()?;
 
-fn same_key(known: &PublicKey, presented: &PublicKey) -> bool {
-    known.key_data() == presented.key_data()
-}
-
-async fn read_if_present(path: &Path) -> Result<String, SshError> {
-    match tokio::fs::read_to_string(path).await {
-        Ok(text) => Ok(text),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(String::new()),
-        Err(error) => Err(error.into()),
+        Ok(text.unwrap_or_default())
     }
 }

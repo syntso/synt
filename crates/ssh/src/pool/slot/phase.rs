@@ -1,10 +1,9 @@
 use std::time::Instant;
 
-use super::ConnectionState;
-use crate::SshError;
 use crate::session::Connection;
+use crate::{ConnectionState, SshError};
 
-pub(crate) enum Phase {
+pub(super) enum Phase {
     Idle,
     Connecting,
     Connected(Connection),
@@ -14,7 +13,7 @@ pub(crate) enum Phase {
 }
 
 impl Phase {
-    pub(crate) fn state(&self) -> ConnectionState {
+    pub(super) fn state(&self) -> ConnectionState {
         match self {
             Self::Idle => ConnectionState::Idle,
             Self::Connecting => ConnectionState::Connecting,
@@ -26,21 +25,28 @@ impl Phase {
         }
     }
 
-    pub(crate) fn dialing(&self) -> Self {
+    pub(super) fn dialing(&self) -> Self {
         match self {
             Self::Lost | Self::Reconnecting | Self::Connected(_) => Self::Reconnecting,
             Self::Idle | Self::Connecting | Self::Failed(..) => Self::Connecting,
         }
     }
 
-    pub(crate) fn abandoned(&self) -> Self {
+    pub(super) fn abandoned(&self) -> Self {
         match self {
             Self::Reconnecting | Self::Lost | Self::Connected(_) => Self::Lost,
             Self::Idle | Self::Connecting | Self::Failed(..) => Self::Idle,
         }
     }
 
-    pub(crate) fn error(&self) -> Option<&SshError> {
+    pub(super) fn connection(&self) -> Option<&Connection> {
+        match self {
+            Self::Connected(connection) => Some(connection),
+            _ => None,
+        }
+    }
+
+    pub(super) fn error(&self) -> Option<&SshError> {
         match self {
             Self::Failed(error, _) => Some(error),
             _ => None,

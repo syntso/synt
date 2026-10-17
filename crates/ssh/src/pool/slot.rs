@@ -1,12 +1,20 @@
+mod dial_attempt;
+mod holders;
+mod phase;
+
 use std::mem;
 use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
+use synt_platform::Lock;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::time;
 
-use super::{ConnectionStatus, DialAttempt, Holders, Lease, Phase, Slots};
-use crate::locked::locked;
+use dial_attempt::DialAttempt;
+use holders::Holders;
+use phase::Phase;
+
+use super::{ConnectionStatus, Lease, Registry};
 use crate::session::Connection;
 use crate::{Algorithms, SshError, Target};
 
@@ -14,7 +22,7 @@ const RETRY_PAUSE: Duration = Duration::from_secs(3);
 
 pub(crate) struct Slot {
     target: Target,
-    pool: Weak<Slots>,
+    pool: Weak<Registry>,
     phase: Mutex<Phase>,
     holders: Mutex<Holders>,
     upstream: Mutex<Option<Lease>>,
@@ -22,7 +30,7 @@ pub(crate) struct Slot {
 }
 
 impl Slot {
-    pub(crate) fn new(target: Target, pool: Weak<Slots>) -> Self {
+    pub(crate) fn new(target: Target, pool: Weak<Registry>) -> Self {
         Self {
             target,
             pool,
@@ -38,38 +46,35 @@ impl Slot {
     }
 
     pub(crate) fn has_failed(&self) -> bool {
-        locked(&self.phase).error().is_some()
+        self.phase.locked().error().is_some()
     }
 
     pub(crate) fn status(&self) -> ConnectionStatus {
-        let phase = locked(&self.phase);
+        let phase = self.phase.locked();
 
         ConnectionStatus {
             target: self.target.label(),
             via: self.target.previous_hop().map(|hop| hop.label()),
             state: phase.state(),
-            leases: locked(&self.holders).count(),
+            leases: self.holders.locked().count(),
             error: phase.error().map(ToString::to_string),
         }
     }
 
     pub(crate) fn algorithms(&self) -> Option<Algorithms> {
-        match &*locked(&self.phase) {
-            Phase::Connected(connection) => connection.algorithms(),
-            _ => None,
-        }
+        self.phase.locked().connection()?.algorithms()
     }
 
     pub(crate) fn join(&self) {
-        locked(&self.holders).join();
+        self.holders.locked().join();
     }
 
     pub(crate) fn leave(&self) -> Option<u64> {
-        locked(&self.holders).leave()
+        self.holders.locked().leave()
     }
 
     pub(crate) fn idle_since(&self, release: u64) -> bool {
-        locked(&self.holders).idle_since(release)
+        self.holders.locked().idle_since(release)
     }
 
     pub(crate) async fn connection(&self) -> Result<Connection, SshError> {
@@ -99,7 +104,7 @@ impl Slot {
     }
 
     pub(crate) fn abandon_dial(&self) {
-        let mut phase = locked(&self.phase);
+        let mut phase = self.phase.locked();
         let resting = phase.abandoned();
 
         *phase = resting;
@@ -109,7 +114,7 @@ impl Slot {
     }
 
     fn ready(&self) -> Result<Option<Connection>, SshError> {
-        let mut phase = locked(&self.phase);
+        let mut phase = self.phase.locked();
 
         match &*phase {
             Phase::Connected(connection) if connection.is_closed() => {
@@ -153,7 +158,7 @@ impl Slot {
         pool.connector().open(&self.target, through.as_ref()).await
     }
 
-    async fn reach_upstream(&self, pool: &Arc<Slots>) -> Result<Option<Connection>, SshError> {
+    async fn reach_upstream(&self, pool: &Arc<Registry>) -> Result<Option<Connection>, SshError> {
         let Some(previous) = self.target.previous_hop() else {
             return Ok(None);
         };
@@ -161,7 +166,7 @@ impl Slot {
         let lease = pool.lease(&previous);
         let connection = lease.connection().await?;
 
-        let replaced = locked(&self.upstream).replace(lease);
+        let replaced = self.upstream.locked().replace(lease);
         drop(replaced);
 
         Ok(Some(connection))
@@ -170,7 +175,7 @@ impl Slot {
     async fn shut_down(&self) {
         let _turn = self.dialing.lock().await;
 
-        let previous = mem::replace(&mut *locked(&self.phase), Phase::Idle);
+        let previous = mem::replace(&mut *self.phase.locked(), Phase::Idle);
 
         if let Phase::Connected(connection) = previous {
             connection.close().await;
@@ -180,19 +185,19 @@ impl Slot {
     }
 
     fn begin_dialing(&self) {
-        let mut phase = locked(&self.phase);
+        let mut phase = self.phase.locked();
         let next = phase.dialing();
 
         *phase = next;
     }
 
     fn enter(&self, next: Phase) {
-        let previous = mem::replace(&mut *locked(&self.phase), next);
+        let previous = mem::replace(&mut *self.phase.locked(), next);
         drop(previous);
     }
 
     fn release_upstream(&self) {
-        let upstream = locked(&self.upstream).take();
+        let upstream = self.upstream.locked().take();
         drop(upstream);
     }
 }

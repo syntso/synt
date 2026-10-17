@@ -1,9 +1,11 @@
+mod spec;
+
 use std::path::PathBuf;
 
-use super::Spec;
-use crate::SshError;
+use spec::Spec;
+
 use crate::config::{HostSettings, UserConfig};
-use crate::home::local_user;
+use crate::{Destination, SshError};
 
 const DEFAULT_PORT: u16 = 22;
 const JUMP_DEPTH_LIMIT: usize = 8;
@@ -87,6 +89,13 @@ impl Target {
         format!("{}@{}", self.user, self.address())
     }
 
+    pub(crate) fn hops(&self) -> Vec<&Target> {
+        let mut hops: Vec<&Target> = self.jumps.iter().flat_map(Target::hops).collect();
+        hops.push(self);
+
+        hops
+    }
+
     pub(crate) fn previous_hop(&self) -> Option<Target> {
         let (last, earlier) = self.jumps.split_last()?;
 
@@ -108,6 +117,10 @@ impl Target {
         format!("{}:{}", self.host, self.port)
     }
 
+    pub(crate) fn destination(&self) -> Destination {
+        Destination::new(self.host.clone(), self.port)
+    }
+
     fn resolve_with(
         text: &str,
         config: &UserConfig,
@@ -115,13 +128,14 @@ impl Target {
         follow_jumps: bool,
     ) -> Result<Self, SshError> {
         if depth > JUMP_DEPTH_LIMIT {
-            return Err(SshError::Config(format!(
-                "ProxyJump chain through {text:?} is longer than {JUMP_DEPTH_LIMIT} hops"
-            )));
+            return Err(SshError::JumpChainTooLong {
+                through: text.to_owned(),
+                limit: JUMP_DEPTH_LIMIT,
+            });
         }
 
         let spec = Spec::parse(text)?;
-        let settings = config.settings(&spec.host);
+        let settings = config.settings(spec.host());
 
         let jumps = if follow_jumps {
             Self::resolve_jumps(&settings.proxy_jump, config, depth)?
@@ -129,7 +143,7 @@ impl Target {
             Vec::new()
         };
 
-        Self::from_parts(text, spec, settings, jumps)
+        Self::from_parts(text, &spec, settings, jumps)
     }
 
     fn resolve_jumps(
@@ -146,24 +160,25 @@ impl Target {
 
     fn from_parts(
         text: &str,
-        spec: Spec,
+        spec: &Spec,
         settings: HostSettings,
         jumps: Vec<Self>,
     ) -> Result<Self, SshError> {
         let user = spec
-            .user
+            .user()
+            .map(str::to_owned)
             .or(settings.user)
-            .or_else(local_user)
+            .or_else(synt_platform::user_name)
             .ok_or_else(|| SshError::Resolve {
                 target: text.to_owned(),
-                reason: "no user given and none found in the environment".to_owned(),
+                reason: "no user given and none found in the environment",
             })?;
 
         let host = settings.host_name.map_or_else(
-            || spec.host.clone(),
-            |name| name.replace(HOST_TOKEN, &spec.host),
+            || spec.host().to_owned(),
+            |name| name.replace(HOST_TOKEN, spec.host()),
         );
-        let port = spec.port.or(settings.port).unwrap_or(DEFAULT_PORT);
+        let port = spec.port().or(settings.port).unwrap_or(DEFAULT_PORT);
 
         Ok(Self {
             host,

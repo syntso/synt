@@ -4,7 +4,7 @@ use russh::Names;
 use russh::client::{Handler, Session};
 use russh::keys::{HashAlg, PublicKey, PublicKeyOrCertificate};
 
-use super::{Algorithms, HandshakeError};
+use super::Algorithms;
 use crate::known_hosts::{KnownHosts, Verdict};
 use crate::{SshError, Target};
 
@@ -17,7 +17,7 @@ pub(crate) struct ClientHandler {
 }
 
 impl ClientHandler {
-    pub(crate) fn new(
+    pub(super) fn new(
         hop: &Target,
         known_hosts: Arc<KnownHosts>,
         negotiated: Arc<OnceLock<Algorithms>>,
@@ -42,20 +42,29 @@ impl ClientHandler {
             Verdict::OtherTypeKnown => Some(SshError::HostKeyOtherType { host, fingerprint }),
         }
     }
+
+    fn host_key(presented: &PublicKeyOrCertificate) -> PublicKey {
+        match presented {
+            PublicKeyOrCertificate::PublicKey { key, .. } => key.clone(),
+            PublicKeyOrCertificate::Certificate(certificate) => {
+                PublicKey::from(certificate.public_key().clone())
+            }
+        }
+    }
 }
 
 impl Handler for ClientHandler {
-    type Error = HandshakeError;
+    type Error = SshError;
 
     async fn check_server_key(
         &mut self,
         presented: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
-        let key = host_key(presented);
+        let key = Self::host_key(presented);
         let verdict = self.known_hosts.verdict(&self.host, self.port, &key);
 
         match self.rejection(verdict, &key) {
-            Some(error) => Err(HandshakeError::Rejected(error)),
+            Some(rejection) => Err(rejection),
             None => Ok(true),
         }
     }
@@ -69,14 +78,5 @@ impl Handler for ClientHandler {
         let _ = self.negotiated.set(Algorithms::negotiated(names));
 
         Ok(())
-    }
-}
-
-fn host_key(presented: &PublicKeyOrCertificate) -> PublicKey {
-    match presented {
-        PublicKeyOrCertificate::PublicKey { key, .. } => key.clone(),
-        PublicKeyOrCertificate::Certificate(certificate) => {
-            PublicKey::from(certificate.public_key().clone())
-        }
     }
 }
