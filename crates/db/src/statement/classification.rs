@@ -1,26 +1,23 @@
 use serde::Serialize;
 
-use super::redis_command::RedisCommand;
-use super::sql::SqlText;
+use super::command::Command;
+use super::kind::StatementKind;
+use super::sql::Sql;
 use crate::{Access, Effect, Engine};
-
-pub(super) const UNPARSABLE: &str = "unparsable";
-const SEVERAL: &str = "several statements";
-const EMPTY: &str = "empty";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Classification {
     pub effect: Effect,
-    pub kind: String,
+    pub kind: StatementKind,
 }
 
 impl Classification {
     pub fn of_sql(engine: Engine, text: &str) -> Self {
-        SqlText::new(engine, text).classification()
+        Sql::new(engine, text).classification()
     }
 
     pub fn of_command<S: AsRef<str>>(words: &[S]) -> Self {
-        RedisCommand::parse(words).map_or_else(Self::empty, |command| command.classification())
+        Command::parse(words).map_or_else(Self::empty, |command| command.classification())
     }
 
     pub fn is_read(&self) -> bool {
@@ -36,26 +33,23 @@ impl Classification {
     }
 
     pub fn is_one_statement(&self) -> bool {
-        ![UNPARSABLE, SEVERAL, EMPTY].contains(&self.kind.as_str())
+        self.kind.is_one_statement()
     }
 
-    pub(crate) fn new(effect: Effect, kind: impl Into<String>) -> Self {
-        Self {
-            effect,
-            kind: kind.into(),
-        }
+    pub(super) fn new(effect: Effect, kind: StatementKind) -> Self {
+        Self { effect, kind }
     }
 
     pub(super) fn unparsable() -> Self {
-        Self::new(Effect::Privileged, UNPARSABLE)
+        Self::new(Effect::Privileged, StatementKind::Unparsable)
     }
 
     pub(super) fn several() -> Self {
-        Self::new(Effect::Privileged, SEVERAL)
+        Self::new(Effect::Privileged, StatementKind::Several)
     }
 
     pub(super) fn empty() -> Self {
-        Self::new(Effect::Privileged, EMPTY)
+        Self::new(Effect::Privileged, StatementKind::Empty)
     }
 }
 

@@ -1,14 +1,14 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use synt_db::masked;
+use synt_db::Masked;
 
 fuzz_target!(|data: &[u8]| {
     let Ok(text) = std::str::from_utf8(data) else {
         return;
     };
 
-    let shown = masked(text);
+    let shown = Masked::new(text).to_string();
 
     assert!(!shown.contains('\''), "a quoted literal survived: {shown}");
     assert!(
@@ -33,9 +33,10 @@ fuzz_target!(|data: &[u8]| {
         return;
     }
 
-    let shown = masked(&format!(
+    let shown = Masked::new(&format!(
         "SELECT * FROM T WHERE A = '{first}' AND B = '{second}'"
-    ));
+    ))
+    .to_string();
     assert!(
         !shown.contains(&second),
         "the second literal survived: {shown}"

@@ -6,6 +6,7 @@ use std::time::Duration;
 use tokio::time;
 use zeroize::Zeroizing;
 
+use crate::endpoint::Endpoint;
 use crate::{DbError, Engine, Place, TlsMode};
 
 const CONNECT_LIMIT: Duration = Duration::from_secs(30);
@@ -68,10 +69,7 @@ impl Server {
 
     #[must_use]
     pub fn reached_at(mut self, address: SocketAddr) -> Self {
-        if let Place::Network { reached_at, .. } = &mut self.place {
-            *reached_at = Some(address);
-        }
-
+        self.place.reached_at(address);
         self
     }
 
@@ -103,35 +101,13 @@ impl Server {
         self.password.as_ref().map(|password| password.as_str())
     }
 
-    pub(crate) fn host(&self) -> Option<&str> {
-        match &self.place {
-            Place::Network { host, .. } => Some(host),
-            Place::File(_) => None,
-        }
-    }
-
-    pub(crate) fn dial(&self) -> Result<(String, u16), DbError> {
-        match &self.place {
-            Place::Network {
-                reached_at: Some(address),
-                ..
-            } => Ok((address.ip().to_string(), address.port())),
-            Place::Network { host, port, .. } => Ok((host.clone(), *port)),
-            Place::File(_) => Err(DbError::InvalidInput(format!(
+    pub(crate) fn dial(&self) -> Result<Endpoint, DbError> {
+        self.place.dial().ok_or_else(|| {
+            DbError::InvalidInput(format!(
                 "{} needs a host and a port, not a file",
                 self.engine
-            ))),
-        }
-    }
-
-    pub(crate) fn is_tunneled(&self) -> bool {
-        matches!(
-            self.place,
-            Place::Network {
-                reached_at: Some(_),
-                ..
-            }
-        )
+            ))
+        })
     }
 
     pub(crate) async fn connect_in_time<T>(
@@ -177,7 +153,7 @@ mod tests {
     use zeroize::Zeroizing;
 
     use super::Server;
-    use crate::Engine;
+    use crate::{DbError, Engine};
 
     #[test]
     fn debug_output_never_shows_the_password() {
@@ -191,11 +167,9 @@ mod tests {
     }
 
     #[test]
-    fn a_tunnel_changes_where_to_dial_but_not_the_host_name() {
-        let server = Server::network(Engine::Mysql, "orders-db.internal", 3306)
-            .reached_at("127.0.0.1:40123".parse().expect("address"));
+    fn a_file_cannot_be_dialed() {
+        let server = Server::file("shop.sqlite");
 
-        assert_eq!(server.dial(), Ok(("127.0.0.1".to_owned(), 40123)));
-        assert_eq!(server.host(), Some("orders-db.internal"));
+        assert!(matches!(server.dial(), Err(DbError::InvalidInput(_))));
     }
 }

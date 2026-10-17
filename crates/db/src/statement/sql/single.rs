@@ -1,8 +1,9 @@
 use sqlparser::ast::{CopySource, CopyTarget, ObjectName, SetExpr, Statement, Visit};
 
 use super::effects::Effects;
-use crate::statement::classification::UNPARSABLE;
-use crate::{Classification, Effect};
+use crate::Effect;
+use crate::statement::classification::Classification;
+use crate::statement::kind::StatementKind;
 
 const INFO_PRAGMAS: [&str; 9] = [
     "table_info",
@@ -75,7 +76,7 @@ impl<'a> SingleStatement<'a> {
         }
     }
 
-    fn kind(&self) -> String {
+    fn kind(&self) -> StatementKind {
         let known = match self.statement {
             Statement::Query(query) => match query.body.as_ref() {
                 SetExpr::Insert(_) => "insert",
@@ -95,16 +96,17 @@ impl<'a> SingleStatement<'a> {
             _ => return self.first_word(),
         };
 
-        known.to_owned()
+        StatementKind::named(known)
     }
 
-    fn first_word(&self) -> String {
+    fn first_word(&self) -> StatementKind {
         let text = self.statement.to_string();
 
         text.split_whitespace()
             .next()
-            .unwrap_or(UNPARSABLE)
-            .to_ascii_lowercase()
+            .map_or(StatementKind::Unparsable, |word| {
+                StatementKind::named(word.to_ascii_lowercase())
+            })
     }
 }
 

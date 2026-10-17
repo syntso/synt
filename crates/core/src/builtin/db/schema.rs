@@ -39,7 +39,9 @@ impl Action for DbSchema {
     type Output = SchemaResult;
 
     fn check(&self, target: Option<&ResourceRef>, (): &()) -> Result<(), ActionError> {
-        self.databases.check_target(target).map(|_| ())
+        self.databases.check_target(target)?;
+
+        Ok(())
     }
 
     fn risk(&self, target: Option<&ResourceRef>, (): &()) -> Risk {

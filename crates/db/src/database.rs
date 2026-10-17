@@ -1,7 +1,6 @@
 use serde_json::Value;
 
-use crate::driver::Driver;
-use crate::drivers::{Mysql, Postgres, Redis, Sqlite};
+use crate::driver::{Driver, Mysql, Postgres, Redis, Sqlite};
 use crate::{DbError, Engine, Page, Query, Rows, Schema, Server, TableName};
 
 pub struct Database {

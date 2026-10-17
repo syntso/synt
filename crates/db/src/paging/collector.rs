@@ -1,6 +1,9 @@
+use std::ops::ControlFlow;
+
 use serde_json::Value;
 
 use super::{Page, Rows};
+use crate::Access;
 
 const CUT: &str = " …";
 const JSON_OVERHEAD: usize = 4;
@@ -8,6 +11,7 @@ const JSON_OVERHEAD: usize = 4;
 #[derive(Debug)]
 pub(crate) struct Collector {
     page: Page,
+    access: Access,
     seen: u64,
     kept: Vec<Vec<Value>>,
     bytes: usize,
@@ -16,9 +20,10 @@ pub(crate) struct Collector {
 }
 
 impl Collector {
-    pub(crate) fn new(page: Page) -> Self {
+    pub(crate) fn new(page: Page, access: Access) -> Self {
         Self {
             page,
+            access,
             seen: 0,
             kept: Vec::new(),
             bytes: 0,
@@ -27,15 +32,45 @@ impl Collector {
         }
     }
 
-    pub(crate) fn wants_more(&self) -> bool {
-        !self.more
-    }
-
-    pub(crate) fn offer(&mut self, row: Vec<Value>) {
-        if self.more {
-            return;
+    pub(crate) fn take(&mut self, row: impl FnOnce() -> Vec<Value>) -> ControlFlow<()> {
+        if !self.more {
+            self.offer(row());
+            return ControlFlow::Continue(());
         }
 
+        if self.access.is_read_only() {
+            return ControlFlow::Break(());
+        }
+
+        ControlFlow::Continue(())
+    }
+
+    pub(crate) fn finish(
+        self,
+        columns: Vec<String>,
+        affected: impl FnOnce() -> Option<u64>,
+    ) -> Rows {
+        let offset = self.page.offset();
+        let kept = u64::try_from(self.kept.len()).unwrap_or(u64::MAX);
+        let affected = if self.access.is_read_only() {
+            None
+        } else {
+            affected()
+        };
+
+        Rows {
+            columns,
+            next_offset: self.more.then_some(offset + kept),
+            rows: self.kept,
+            offset,
+            more: self.more,
+            affected,
+            bytes: self.bytes,
+            values_cut: self.values_cut,
+        }
+    }
+
+    fn offer(&mut self, row: Vec<Value>) {
         self.seen += 1;
 
         if self.seen <= self.page.offset() {
@@ -48,22 +83,6 @@ impl Collector {
         }
 
         self.keep(row);
-    }
-
-    pub(crate) fn finish(self, columns: Vec<String>, affected: Option<u64>) -> Rows {
-        let offset = self.page.offset();
-        let kept = u64::try_from(self.kept.len()).unwrap_or(u64::MAX);
-
-        Rows {
-            columns,
-            next_offset: self.more.then_some(offset + kept),
-            rows: self.kept,
-            offset,
-            more: self.more,
-            affected,
-            bytes: self.bytes,
-            values_cut: self.values_cut,
-        }
     }
 
     fn keep(&mut self, row: Vec<Value>) {
@@ -140,21 +159,25 @@ fn encoded_size<T: serde::Serialize + ?Sized>(value: &T) -> usize {
 mod tests {
     use serde_json::{Value, json};
 
+    use std::ops::ControlFlow;
+
     use super::Collector;
-    use crate::Page;
+    use crate::{Access, Page};
 
     fn numbered(count: u64) -> impl Iterator<Item = Vec<Value>> {
         (1..=count).map(|number| vec![json!(number)])
     }
 
     fn collect(page: Page, rows: impl Iterator<Item = Vec<Value>>) -> crate::Rows {
-        let mut collector = Collector::new(page);
+        let mut collector = Collector::new(page, Access::ReadOnly);
 
         for row in rows {
-            collector.offer(row);
+            if collector.take(|| row).is_break() {
+                break;
+            }
         }
 
-        collector.finish(vec!["n".to_owned()], None)
+        collector.finish(vec!["n".to_owned()], || Some(0))
     }
 
     #[test]
@@ -204,5 +227,28 @@ mod tests {
         let rows = collect(Page::new(2, 1 << 20), numbered(2));
 
         assert!(!rows.more);
+    }
+
+    #[test]
+    fn a_read_stops_once_the_page_is_full_but_a_write_reads_on() {
+        let mut read = Collector::new(Page::new(1, 1 << 20), Access::ReadOnly);
+        let mut write = Collector::new(Page::new(1, 1 << 20), Access::ReadWrite);
+
+        for collector in [&mut read, &mut write] {
+            assert_eq!(collector.take(|| vec![json!(1)]), ControlFlow::Continue(()));
+            assert_eq!(collector.take(|| vec![json!(2)]), ControlFlow::Continue(()));
+        }
+
+        assert_eq!(read.take(|| vec![json!(3)]), ControlFlow::Break(()));
+        assert_eq!(write.take(|| vec![json!(3)]), ControlFlow::Continue(()));
+    }
+
+    #[test]
+    fn only_a_write_reports_the_rows_it_changed() {
+        let read = Collector::new(Page::new(1, 1 << 20), Access::ReadOnly);
+        let write = Collector::new(Page::new(1, 1 << 20), Access::ReadWrite);
+
+        assert_eq!(read.finish(Vec::new(), || Some(7)).affected, None);
+        assert_eq!(write.finish(Vec::new(), || Some(7)).affected, Some(7));
     }
 }

@@ -39,7 +39,9 @@ impl Action for DbPing {
     type Output = PingResult;
 
     fn check(&self, target: Option<&ResourceRef>, (): &()) -> Result<(), ActionError> {
-        self.databases.check_target(target).map(|_| ())
+        self.databases.check_target(target)?;
+
+        Ok(())
     }
 
     fn risk(&self, target: Option<&ResourceRef>, (): &()) -> Risk {
@@ -59,14 +61,12 @@ impl Action for DbPing {
     }
 
     async fn run(&self, context: &Context, (): ()) -> Result<PingResult, ActionError> {
+        let engine = self.databases.current_engine(context)?;
         let started = Instant::now();
 
-        let (engine, version) = self
+        let version = self
             .databases
-            .with(context, LIMIT, async |database| {
-                let version = database.ping().await?;
-                Ok((database.engine(), version))
-            })
+            .with(context, LIMIT, async |database| database.ping().await)
             .await?;
 
         Ok(PingResult {
