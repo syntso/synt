@@ -54,6 +54,9 @@ pub enum CoreError {
         choices: &'static [&'static str],
     },
 
+    #[error("endpoint: {0}")]
+    Endpoint(#[source] io::Error),
+
     #[error("unknown argument {0}")]
     UnknownArgument(String),
 

@@ -1,4 +1,5 @@
 mod access;
+mod arguments;
 mod blocking;
 mod broker;
 mod builtin;
@@ -27,14 +28,16 @@ mod storage;
 mod terminals;
 mod vault;
 
+pub use arguments::Arguments;
 pub use broker::Broker;
 pub use builtin::{
-    Databases, Files, GrantActions, GrantList, GrantRevoke, JournalPage, JournalVerify, KeyActions,
-    KeyGenerate, KeyImport, KeyList, KeyRemove, Kube, LocalSessionOpen, Ping, Pong, ProjectClose,
-    ProjectList, ProjectOpen, ResourceGet, ResourceList, ResourcePut, ResourceRemove,
-    SecretActions, SecretList, SecretPut, SecretRemove, SessionAttach, SessionBlocks, SessionClose,
-    SessionIntegration, SessionList, SessionResize, SshConnections, SshExec, SshSessionOpen,
-    SshWarm, TunnelClose, TunnelList, TunnelOpen,
+    Databases, Files, GrantActions, GrantList, GrantRevoke, JournalActions, JournalPage,
+    JournalVerify, KeyActions, KeyGenerate, KeyImport, KeyList, KeyRemove, Kube, LocalSessionOpen,
+    Ping, Pong, ProjectActions, ProjectClose, ProjectList, ProjectOpen, ResourceActions,
+    ResourceGet, ResourceList, ResourcePut, ResourceRemove, SecretActions, SecretList, SecretPut,
+    SecretRemove, SessionActions, SessionAttach, SessionBlocks, SessionClose, SessionIntegration,
+    SessionList, SessionResize, SshActions, SshConnections, SshExec, SshSessionOpen, SshWarm,
+    TunnelActions, TunnelClose, TunnelList, TunnelOpen,
 };
 pub use core::{Core, VERSION};
 pub use error::CoreError;

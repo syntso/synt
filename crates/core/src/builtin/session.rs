@@ -23,3 +23,43 @@ pub(crate) use open::SessionOpenParams;
 pub use open::SshSessionOpen;
 pub use resize::SessionResize;
 pub(crate) use size::SessionSize;
+
+use synt_actions::{ActionError, Registry};
+use synt_ssh::Pool;
+
+use crate::projects::Projects;
+use crate::terminals::Terminals;
+
+#[derive(Debug, Clone)]
+pub struct SessionActions {
+    pool: Pool,
+    projects: Projects,
+    terminals: Terminals,
+}
+
+impl SessionActions {
+    pub fn new(pool: Pool, projects: Projects, terminals: Terminals) -> Self {
+        Self {
+            pool,
+            projects,
+            terminals,
+        }
+    }
+
+    pub fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
+        let terminals = &self.terminals;
+
+        registry.register(SshSessionOpen::new(
+            self.pool.clone(),
+            terminals.clone(),
+            self.projects.clone(),
+        ))?;
+        registry.register(LocalSessionOpen::new(terminals.clone()))?;
+        registry.register(SessionAttach::new(terminals.clone()))?;
+        registry.register(SessionResize::new(terminals.clone()))?;
+        registry.register(SessionClose::new(terminals.clone()))?;
+        registry.register(SessionList::new(terminals.clone()))?;
+        registry.register(SessionBlocks::new(terminals.clone()))?;
+        registry.register(SessionIntegration)
+    }
+}
