@@ -37,42 +37,42 @@ debug = 1
 
 [[bin]]
 name = "proto_frame"
-path = "fuzz_targets/proto_frame.rs"
+path = "fuzz_targets/proto/frame.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
 name = "proto_message"
-path = "fuzz_targets/proto_message.rs"
+path = "fuzz_targets/proto/message.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
 name = "journal_details"
-path = "fuzz_targets/journal_details.rs"
+path = "fuzz_targets/journal/details.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
 name = "journal_actor"
-path = "fuzz_targets/journal_actor.rs"
+path = "fuzz_targets/journal/actor.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
 name = "ssh_known_hosts"
-path = "fuzz_targets/ssh_known_hosts.rs"
+path = "fuzz_targets/ssh/known_hosts.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
 name = "ssh_config"
-path = "fuzz_targets/ssh_config.rs"
+path = "fuzz_targets/ssh/config.rs"
 test = false
 doc = false
 bench = false
@@ -107,28 +107,28 @@ bench = false
 
 [[bin]]
 name = "sync_merge"
-path = "fuzz_targets/sync_merge.rs"
+path = "fuzz_targets/sync/merge.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
 name = "sync_wire"
-path = "fuzz_targets/sync_wire.rs"
+path = "fuzz_targets/sync/wire.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
 name = "db_masking"
-path = "fuzz_targets/db_masking.rs"
+path = "fuzz_targets/db/masking.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
 name = "db_statement"
-path = "fuzz_targets/db_statement.rs"
+path = "fuzz_targets/db/statement.rs"
 test = false
 doc = false
 bench = false

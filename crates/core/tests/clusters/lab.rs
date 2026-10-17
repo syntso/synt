@@ -16,10 +16,12 @@ use synt_proto::{
 };
 use synt_ssh::Pool;
 use synt_test_servers::{KubeServers, SshHome};
+use synt_testkit::TestError;
+use synt_testkit::core::RunningServer;
 use tempfile::TempDir;
 use tokio::time;
 
-use crate::{Desk, RunningCore};
+use crate::Desk;
 
 pub const DIRECT: &str = "@lab/direct";
 pub const INSIDE: &str = "@lab/inside";
@@ -34,51 +36,47 @@ pub struct Lab {
     pub desk: Desk,
     pub namespace: String,
     journal: JournalWriter,
-    running: RunningCore,
+    running: RunningServer,
     _home: SshHome,
     _directory: TempDir,
 }
 
 impl Lab {
-    pub async fn start() -> Option<Self> {
-        let servers = KubeServers::running()?;
+    pub async fn start() -> Result<Option<Self>, TestError> {
+        let Some(servers) = KubeServers::running() else {
+            return Ok(None);
+        };
         let home = servers.trusting_home();
-        let directory = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir()?;
         let namespace = unique_namespace();
 
-        let journal = journal(directory.path());
-        let state = State::open(&directory.path().join("state.sqlite")).unwrap();
+        let journal = journal(directory.path())?;
+        let state = State::open(&directory.path().join("state.sqlite"))?;
         let personal = KubeconfigSource::File(servers.kubeconfig());
-        let projects = Projects::start_with(state, personal).unwrap();
+        let projects = Projects::start_with(state, personal)?;
         let pool = Pool::builder().ssh_directory(home.path()).build();
 
         let mut registry = Registry::new();
-        registry
-            .register(ProjectOpen::new(projects.clone()))
-            .unwrap();
-        registry
-            .register(ResourceList::new(projects.clone()))
-            .unwrap();
-        K8sActions::new(pool, projects, journal.clone())
-            .register(&mut registry)
-            .unwrap();
+        registry.register(ProjectOpen::new(projects.clone()))?;
+        registry.register(ResourceList::new(projects.clone()))?;
+        K8sActions::new(pool, projects, journal.clone()).register(&mut registry)?;
 
         let endpoint = endpoint(directory.path());
         let core = Core::new(registry, journal.clone(), Broker::new());
-        let running = RunningCore::spawn(&endpoint, core);
-        let app = connect(&endpoint, ClientKind::App).await;
+        let running = RunningServer::spawn(&endpoint, core)?;
+        let app = connect(&endpoint, ClientKind::App).await?;
         let agent = connect(
             &endpoint,
             ClientKind::Agent {
                 name: "tester".to_owned(),
             },
         )
-        .await;
+        .await?;
         let desk = Desk::new(&app);
 
-        let project = write_project(directory.path(), &servers, &namespace);
+        let project = write_project(directory.path(), &servers, &namespace)?;
         let opening = ActionCall::new("project.open").params(json!({ "path": project }));
-        app.call(opening).await.unwrap();
+        app.call(opening).await?;
 
         let lab = Self {
             app,
@@ -95,10 +93,9 @@ impl Lab {
             "k8s.apply",
             json!({ "manifest": lab.namespace_manifest() }),
         )
-        .await
-        .unwrap();
+        .await?;
 
-        Some(lab)
+        Ok(Some(lab))
     }
 
     pub async fn person(
@@ -124,7 +121,7 @@ impl Lab {
         target: &str,
         action: &str,
         params: Value,
-    ) -> (ApprovalRequest, Result<ActionOutcome, ClientError>) {
+    ) -> Result<(ApprovalRequest, Result<ActionOutcome, ClientError>), TestError> {
         self.desk
             .decide(
                 &self.agent,
@@ -139,7 +136,7 @@ impl Lab {
         target: &str,
         action: &str,
         params: Value,
-    ) -> (ApprovalRequest, Result<ActionOutcome, ClientError>) {
+    ) -> Result<(ApprovalRequest, Result<ActionOutcome, ClientError>), TestError> {
         self.desk
             .decide(
                 &self.app,
@@ -170,19 +167,20 @@ impl Lab {
         .unwrap_or_else(|_| panic!("the journal never recorded Finished for {request:?}"))
     }
 
-    pub fn journal_text(&self) -> String {
-        self.events(&Filter::all())
+    pub fn journal_text(&self) -> Result<String, TestError> {
+        Ok(self
+            .events(&Filter::all())?
             .iter()
             .map(|event| event.details().value().to_string())
             .collect::<Vec<_>>()
-            .join("\n")
+            .join("\n"))
     }
 
-    pub async fn finish(self) {
+    pub async fn finish(self) -> Result<(), TestError> {
         let namespace = self.namespace.clone();
         let params = json!({ "kind": "namespace", "name": namespace });
-        let (_, deleted) = self.person_asking(DIRECT, "k8s.delete", params).await;
-        deleted.unwrap();
+        let (_, deleted) = self.person_asking(DIRECT, "k8s.delete", params).await?;
+        deleted?;
 
         let Self {
             app,
@@ -193,7 +191,9 @@ impl Lab {
         drop(app);
         drop(agent);
 
-        running.stop().await;
+        running.stop().await?;
+
+        Ok(())
     }
 
     fn namespace_manifest(&self) -> String {
@@ -205,15 +205,16 @@ impl Lab {
 
     fn detail_of(&self, request: RequestSeq, kind: EventKind) -> Option<Value> {
         self.events(&Filter::all().call(Seq::new(request.get())))
+            .ok()?
             .into_iter()
             .find(|event| event.kind() == kind)
             .map(|event| event.details().value().clone())
     }
 
-    fn events(&self, filter: &Filter) -> Vec<Event> {
-        let reader = self.journal.reader().unwrap();
+    fn events(&self, filter: &Filter) -> Result<Vec<Event>, TestError> {
+        let reader = self.journal.reader()?;
 
-        reader.page(filter, None, PAGE).unwrap()
+        Ok(reader.page(filter, None, PAGE)?)
     }
 }
 
@@ -269,47 +270,52 @@ spec:
     )
 }
 
-async fn connect(endpoint: &Endpoint, kind: ClientKind) -> Client {
-    Client::connect(
+async fn connect(endpoint: &Endpoint, kind: ClientKind) -> Result<Client, TestError> {
+    Ok(Client::connect(
         endpoint,
         Hello::new(kind, "synt-cluster-tests"),
         &Autostart::off(),
     )
-    .await
-    .unwrap()
+    .await?)
 }
 
-fn journal(directory: &Path) -> JournalWriter {
-    let keys = Arc::new(MemoryKeyStore::new().unwrap());
-    let journal = Journal::create(directory.join("journal.sqlite"), keys).unwrap();
+fn journal(directory: &Path) -> Result<JournalWriter, TestError> {
+    let keys = Arc::new(MemoryKeyStore::new()?);
+    let journal = Journal::create(directory.join("journal.sqlite"), keys)?;
 
-    JournalWriter::spawn(journal).unwrap()
+    Ok(JournalWriter::spawn(journal)?)
 }
 
 fn endpoint(directory: &Path) -> Endpoint {
-    let unique = directory.file_name().unwrap().to_string_lossy();
+    let unique = directory.file_name().unwrap_or_default().to_string_lossy();
 
     Endpoint::named(directory, &format!("synt-clusters-{unique}"))
 }
 
-fn write_project(directory: &Path, servers: &KubeServers, namespace: &str) -> PathBuf {
+fn write_project(
+    directory: &Path,
+    servers: &KubeServers,
+    namespace: &str,
+) -> Result<PathBuf, TestError> {
     let project = directory.join("lab");
-    fs::create_dir_all(project.join("resources")).unwrap();
+    fs::create_dir_all(project.join("resources"))?;
     fs::write(
         project.join("synt.toml"),
         format!("id = \"{PROJECT_ID}\"\nname = \"Lab\"\n"),
-    )
-    .unwrap();
+    )?;
 
-    for (name, resource) in resources(servers, namespace) {
-        let text = toml::to_string(&resource).unwrap();
-        fs::write(project.join(format!("resources/{name}.toml")), text).unwrap();
+    for (name, resource) in resources(servers, namespace)? {
+        let text = toml::to_string(&resource)?;
+        fs::write(project.join(format!("resources/{name}.toml")), text)?;
     }
 
-    project
+    Ok(project)
 }
 
-fn resources(servers: &KubeServers, namespace: &str) -> [(&'static str, Resource); 3] {
+fn resources(
+    servers: &KubeServers,
+    namespace: &str,
+) -> Result<[(&'static str, Resource); 3], TestError> {
     let kubeconfig = servers.kubeconfig().display().to_string();
     let cluster = |context: &str, via: Option<&str>| {
         resource(json!({
@@ -326,23 +332,23 @@ fn resources(servers: &KubeServers, namespace: &str) -> [(&'static str, Resource
         "port": servers.bastion_port(),
         "user": KubeServers::USER,
         "identity": servers.client_key().display().to_string(),
-    }));
+    }))?;
 
-    [
+    Ok([
         ("bastion", bastion),
-        ("direct", cluster(KubeServers::DIRECT, None)),
-        ("inside", cluster(KubeServers::INSIDE, Some("bastion"))),
-    ]
+        ("direct", cluster(KubeServers::DIRECT, None)?),
+        ("inside", cluster(KubeServers::INSIDE, Some("bastion"))?),
+    ])
 }
 
-fn resource(fields: Value) -> Resource {
+fn resource(fields: Value) -> Result<Resource, TestError> {
     let mut fields = fields;
 
     if let Value::Object(map) = &mut fields {
         map.retain(|_, value| !value.is_null());
     }
 
-    serde_json::from_value(fields).unwrap()
+    Ok(serde_json::from_value(fields)?)
 }
 
 fn unique_namespace() -> String {

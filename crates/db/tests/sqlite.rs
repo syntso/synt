@@ -1,10 +1,9 @@
-#![allow(clippy::unwrap_used)]
-
 use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use synt_db::{Access, Database, DbError, Page, Query, Server};
+use synt_testkit::TestError;
 use tempfile::TempDir;
 
 const SHOP: &str = "
@@ -31,32 +30,28 @@ struct Shop {
 }
 
 impl Shop {
-    fn new() -> Self {
-        let folder = tempfile::tempdir().unwrap();
+    fn new() -> Result<Self, TestError> {
+        let folder = tempfile::tempdir()?;
         let path = folder.path().join("shop.sqlite");
 
-        Connection::open(&path)
-            .unwrap()
-            .execute_batch(SHOP)
-            .unwrap();
+        Connection::open(&path)?.execute_batch(SHOP)?;
 
-        Self {
+        Ok(Self {
             _folder: folder,
             path,
-        }
+        })
     }
 
-    async fn open(&self) -> Database {
-        Database::connect(&Server::file(&self.path)).await.unwrap()
+    async fn open(&self) -> Result<Database, TestError> {
+        Ok(Database::connect(&Server::file(&self.path)).await?)
     }
 
-    fn count(&self, table: &str) -> i64 {
-        Connection::open(&self.path)
-            .unwrap()
-            .query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
-                row.get(0)
-            })
-            .unwrap()
+    fn count(&self, table: &str) -> Result<i64, TestError> {
+        Ok(Connection::open(&self.path)?.query_row(
+            &format!("SELECT count(*) FROM {table}"),
+            [],
+            |row| row.get(0),
+        )?)
     }
 }
 
@@ -77,9 +72,9 @@ fn write(text: &str) -> Query<'_> {
 }
 
 #[tokio::test]
-async fn a_read_returns_columns_and_typed_rows() {
-    let shop = Shop::new();
-    let mut database = shop.open().await;
+async fn a_read_returns_columns_and_typed_rows() -> Result<(), TestError> {
+    let shop = Shop::new()?;
+    let mut database = shop.open().await?;
 
     let rows = database
         .query(&read("SELECT id, total, receipt FROM orders ORDER BY id"))
@@ -91,12 +86,14 @@ async fn a_read_returns_columns_and_typed_rows() {
     assert_eq!(rows.rows[1], vec![json!(2), json!(12.0), Value::Null]);
     assert!(!rows.more);
     assert_eq!(rows.affected, None);
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn parameters_are_bound_not_spliced() {
-    let shop = Shop::new();
-    let mut database = shop.open().await;
+async fn parameters_are_bound_not_spliced() -> Result<(), TestError> {
+    let shop = Shop::new()?;
+    let mut database = shop.open().await?;
     let params = [json!("ann@example.com' OR '1'='1")];
 
     let rows = database
@@ -108,12 +105,14 @@ async fn parameters_are_bound_not_spliced() {
         .unwrap();
 
     assert!(rows.rows.is_empty());
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn pages_follow_each_other_without_gaps() {
-    let shop = Shop::new();
-    let mut database = shop.open().await;
+async fn pages_follow_each_other_without_gaps() -> Result<(), TestError> {
+    let shop = Shop::new()?;
+    let mut database = shop.open().await?;
     let text = "SELECT id FROM orders ORDER BY id";
 
     let first = database
@@ -135,12 +134,14 @@ async fn pages_follow_each_other_without_gaps() {
     assert!(first.more);
     assert_eq!(second.rows, vec![vec![json!(3)]]);
     assert!(!second.more);
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn a_write_reports_how_many_rows_it_changed() {
-    let shop = Shop::new();
-    let mut database = shop.open().await;
+async fn a_write_reports_how_many_rows_it_changed() -> Result<(), TestError> {
+    let shop = Shop::new()?;
+    let mut database = shop.open().await?;
 
     let rows = database
         .query(&write(
@@ -150,12 +151,14 @@ async fn a_write_reports_how_many_rows_it_changed() {
         .unwrap();
 
     assert_eq!(rows.affected, Some(2));
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn a_write_sent_down_the_read_path_is_refused_by_sqlite() {
-    let shop = Shop::new();
-    let mut database = shop.open().await;
+async fn a_write_sent_down_the_read_path_is_refused_by_sqlite() -> Result<(), TestError> {
+    let shop = Shop::new()?;
+    let mut database = shop.open().await?;
 
     let refused = database
         .query(&read("DELETE FROM orders"))
@@ -163,13 +166,15 @@ async fn a_write_sent_down_the_read_path_is_refused_by_sqlite() {
         .unwrap_err();
 
     assert!(matches!(refused, DbError::Server { .. }), "{refused:?}");
-    assert_eq!(shop.count("orders"), 3);
+    assert_eq!(shop.count("orders")?, 3);
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn several_statements_are_refused_rather_than_partly_run() {
-    let shop = Shop::new();
-    let mut database = shop.open().await;
+async fn several_statements_are_refused_rather_than_partly_run() -> Result<(), TestError> {
+    let shop = Shop::new()?;
+    let mut database = shop.open().await?;
 
     let refused = database
         .query(&write("DELETE FROM orders; DELETE FROM customers"))
@@ -177,7 +182,9 @@ async fn several_statements_are_refused_rather_than_partly_run() {
         .unwrap_err();
 
     assert!(matches!(refused, DbError::InvalidInput(_)), "{refused:?}");
-    assert_eq!(shop.count("customers"), 2);
+    assert_eq!(shop.count("customers")?, 2);
+
+    Ok(())
 }
 
 #[tokio::test]
@@ -196,9 +203,9 @@ async fn a_missing_file_is_not_created() {
 }
 
 #[tokio::test]
-async fn the_schema_names_tables_columns_keys_indexes_and_references() {
-    let shop = Shop::new();
-    let mut database = shop.open().await;
+async fn the_schema_names_tables_columns_keys_indexes_and_references() -> Result<(), TestError> {
+    let shop = Shop::new()?;
+    let mut database = shop.open().await?;
 
     let schema = database.schema().await.unwrap();
     let names: Vec<(&str, &str)> = schema
@@ -241,23 +248,27 @@ async fn the_schema_names_tables_columns_keys_indexes_and_references() {
     assert_eq!(orders.foreign_keys[0].columns, ["customer_id"]);
     assert_eq!(orders.foreign_keys[0].referenced_table, "customers");
     assert_eq!(orders.foreign_keys[0].referenced_columns, ["id"]);
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn tables_lists_names_only() {
-    let shop = Shop::new();
-    let mut database = shop.open().await;
+async fn tables_lists_names_only() -> Result<(), TestError> {
+    let shop = Shop::new()?;
+    let mut database = shop.open().await?;
 
     let tables = database.tables().await.unwrap();
 
     assert_eq!(tables.len(), 3);
     assert_eq!(tables[0].name, "big_orders");
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn explain_shows_the_query_plan_without_running_it() {
-    let shop = Shop::new();
-    let mut database = shop.open().await;
+async fn explain_shows_the_query_plan_without_running_it() -> Result<(), TestError> {
+    let shop = Shop::new()?;
+    let mut database = shop.open().await?;
 
     let plan = database
         .explain("DELETE FROM orders WHERE customer_id = ?1", &[json!(1)])
@@ -268,15 +279,19 @@ async fn explain_shows_the_query_plan_without_running_it() {
         plan.as_array().is_some_and(|steps| !steps.is_empty()),
         "{plan}"
     );
-    assert_eq!(shop.count("orders"), 3);
+    assert_eq!(shop.count("orders")?, 3);
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn ping_answers_with_the_library_version() {
-    let shop = Shop::new();
-    let mut database = shop.open().await;
+async fn ping_answers_with_the_library_version() -> Result<(), TestError> {
+    let shop = Shop::new()?;
+    let mut database = shop.open().await?;
 
     let version = database.ping().await.unwrap();
 
     assert!(version.starts_with('3'), "{version}");
+
+    Ok(())
 }

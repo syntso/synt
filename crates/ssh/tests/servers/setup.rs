@@ -4,6 +4,7 @@ use std::time::Duration;
 use synt_proto::ExecLimits;
 use synt_ssh::{ExecOutcome, Pool, PoolBuilder, SshError, Target};
 use synt_test_servers::{SshHome, SshServers};
+use synt_testkit::TestError;
 
 pub struct Setup {
     pub servers: SshServers,
@@ -75,11 +76,11 @@ impl Setup {
             .await
     }
 
-    pub async fn client_port(&self, target: &Target) -> String {
-        let output = self.run(target, "echo $SSH_CLIENT").await.unwrap();
+    pub async fn client_port(&self, target: &Target) -> Result<String, TestError> {
+        let output = self.run(target, "echo $SSH_CLIENT").await?;
         let words: Vec<&str> = output.output.stdout.split_whitespace().collect();
 
-        words[1].to_owned()
+        Ok(words[1].to_owned())
     }
 }
 

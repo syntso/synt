@@ -8,7 +8,7 @@ use synt_journal::ResourceRef;
 
 use crate::Extensions;
 use crate::builtin::ExtensionInfo;
-use crate::extension::Candidate;
+use crate::extensions::Candidate;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionInstallLocal {

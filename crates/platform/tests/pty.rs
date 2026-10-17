@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used)]
-
 use std::time::Duration;
 
 use synt_platform::{Pty, PtyOutput};

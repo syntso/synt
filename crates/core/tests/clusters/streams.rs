@@ -1,7 +1,8 @@
 use std::time::Duration;
 
 use serde_json::{Value, json};
-use synt_client::Client;
+use synt_client::{Client, ClientError};
+use synt_testkit::TestError;
 use tokio::io::{self, AsyncBufReadExt, BufReader, DuplexStream, Lines};
 use tokio::task::JoinHandle;
 use tokio::time;
@@ -14,7 +15,7 @@ const PATIENCE: Duration = Duration::from_secs(30);
 
 struct Followed {
     lines: Lines<BufReader<DuplexStream>>,
-    receiving: JoinHandle<u64>,
+    receiving: JoinHandle<Result<u64, ClientError>>,
 }
 
 impl Followed {
@@ -25,8 +26,9 @@ impl Followed {
         let client = client.clone();
 
         let receiving = tokio::spawn(async move {
-            let received = client.receive_credited(&mut stream, sink).await.unwrap();
-            received.bytes
+            let received = client.receive_credited(&mut stream, sink).await?;
+
+            Ok(received.bytes)
         });
 
         let followed = Self {
@@ -37,35 +39,34 @@ impl Followed {
         (id, followed)
     }
 
-    async fn line(&mut self) -> String {
+    async fn line(&mut self) -> Result<String, TestError> {
         let Ok(read) = time::timeout(PATIENCE, self.lines.next_line()).await else {
             panic!("no line in time");
         };
-        let Some(line) = read.unwrap() else {
+        let Some(line) = read? else {
             panic!("the stream closed");
         };
-        line
+        Ok(line)
     }
 
-    async fn end(self) -> u64 {
-        time::timeout(PATIENCE, self.receiving)
-            .await
-            .unwrap()
-            .unwrap()
+    async fn end(self) -> Result<u64, TestError> {
+        let received = time::timeout(PATIENCE, self.receiving).await??;
+
+        Ok(received?)
     }
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn followed_logs_stream_until_the_caller_closes_them() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn followed_logs_stream_until_the_caller_closes_them() -> Result<(), TestError> {
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
     lab.person(DIRECT, "k8s.apply", json!({ "manifest": ticker("chatty") }))
         .await
         .unwrap();
-    let pod = running_pod(&lab, "chatty").await;
+    let pod = running_pod(&lab, "chatty").await?;
 
     let (stream, mut followed) = Followed::open(&lab.agent);
     let started = lab
@@ -74,20 +75,18 @@ async fn followed_logs_stream_until_the_caller_closes_them() {
             "k8s.logs",
             json!({ "pod": pod, "follow": true, "stream": stream, "tail": 1 }),
         )
-        .await
-        .unwrap();
+        .await?;
 
-    let first = followed.line().await;
-    let second = followed.line().await;
+    let first = followed.line().await?;
+    let second = followed.line().await?;
     let closed = lab
         .agent(
             "",
             "k8s.stream.close",
             json!({ "request": started.request.get() }),
         )
-        .await
-        .unwrap();
-    let bytes = followed.end().await;
+        .await?;
+    let bytes = followed.end().await?;
     let journaled = lab.finished(started.request).await;
     let stranger = lab
         .person(
@@ -114,16 +113,18 @@ async fn followed_logs_stream_until_the_caller_closes_them() {
         stranger.is_err(),
         "a stream that ended cannot be closed again"
     );
-    assert!(!lab.journal_text().contains(&first));
+    assert!(!lab.journal_text()?.contains(&first));
 
-    lab.finish().await;
+    lab.finish().await?;
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn a_watch_streams_one_json_line_per_change() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn a_watch_streams_one_json_line_per_change() -> Result<(), TestError> {
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
     let (stream, mut followed) = Followed::open(&lab.agent);
@@ -133,10 +134,9 @@ async fn a_watch_streams_one_json_line_per_change() {
             "k8s.watch",
             json!({ "kind": "configmaps", "selector": "watched", "stream": stream }),
         )
-        .await
-        .unwrap();
+        .await?;
 
-    let synced: Value = serde_json::from_str(&followed.line().await).unwrap();
+    let synced: Value = serde_json::from_str(&followed.line().await?).unwrap();
     let manifest = format!(
         "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: seen\n  namespace: {}\n  labels:\n    watched: \"yes\"\n",
         lab.namespace
@@ -144,16 +144,15 @@ async fn a_watch_streams_one_json_line_per_change() {
     lab.person(DIRECT, "k8s.apply", json!({ "manifest": manifest }))
         .await
         .unwrap();
-    let added: Value = serde_json::from_str(&followed.line().await).unwrap();
+    let added: Value = serde_json::from_str(&followed.line().await?).unwrap();
 
     lab.agent(
         "",
         "k8s.stream.close",
         json!({ "request": started.request.get() }),
     )
-    .await
-    .unwrap();
-    followed.end().await;
+    .await?;
+    followed.end().await?;
     let journaled = lab.finished(started.request).await;
 
     assert_eq!(synced["type"], "synced");
@@ -164,5 +163,7 @@ async fn a_watch_streams_one_json_line_per_change() {
     assert_eq!(journaled["items"], 2);
     assert_eq!(journaled["reason"], "closed");
 
-    lab.finish().await;
+    lab.finish().await?;
+
+    Ok(())
 }

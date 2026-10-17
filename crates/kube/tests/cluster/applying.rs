@@ -1,26 +1,26 @@
-use synt_kube::{Change, Manifest, Replicas};
+use synt_kube::{Change, KubeError, Manifest, Replicas};
+use synt_testkit::TestError;
 
 use crate::Lab;
 use crate::lab::ticker;
 
-fn settings(namespace: &str, mode: &str) -> Manifest {
+fn settings(namespace: &str, mode: &str) -> Result<Manifest, KubeError> {
     Manifest::parse(&format!(
         "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: settings\n  namespace: {namespace}\ndata:\n  mode: {mode}\n"
     ))
-    .unwrap()
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn a_dry_run_shows_the_change_before_it_is_applied() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn a_dry_run_shows_the_change_before_it_is_applied() -> Result<(), TestError> {
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
-    let first = settings(&lab.namespace, "slow");
+    let first = settings(&lab.namespace, "slow")?;
     let planned = first.plan(&lab.cluster, false).await.unwrap();
-    let maps = lab.kind("cm").await;
-    let still_missing = lab.object(&maps, "settings").get().await;
+    let maps = lab.kind("cm").await?;
+    let still_missing = lab.object(&maps, "settings")?.get().await;
 
     assert_eq!(planned.objects[0].change, Change::Create);
     assert!(
@@ -32,7 +32,7 @@ async fn a_dry_run_shows_the_change_before_it_is_applied() {
 
     let applied = first.apply(&lab.cluster, false).await.unwrap();
     let again = first.plan(&lab.cluster, false).await.unwrap();
-    let changed = settings(&lab.namespace, "fast")
+    let changed = settings(&lab.namespace, "fast")?
         .plan(&lab.cluster, false)
         .await
         .unwrap();
@@ -52,14 +52,16 @@ async fn a_dry_run_shows_the_change_before_it_is_applied() {
         changed.diff()
     );
 
-    lab.finish().await;
+    lab.finish().await?;
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn a_secret_diff_never_shows_its_values() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn a_secret_diff_never_shows_its_values() -> Result<(), TestError> {
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
     let secret = |password: &str| {
@@ -88,19 +90,21 @@ async fn a_secret_diff_never_shows_its_values() {
     );
     assert!(!diff.contains("Zmlyc3Q"), "{diff}");
 
-    lab.finish().await;
+    lab.finish().await?;
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn a_deployment_scales_restarts_and_goes_away() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn a_deployment_scales_restarts_and_goes_away() -> Result<(), TestError> {
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
-    lab.apply(&ticker("scaled")).await;
-    let deployments = lab.kind("deploy").await;
-    let deployment = || lab.object(&deployments, "scaled");
+    lab.apply(&ticker("scaled")).await?;
+    let deployments = lab.kind("deploy").await?;
+    let deployment = || lab.object(&deployments, "scaled").unwrap();
 
     let scaled = deployment()
         .scale(Replicas::try_from(3).unwrap())
@@ -108,8 +112,8 @@ async fn a_deployment_scales_restarts_and_goes_away() {
         .unwrap();
     let restarted = deployment().restart().await.unwrap();
     let live = deployment().get().await.unwrap();
-    let pods = lab.kind("pods").await;
-    let not_restartable = lab.object(&pods, "anything").restart().await;
+    let pods = lab.kind("pods").await?;
+    let not_restartable = lab.object(&pods, "anything")?.restart().await;
     let deleted = deployment().delete().await.unwrap();
 
     assert_eq!((scaled.from, scaled.to), (Some(1), 3));
@@ -125,14 +129,17 @@ async fn a_deployment_scales_restarts_and_goes_away() {
         Some(lab.namespace.as_str())
     );
 
-    lab.finish().await;
+    lab.finish().await?;
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the kube test cluster: tests/kube/up.sh, then SYNT_KUBE_TESTS=1"]
-async fn objects_in_a_namespace_the_manifest_creates_are_planned_from_the_manifest() {
-    let Some(lab) = Lab::start().await else {
-        return;
+async fn objects_in_a_namespace_the_manifest_creates_are_planned_from_the_manifest()
+-> Result<(), TestError> {
+    let Some(lab) = Lab::start().await? else {
+        return Ok(());
     };
 
     let fresh = format!("{}-fresh", lab.namespace);
@@ -156,7 +163,9 @@ async fn objects_in_a_namespace_the_manifest_creates_are_planned_from_the_manife
     assert!(second.objects.iter().all(|planned| planned.server_checked));
     assert_eq!(second.count(Change::Unchanged), 2);
 
-    let namespaces = lab.kind("namespaces").await;
-    lab.object(&namespaces, &fresh).delete().await.unwrap();
-    lab.finish().await;
+    let namespaces = lab.kind("namespaces").await?;
+    lab.object(&namespaces, &fresh)?.delete().await.unwrap();
+    lab.finish().await?;
+
+    Ok(())
 }

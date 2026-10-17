@@ -1,6 +1,7 @@
 use serde_json::Value;
 use synt_db::{Access, Database, Engine, Page, Query, Rows, Server};
 use synt_test_servers::DbServers;
+use synt_testkit::TestError;
 use zeroize::Zeroizing;
 
 pub fn server(engine: Engine, port: u16) -> Server {
@@ -10,8 +11,8 @@ pub fn server(engine: Engine, port: u16) -> Server {
         .with_password(Some(Zeroizing::new(DbServers::PASSWORD.to_owned())))
 }
 
-pub async fn connect(server: &Server) -> Database {
-    Database::connect(server).await.unwrap()
+pub async fn connect(server: &Server) -> Result<Database, TestError> {
+    Ok(Database::connect(server).await?)
 }
 
 pub async fn run(database: &mut Database, access: Access, text: &str, params: &[Value]) -> Rows {

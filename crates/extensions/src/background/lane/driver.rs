@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::ExtensionError;
 use crate::background::Wake;
-use crate::extension::Guest;
+use crate::extensions::Guest;
 
 #[derive(Clone)]
 pub(super) struct Driver {

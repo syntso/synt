@@ -1,13 +1,10 @@
-#![allow(clippy::unwrap_used)]
-
-mod common;
-
 use std::fs;
 use std::path::PathBuf;
 
-use common::{Harness, SAMPLE_MANIFEST, everything_component as everything};
 use serde_json::json;
 use synt_actions::{ActionError, Risk};
+use synt_testkit::TestError;
+use synt_testkit::extensions::{Harness, SAMPLE_MANIFEST, everything_component as everything};
 
 const EVERY_MANIFEST: &str = r#"
 id = "every"
@@ -20,14 +17,14 @@ call = ["core.ping"]
 storage = true
 "#;
 
-fn build(harness: &Harness, name: &str, manifest: &str, wasm: &[u8]) -> PathBuf {
+fn build(harness: &Harness, name: &str, manifest: &str, wasm: &[u8]) -> Result<PathBuf, TestError> {
     let build = harness.folder.path().join(name);
-    fs::create_dir_all(&build).unwrap();
+    fs::create_dir_all(&build)?;
 
-    fs::write(build.join("extension.toml"), manifest).unwrap();
-    fs::write(build.join("extension.wasm"), wasm).unwrap();
+    fs::write(build.join("extension.toml"), manifest)?;
+    fs::write(build.join("extension.wasm"), wasm)?;
 
-    build
+    Ok(build)
 }
 
 fn failure<T: std::fmt::Debug>(result: Result<T, ActionError>) -> String {
@@ -38,10 +35,10 @@ fn failure<T: std::fmt::Debug>(result: Result<T, ActionError>) -> String {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn api_0_1_and_0_2_extensions_run_side_by_side() {
-    let harness = Harness::new();
-    harness.install_sample().await;
-    let every = build(&harness, "every", EVERY_MANIFEST, &everything());
+async fn api_0_1_and_0_2_extensions_run_side_by_side() -> Result<(), TestError> {
+    let harness = Harness::new()?;
+    harness.install_sample().await?;
+    let every = build(&harness, "every", EVERY_MANIFEST, &everything())?;
 
     let installed = harness.install_local(&every).await.unwrap();
     let echoed = harness.call("t.echo", None, json!({ "old": true })).await;
@@ -52,11 +49,13 @@ async fn api_0_1_and_0_2_extensions_run_side_by_side() {
     assert_eq!(installed["api"], "0.2");
     assert_eq!(echoed.unwrap(), json!({ "old": true }));
     assert_eq!(recalled.unwrap(), json!({ "value": null }));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_component_must_be_built_for_the_api_its_manifest_names() {
-    let harness = Harness::new();
+async fn a_component_must_be_built_for_the_api_its_manifest_names() -> Result<(), TestError> {
+    let harness = Harness::new()?;
     let newer_manifest = SAMPLE_MANIFEST.replace("api = \"0.1\"", "api = \"0.2\"");
     let older_manifest = EVERY_MANIFEST.replace("api = \"0.2\"", "api = \"0.1\"");
 
@@ -64,21 +63,23 @@ async fn a_component_must_be_built_for_the_api_its_manifest_names() {
         &harness,
         "sample",
         &newer_manifest,
-        &common::sample_component(),
-    );
-    let every = build(&harness, "every", &older_manifest, &everything());
+        &synt_testkit::extensions::sample_component()?,
+    )?;
+    let every = build(&harness, "every", &older_manifest, &everything())?;
 
     let sample = failure(harness.install_local(&sample).await);
     let every = failure(harness.install_local(&every).await);
 
     assert!(sample.contains("not an extension for api 0.2"), "{sample}");
     assert!(every.contains("not an extension for api 0.1"), "{every}");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn reaching_outside_raises_the_risk_of_every_action() {
-    let harness = Harness::new();
-    let quiet = build(&harness, "quiet", EVERY_MANIFEST, &everything());
+async fn reaching_outside_raises_the_risk_of_every_action() -> Result<(), TestError> {
+    let harness = Harness::new()?;
+    let quiet = build(&harness, "quiet", EVERY_MANIFEST, &everything())?;
     harness.install_local(&quiet).await.unwrap();
     assert_eq!(
         harness.handle("every.ping").unwrap().describe().risk,
@@ -87,31 +88,35 @@ async fn reaching_outside_raises_the_risk_of_every_action() {
 
     let reaching =
         EVERY_MANIFEST.replace("storage = true", "storage = true\nhttp = [\"example.com\"]");
-    let reaching = build(&harness, "reaching", &reaching, &everything());
+    let reaching = build(&harness, "reaching", &reaching, &everything())?;
     harness.install_local(&reaching).await.unwrap();
 
     assert_eq!(
         harness.handle("every.ping").unwrap().describe().risk,
         Risk::Write
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn contributions_must_name_actions_the_extension_describes() {
-    let harness = Harness::new();
+async fn contributions_must_name_actions_the_extension_describes() -> Result<(), TestError> {
+    let harness = Harness::new()?;
     let manifest = EVERY_MANIFEST.to_owned()
         + "\n[[contributes.command]]\ntitle = \"Vanish\"\naction = \"every.vanish\"\n";
-    let every = build(&harness, "every", &manifest, &everything());
+    let every = build(&harness, "every", &manifest, &everything())?;
 
     let reason = failure(harness.install_local(&every).await);
 
     assert!(reason.contains("does not describe"), "{reason}");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn capabilities_the_manifest_lacks_are_refused_at_run_time() {
-    let harness = Harness::new();
-    let every = build(&harness, "every", EVERY_MANIFEST, &everything());
+async fn capabilities_the_manifest_lacks_are_refused_at_run_time() -> Result<(), TestError> {
+    let harness = Harness::new()?;
+    let every = build(&harness, "every", EVERY_MANIFEST, &everything())?;
     harness.install_local(&every).await.unwrap();
 
     let fetch = failure(
@@ -133,14 +138,16 @@ async fn capabilities_the_manifest_lacks_are_refused_at_run_time() {
     assert!(fetch.starts_with("not_allowed: "), "{fetch}");
     assert!(arm.starts_with("not_allowed: "), "{arm}");
     assert_eq!(files, json!([]));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_view_patch_reaches_the_screen_only_for_a_contributed_view() {
-    let harness = Harness::new();
+async fn a_view_patch_reaches_the_screen_only_for_a_contributed_view() -> Result<(), TestError> {
+    let harness = Harness::new()?;
     let manifest = EVERY_MANIFEST.to_owned()
         + "\n[[contributes.sidebar]]\nid = \"overview\"\ntitle = \"Overview\"\nview = \"overview\"\n";
-    let every = build(&harness, "every", &manifest, &everything());
+    let every = build(&harness, "every", &manifest, &everything())?;
     harness.install_local(&every).await.unwrap();
 
     harness.call("every.patch", None, json!({})).await.unwrap();
@@ -152,4 +159,6 @@ async fn a_view_patch_reaches_the_screen_only_for_a_contributed_view() {
 
     assert_eq!(harness.screen.updates().len(), 1);
     assert!(posted.starts_with("unknown_panel: "), "{posted}");
+
+    Ok(())
 }

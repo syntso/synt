@@ -1,7 +1,4 @@
-#![allow(clippy::unwrap_used)]
-
 mod exec;
-mod file_vault;
 mod files;
 mod host_keys;
 mod jump;
@@ -10,6 +7,7 @@ mod pool;
 mod setup;
 mod shell;
 mod tunnel;
+mod vault;
 
-use file_vault::FileVault;
 use setup::Setup;
+use vault::FileVault;

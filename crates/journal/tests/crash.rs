@@ -1,21 +1,18 @@
-#![allow(clippy::unwrap_used)]
-
-mod common;
-
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{env, fs, thread};
 
-use common::{FileKeyStore, exec};
 use synt_journal::{Journal, JournalId};
+use synt_testkit::TestError;
+use synt_testkit::journal::{FileKeyStore, exec};
 
 const DIR_VARIABLE: &str = "SYNT_JOURNAL_CRASH_DIR";
 
 #[test]
 #[ignore = "runs only as the child process of killed_mid_append_leaves_an_intact_journal"]
-fn crash_child() {
+fn crash_child() -> Result<(), TestError> {
     let dir = PathBuf::from(env::var(DIR_VARIABLE).unwrap());
     let keys = Arc::new(FileKeyStore::new(&dir));
 
@@ -25,9 +22,7 @@ fn crash_child() {
     let mut n = 0;
 
     loop {
-        journal
-            .append_all(&[exec(&format!("{n}a")), exec(&format!("{n}b"))])
-            .unwrap();
+        journal.append_all(&[exec(&format!("{n}a"))?, exec(&format!("{n}b"))?])?;
         n += 1;
     }
 }

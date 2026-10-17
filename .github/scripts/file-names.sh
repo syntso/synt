@@ -16,7 +16,13 @@ single_of() {
     esac
 }
 
-roots=$(find crates -mindepth 2 -maxdepth 2 -type d \( -name src -o -name tests -o -name benches -o -name examples \) | sort)
+roots=$(
+    {
+        find crates -mindepth 2 -maxdepth 2 -type d \( -name src -o -name tests -o -name benches -o -name examples \)
+        find fuzz -mindepth 1 -maxdepth 1 -type d \( -name src -o -name fuzz_targets \)
+        find tests -mindepth 3 -maxdepth 3 -type d -name src
+    } | sort
+)
 
 for root in $roots; do
     for file in $(find "$root" -name mod.rs | sort); do
@@ -38,17 +44,29 @@ for root in $roots; do
             find "$folder" -mindepth 1 -maxdepth 1 \( -name '*.rs' -o -type d \) -exec basename {} .rs \; |
                 sort -u |
                 awk -F_ '
-                    { names[$0] = 1; if (NF > 1) { count[$1]++ } }
+                    {
+                        names[$0] = 1
+                        if (NF > 1) { count[$1]++ }
+
+                        single = $0
+                        if (single ~ /ies$/) { single = substr(single, 1, length(single) - 3) "y" }
+                        else if (single ~ /s$/) { single = substr(single, 1, length(single) - 1) }
+                        if (single != $0) { singles[single] = 1 }
+                    }
                     END {
                         for (prefix in count) {
-                            if (count[prefix] > 1 || (prefix in names)) { print prefix }
+                            if (count[prefix] > 1 || (prefix in names) || (prefix in singles)) { print prefix }
+                        }
+                        for (single in singles) {
+                            if (single in names) { print single }
                         }
                     }
-                '
+                ' |
+                sort -u
         )
 
         for prefix in $prefixes; do
-            fail "$folder: several names start with ${prefix}_; make $prefix a folder"
+            fail "$folder: several names share the stem $prefix; make $prefix a folder"
         done
     done
 done

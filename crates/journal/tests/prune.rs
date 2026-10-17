@@ -1,19 +1,16 @@
-#![allow(clippy::unwrap_used)]
-
-mod common;
-
-use common::{Fixture, exec};
 use synt_journal::{Damage, JournalError, Pruned, Seq, Timestamp, Verification};
+use synt_testkit::TestError;
+use synt_testkit::journal::{Fixture, exec};
 
 const HOUR: i64 = 3_600_000;
 
 #[test]
-fn pruning_removes_old_events_and_keeps_the_chain_verifiable() {
-    let fixture = Fixture::new();
-    let mut journal = fixture.create();
+fn pruning_removes_old_events_and_keeps_the_chain_verifiable() -> Result<(), TestError> {
+    let fixture = Fixture::new()?;
+    let mut journal = fixture.create()?;
 
     for n in 0..10 {
-        journal.append(&exec(&format!("hour {n}"))).unwrap();
+        journal.append(&exec(&format!("hour {n}"))?).unwrap();
         fixture.clock.advance(HOUR);
     }
 
@@ -36,15 +33,17 @@ fn pruning_removes_old_events_and_keeps_the_chain_verifiable() {
         reader.verify().unwrap(),
         Verification::Intact { checked: 6 }
     );
+
+    Ok(())
 }
 
 #[test]
-fn pruning_never_moves_the_head() {
-    let fixture = Fixture::new();
-    let mut journal = fixture.create();
+fn pruning_never_moves_the_head() -> Result<(), TestError> {
+    let fixture = Fixture::new()?;
+    let mut journal = fixture.create()?;
 
     journal
-        .append_all(&[exec("a"), exec("b"), exec("c")])
+        .append_all(&[exec("a")?, exec("b")?, exec("c")?])
         .unwrap();
     let head = journal.anchors().head;
 
@@ -58,16 +57,18 @@ fn pruning_never_moves_the_head() {
         Verification::Intact { checked: 0 }
     );
 
-    let next = journal.append(&exec("d")).unwrap();
+    let next = journal.append(&exec("d")?).unwrap();
     assert_eq!(next, Seq::new(4));
     assert!(journal.reader().unwrap().verify().unwrap().is_intact());
+
+    Ok(())
 }
 
 #[test]
-fn pruning_with_nothing_old_enough_does_nothing() {
-    let fixture = Fixture::new();
-    let mut journal = fixture.create();
-    journal.append(&exec("fresh")).unwrap();
+fn pruning_with_nothing_old_enough_does_nothing() -> Result<(), TestError> {
+    let fixture = Fixture::new()?;
+    let mut journal = fixture.create()?;
+    journal.append(&exec("fresh")?).unwrap();
 
     let pruned = journal.prune(Timestamp::EPOCH).unwrap();
     assert_eq!(
@@ -77,15 +78,17 @@ fn pruning_with_nothing_old_enough_does_nothing() {
             floor: Seq::ORIGIN
         }
     );
+
+    Ok(())
 }
 
 #[test]
-fn pruning_refuses_to_bury_tampered_history() {
-    let fixture = Fixture::new();
-    let id = fixture.with_events(5);
+fn pruning_refuses_to_bury_tampered_history() -> Result<(), TestError> {
+    let fixture = Fixture::new()?;
+    let id = fixture.with_events(5)?;
 
     fixture
-        .raw()
+        .raw()?
         .execute_batch("UPDATE events SET action = 'forged' WHERE seq = 2")
         .unwrap();
 
@@ -104,4 +107,6 @@ fn pruning_refuses_to_bury_tampered_history() {
             .unwrap()
             .is_some()
     );
+
+    Ok(())
 }

@@ -2,27 +2,30 @@ use data_encoding::BASE64;
 use serde_json::json;
 use synt_journal::EventKind;
 use synt_proto::{ActionCall, ErrorCode, Notice, Notification, PanelPosted, ViewPatched};
+use synt_testkit::TestError;
 use tokio::sync::broadcast;
 
 use super::Stage;
 use super::stage::read;
-use crate::common::rejection;
+use synt_testkit::core::rejection;
 
-async fn next<T: Notice>(notifications: &mut broadcast::Receiver<Notification>) -> T {
+async fn next<T: Notice>(
+    notifications: &mut broadcast::Receiver<Notification>,
+) -> Result<T, TestError> {
     loop {
-        let notification = notifications.recv().await.unwrap();
+        let notification = notifications.recv().await?;
 
         if let Some(found) = read::<T>(&notification) {
-            return found;
+            return Ok(found);
         }
     }
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_app_learns_what_the_extension_contributes() {
-    let stage = Stage::start().await;
+async fn the_app_learns_what_the_extension_contributes() -> Result<(), TestError> {
+    let stage = Stage::start().await?;
 
-    let contributed = stage.call("extension.contributions", json!(null)).await;
+    let contributed = stage.call("extension.contributions", json!(null)).await?;
     let every = &contributed[0];
 
     assert_eq!(every["extension"], "every");
@@ -35,11 +38,14 @@ async fn the_app_learns_what_the_extension_contributes() {
         json!(["host"])
     );
     assert_eq!(every["contributes"]["status"][0]["id"], "beat");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_native_view_renders_for_a_target_and_is_journaled_without_its_tree() {
-    let stage = Stage::start().await;
+async fn a_native_view_renders_for_a_target_and_is_journaled_without_its_tree()
+-> Result<(), TestError> {
+    let stage = Stage::start().await?;
 
     let rendered = stage
         .app()
@@ -51,7 +57,7 @@ async fn a_native_view_renders_for_a_target_and_is_journaled_without_its_tree() 
         .await
         .unwrap();
     let finished = stage
-        .trail(synt_journal::Seq::new(rendered.request.get()))
+        .trail(synt_journal::Seq::new(rendered.request.get()))?
         .into_iter()
         .find(|event| event.kind() == EventKind::Finished)
         .unwrap();
@@ -61,11 +67,13 @@ async fn a_native_view_renders_for_a_target_and_is_journaled_without_its_tree() 
     assert_eq!(tree["children"][2]["action"], "every.ping");
     assert!(finished.details().value().get("tree").is_none());
     assert!(finished.details().value()["bytes"].as_u64().unwrap() > 0);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn views_the_manifest_does_not_contribute_are_refused() {
-    let stage = Stage::start().await;
+async fn views_the_manifest_does_not_contribute_are_refused() -> Result<(), TestError> {
+    let stage = Stage::start().await?;
 
     let refused = stage
         .try_call(
@@ -75,35 +83,39 @@ async fn views_the_manifest_does_not_contribute_are_refused() {
         .await;
 
     assert_eq!(rejection(refused).code, ErrorCode::INVALID_PARAMS);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_extension_patches_its_view_on_every_app() {
-    let stage = Stage::start().await;
-    let (_watcher, mut notifications) = stage.watcher().await;
+async fn the_extension_patches_its_view_on_every_app() -> Result<(), TestError> {
+    let stage = Stage::start().await?;
+    let (_watcher, mut notifications) = stage.watcher().await?;
 
-    stage.every("patch", json!({})).await;
-    let patched: ViewPatched = next(&mut notifications).await;
+    stage.every("patch", json!({})).await?;
+    let patched: ViewPatched = next(&mut notifications).await?;
 
     assert_eq!(patched.view, "overview");
     assert_eq!(
         patched.patch,
         json!([{ "op": "replace", "path": "/children/0/text", "value": "patched" }])
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_web_panel_is_served_from_the_extension_under_a_strict_policy() {
-    let stage = Stage::start().await;
+async fn a_web_panel_is_served_from_the_extension_under_a_strict_policy() -> Result<(), TestError> {
+    let stage = Stage::start().await?;
     let panel = json!({ "extension": "every", "panel": "editor" });
 
-    let opened = stage.call("extension.panel.open", panel).await;
+    let opened = stage.call("extension.panel.open", panel).await?;
     let page = stage
         .call(
             "extension.panel.asset",
             json!({ "extension": "every", "path": "index.html" }),
         )
-        .await;
+        .await?;
     let html = BASE64
         .decode(page["data"].as_str().unwrap().as_bytes())
         .unwrap();
@@ -132,11 +144,14 @@ async fn a_web_panel_is_served_from_the_extension_under_a_strict_policy() {
 
         assert_eq!(rejection(refused).code, code, "{path}");
     }
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_panel_message_reaches_the_extension_and_its_calls_reach_the_core() {
-    let stage = Stage::start().await;
+async fn a_panel_message_reaches_the_extension_and_its_calls_reach_the_core()
+-> Result<(), TestError> {
+    let stage = Stage::start().await?;
 
     let reply = stage
         .try_call(
@@ -145,7 +160,7 @@ async fn a_panel_message_reaches_the_extension_and_its_calls_reach_the_core() {
         )
         .await
         .unwrap();
-    let nested = stage.nested("core.ping");
+    let nested = stage.nested("core.ping")?;
 
     assert_eq!(reply.value["echo"], json!({ "hello": "editor" }));
     assert!(reply.value["pong"]["core"].is_string());
@@ -153,27 +168,31 @@ async fn a_panel_message_reaches_the_extension_and_its_calls_reach_the_core() {
         nested[0].details().value()["parent"],
         json!(reply.request.get())
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_extension_posts_to_its_panel() {
-    let stage = Stage::start().await;
-    let (_watcher, mut notifications) = stage.watcher().await;
+async fn the_extension_posts_to_its_panel() -> Result<(), TestError> {
+    let stage = Stage::start().await?;
+    let (_watcher, mut notifications) = stage.watcher().await?;
 
     stage
         .every("post", json!({ "message": { "saved": "plan.note" } }))
-        .await;
-    let posted: PanelPosted = next(&mut notifications).await;
+        .await?;
+    let posted: PanelPosted = next(&mut notifications).await?;
 
     assert_eq!(posted.extension, "every");
     assert_eq!(posted.panel, "editor");
     assert_eq!(posted.message, json!({ "saved": "plan.note" }));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_new_actions_are_described_with_risk_and_params() {
-    let stage = Stage::start().await;
-    let agent = stage.harness.agent("helper").await;
+async fn the_new_actions_are_described_with_risk_and_params() -> Result<(), TestError> {
+    let stage = Stage::start().await?;
+    let agent = stage.harness.agent("helper").await?;
 
     let for_person = stage.app().describe().await.unwrap();
     let for_agent = agent.describe().await.unwrap();
@@ -212,4 +231,6 @@ async fn the_new_actions_are_described_with_risk_and_params() {
             .iter()
             .any(|action| action.id == "extension.view.render")
     );
+
+    Ok(())
 }

@@ -14,6 +14,7 @@ publish = false
 [workspace.dependencies]
 synt-actions = { path = "crates/actions" }
 synt-client = { path = "crates/client" }
+synt-core = { path = "crates/core" }
 synt-db = { path = "crates/db" }
 synt-extensions = { path = "crates/extensions" }
 synt-journal = { path = "crates/journal" }
@@ -23,6 +24,7 @@ synt-proto = { path = "crates/proto" }
 synt-ssh = { path = "crates/ssh" }
 synt-sync = { path = "crates/sync" }
 synt-test-servers = { path = "crates/test-servers" }
+synt-testkit = { path = "crates/testkit" }
 
 bytes = "1.12.1"
 chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["alloc", "zeroize"] }

@@ -1,50 +1,58 @@
-#![allow(clippy::unwrap_used)]
-
-mod common;
-
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use common::{FileServer, Harness, SAMPLE_MANIFEST, Signer, everything_component};
 use serde_json::{Value, json};
 use synt_actions::ActionError;
 use synt_extensions::{Remote, Runtime};
+use synt_testkit::TestError;
+use synt_testkit::extensions::{
+    FileServer, Harness, SAMPLE_MANIFEST, Signer, everything_component, sample_component,
+};
 
 const CAPABILITIES: &str = r#"{ "call": ["ssh.exec"], "storage": true }"#;
 
-fn capabilities() -> Value {
-    serde_json::from_str(CAPABILITIES).unwrap()
-}
-
-fn sample() -> Vec<u8> {
-    wat::parse_str(include_str!("fixtures/sample.wat")).unwrap()
+fn capabilities() -> Result<Value, serde_json::Error> {
+    serde_json::from_str(CAPABILITIES)
 }
 
 const SERIAL: u64 = 100;
 
-fn later() -> u64 {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+fn later() -> Result<u64, TestError> {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
 
-    now.as_secs() + 3600
+    Ok(now.as_secs() + 3600)
 }
 
-fn publish(server: &FileServer, signer: &Signer, listing: &Value, serial: u64, expires: u64) {
+fn publish(
+    server: &FileServer,
+    signer: &Signer,
+    listing: &Value,
+    serial: u64,
+    expires: u64,
+) -> Result<(), TestError> {
     let index = json!({ "extensions": [listing] }).to_string().into_bytes();
 
     server.put(
         "index.json.minisig",
-        signer.sign_index(&index, serial, expires).into_bytes(),
+        signer.sign_index(&index, serial, expires)?.into_bytes(),
     );
     server.put("index.json", index);
+
+    Ok(())
 }
 
-fn registry_with(signer: &Signer, listing: &Value, wasm: Vec<u8>) -> (FileServer, Harness) {
-    let server = FileServer::start();
-    publish(&server, signer, listing, SERIAL, later());
+fn registry_with(
+    signer: &Signer,
+    listing: &Value,
+    wasm: Vec<u8>,
+) -> Result<(FileServer, Harness), TestError> {
+    let server = FileServer::start()?;
+    publish(&server, signer, listing, SERIAL, later()?)?;
     server.put("t-0.1.0.wasm", wasm);
 
-    let remote = Remote::new(server.address(), &signer.public_key()).unwrap();
-    (server, Harness::with_remote(remote))
+    let remote = Remote::new(server.address(), &signer.public_key())?;
+
+    Ok((server, Harness::with_remote(remote)?))
 }
 
 fn failure<T>(result: Result<T, ActionError>) -> String {
@@ -56,9 +64,9 @@ fn failure<T>(result: Result<T, ActionError>) -> String {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_local_build_is_shown_and_recorded_as_unsigned() {
-    let harness = Harness::new();
-    let build = harness.build("sample", SAMPLE_MANIFEST);
+async fn a_local_build_is_shown_and_recorded_as_unsigned() -> Result<(), TestError> {
+    let harness = Harness::new()?;
+    let build = harness.build("sample", SAMPLE_MANIFEST)?;
     let params = json!({ "path": build.to_string_lossy() });
 
     let handle = harness.handle("extension.install_local").unwrap();
@@ -71,7 +79,7 @@ async fn a_local_build_is_shown_and_recorded_as_unsigned() {
 
     assert_eq!(shown["id"], "t");
     assert_eq!(shown["signed"], json!(false));
-    assert_eq!(shown["capabilities"], capabilities());
+    assert_eq!(shown["capabilities"], capabilities()?);
     assert_eq!(shown["actions"].as_array().unwrap().len(), 6);
     assert!(harness.handle("t.echo").is_none());
 
@@ -80,43 +88,51 @@ async fn a_local_build_is_shown_and_recorded_as_unsigned() {
     assert_eq!(installed["signed"], json!(false));
     assert_eq!(installed["enabled"], json!(true));
     assert!(harness.handle("t.echo").is_some());
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn relative_paths_are_refused() {
-    let harness = Harness::new();
+async fn relative_paths_are_refused() -> Result<(), TestError> {
+    let harness = Harness::new()?;
 
     let prepared = harness.prepare("extension.install_local", None, json!({ "path": "sample" }));
 
     assert!(matches!(prepared, Err(ActionError::InvalidParams(_))));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn ids_of_the_core_are_refused() {
-    let harness = Harness::new();
+async fn ids_of_the_core_are_refused() -> Result<(), TestError> {
+    let harness = Harness::new()?;
     let manifest = SAMPLE_MANIFEST.replace("id = \"t\"", "id = \"extension\"");
-    let build = harness.build("taken", &manifest);
+    let build = harness.build("taken", &manifest)?;
 
     let reason = failure(harness.install_local(&build).await);
 
     assert!(reason.contains("taken by the core"), "{reason}");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn actions_must_live_under_the_extension_id() {
-    let harness = Harness::new();
+async fn actions_must_live_under_the_extension_id() -> Result<(), TestError> {
+    let harness = Harness::new()?;
     let manifest = SAMPLE_MANIFEST.replace("id = \"t\"", "id = \"other\"");
-    let build = harness.build("other", &manifest);
+    let build = harness.build("other", &manifest)?;
 
     let reason = failure(harness.install_local(&build).await);
 
     assert!(reason.contains("must be named other.<name>"), "{reason}");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn disable_enable_and_remove() {
-    let harness = Harness::new();
-    harness.install_sample().await;
+async fn disable_enable_and_remove() -> Result<(), TestError> {
+    let harness = Harness::new()?;
+    harness.install_sample().await?;
     harness
         .call("t.store", None, json!({ "kept": 1 }))
         .await
@@ -155,11 +171,13 @@ async fn disable_enable_and_remove() {
         .unwrap();
     assert_eq!(listed, json!([]));
     assert!(!harness.folder.path().join("data/extensions/t").exists());
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn unknown_extensions_are_reported() {
-    let harness = Harness::new();
+async fn unknown_extensions_are_reported() -> Result<(), TestError> {
+    let harness = Harness::new()?;
 
     let reason = failure(
         harness
@@ -168,28 +186,32 @@ async fn unknown_extensions_are_reported() {
     );
 
     assert_eq!(reason, "no extension absent is installed");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn enabled_extensions_load_again_after_a_restart() {
-    let harness = Harness::new();
-    harness.install_sample().await;
+async fn enabled_extensions_load_again_after_a_restart() -> Result<(), TestError> {
+    let harness = Harness::new()?;
+    harness.install_sample().await?;
     let Harness { folder, .. } = harness;
 
     let restarted =
-        Harness::in_folder(folder, Runtime::new().unwrap(), Remote::official().unwrap());
+        Harness::in_folder(folder, Runtime::new().unwrap(), Remote::official().unwrap())?;
     assert_eq!(restarted.extensions.load_enabled().unwrap(), 1);
 
     let output = restarted
         .call("t.echo", None, json!({ "again": true }))
         .await;
     assert_eq!(output.unwrap(), json!({ "again": true }));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn changed_files_are_not_loaded() {
-    let harness = Harness::new();
-    harness.install_sample().await;
+async fn changed_files_are_not_loaded() -> Result<(), TestError> {
+    let harness = Harness::new()?;
+    harness.install_sample().await?;
     let Harness { folder, .. } = harness;
 
     let installed = folder.path().join("data/extensions/t/extension.wasm");
@@ -198,7 +220,7 @@ async fn changed_files_are_not_loaded() {
     fs::write(&installed, bytes).unwrap();
 
     let restarted =
-        Harness::in_folder(folder, Runtime::new().unwrap(), Remote::official().unwrap());
+        Harness::in_folder(folder, Runtime::new().unwrap(), Remote::official().unwrap())?;
     assert_eq!(restarted.extensions.load_enabled().unwrap(), 0);
     assert!(restarted.handle("t.echo").is_none());
 
@@ -211,13 +233,15 @@ async fn changed_files_are_not_loaded() {
         problem.contains("changed since they were installed"),
         "{problem}"
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn installs_a_signed_extension_from_the_registry() {
-    let signer = Signer::new();
-    let listing = signer.listing("t", "t-0.1.0.wasm", &sample(), &capabilities());
-    let (_server, harness) = registry_with(&signer, &listing, sample());
+async fn installs_a_signed_extension_from_the_registry() -> Result<(), TestError> {
+    let signer = Signer::new()?;
+    let listing = signer.listing("t", "t-0.1.0.wasm", &sample_component()?, &capabilities()?)?;
+    let (_server, harness) = registry_with(&signer, &listing, sample_component()?)?;
 
     let found = harness
         .call("extension.search", None, json!({ "query": "host" }))
@@ -231,7 +255,7 @@ async fn installs_a_signed_extension_from_the_registry() {
         .unwrap();
     let shown = prepared.shown().unwrap();
     assert_eq!(shown["signed"], json!(true));
-    assert_eq!(shown["capabilities"], capabilities());
+    assert_eq!(shown["capabilities"], capabilities()?);
 
     let installed = harness
         .call("extension.install", None, json!({ "id": "t" }))
@@ -249,14 +273,16 @@ async fn installs_a_signed_extension_from_the_registry() {
         .await
         .unwrap();
     assert_eq!(found[0]["installed"], "0.1.0");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_signature_from_another_key_is_refused() {
-    let signer = Signer::new();
-    let stranger = Signer::new();
-    let listing = stranger.listing("t", "t-0.1.0.wasm", &sample(), &capabilities());
-    let (_server, harness) = registry_with(&signer, &listing, sample());
+async fn a_signature_from_another_key_is_refused() -> Result<(), TestError> {
+    let signer = Signer::new()?;
+    let stranger = Signer::new()?;
+    let listing = stranger.listing("t", "t-0.1.0.wasm", &sample_component()?, &capabilities()?)?;
+    let (_server, harness) = registry_with(&signer, &listing, sample_component()?)?;
 
     let reason = failure(harness.prepare("extension.install", None, json!({ "id": "t" })));
 
@@ -264,109 +290,127 @@ async fn a_signature_from_another_key_is_refused() {
         reason.starts_with("the signature does not check out"),
         "{reason}"
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_download_that_differs_from_the_index_is_refused() {
-    let signer = Signer::new();
-    let listing = signer.listing("t", "t-0.1.0.wasm", &sample(), &capabilities());
-    let mut changed = sample();
+async fn a_download_that_differs_from_the_index_is_refused() -> Result<(), TestError> {
+    let signer = Signer::new()?;
+    let listing = signer.listing("t", "t-0.1.0.wasm", &sample_component()?, &capabilities()?)?;
+    let mut changed = sample_component()?;
     changed.extend_from_slice(b"\0");
-    let (_server, harness) = registry_with(&signer, &listing, changed);
+    let (_server, harness) = registry_with(&signer, &listing, changed)?;
 
     let reason = failure(harness.prepare("extension.install", None, json!({ "id": "t" })));
 
     assert!(reason.contains("the download has sha256"), "{reason}");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn capabilities_widened_after_signing_are_refused() {
-    let signer = Signer::new();
-    let mut listing = signer.listing("t", "t-0.1.0.wasm", &sample(), &capabilities());
+async fn capabilities_widened_after_signing_are_refused() -> Result<(), TestError> {
+    let signer = Signer::new()?;
+    let mut listing =
+        signer.listing("t", "t-0.1.0.wasm", &sample_component()?, &capabilities()?)?;
     listing["capabilities"]["call"] = json!(["ssh.exec", "sftp.write"]);
-    let (_server, harness) = registry_with(&signer, &listing, sample());
+    let (_server, harness) = registry_with(&signer, &listing, sample_component()?)?;
 
     let reason = failure(harness.prepare("extension.install", None, json!({ "id": "t" })));
 
     assert!(reason.contains("differ from the index"), "{reason}");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_id_missing_from_the_registry_is_reported() {
-    let signer = Signer::new();
-    let listing = signer.listing("t", "t-0.1.0.wasm", &sample(), &capabilities());
-    let (_server, harness) = registry_with(&signer, &listing, sample());
+async fn an_id_missing_from_the_registry_is_reported() -> Result<(), TestError> {
+    let signer = Signer::new()?;
+    let listing = signer.listing("t", "t-0.1.0.wasm", &sample_component()?, &capabilities()?)?;
+    let (_server, harness) = registry_with(&signer, &listing, sample_component()?)?;
 
     let reason = failure(harness.prepare("extension.install", None, json!({ "id": "absent" })));
 
     assert_eq!(reason, "the registry has no extension absent");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_older_index_is_refused() {
-    let signer = Signer::new();
-    let listing = signer.listing("t", "t-0.1.0.wasm", &sample(), &capabilities());
-    let (server, harness) = registry_with(&signer, &listing, sample());
+async fn an_older_index_is_refused() -> Result<(), TestError> {
+    let signer = Signer::new()?;
+    let listing = signer.listing("t", "t-0.1.0.wasm", &sample_component()?, &capabilities()?)?;
+    let (server, harness) = registry_with(&signer, &listing, sample_component()?)?;
 
     harness
         .call("extension.search", None, Value::Null)
         .await
         .unwrap();
 
-    publish(&server, &signer, &listing, SERIAL - 1, later());
+    publish(&server, &signer, &listing, SERIAL - 1, later()?)?;
     let reason = failure(harness.call("extension.search", None, Value::Null).await);
 
     assert!(reason.contains("older than one already seen"), "{reason}");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_expired_index_is_refused() {
-    let signer = Signer::new();
-    let listing = signer.listing("t", "t-0.1.0.wasm", &sample(), &capabilities());
-    let (server, harness) = registry_with(&signer, &listing, sample());
+async fn an_expired_index_is_refused() -> Result<(), TestError> {
+    let signer = Signer::new()?;
+    let listing = signer.listing("t", "t-0.1.0.wasm", &sample_component()?, &capabilities()?)?;
+    let (server, harness) = registry_with(&signer, &listing, sample_component()?)?;
 
-    publish(&server, &signer, &listing, SERIAL, 1);
+    publish(&server, &signer, &listing, SERIAL, 1)?;
     let reason = failure(harness.call("extension.search", None, Value::Null).await);
 
     assert!(reason.contains("has expired"), "{reason}");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_index_signed_by_another_key_is_refused() {
-    let signer = Signer::new();
-    let stranger = Signer::new();
-    let listing = signer.listing("t", "t-0.1.0.wasm", &sample(), &capabilities());
-    let (server, harness) = registry_with(&signer, &listing, sample());
+async fn an_index_signed_by_another_key_is_refused() -> Result<(), TestError> {
+    let signer = Signer::new()?;
+    let stranger = Signer::new()?;
+    let listing = signer.listing("t", "t-0.1.0.wasm", &sample_component()?, &capabilities()?)?;
+    let (server, harness) = registry_with(&signer, &listing, sample_component()?)?;
 
-    publish(&server, &stranger, &listing, SERIAL, later());
+    publish(&server, &stranger, &listing, SERIAL, later()?)?;
     let reason = failure(harness.call("extension.search", None, Value::Null).await);
 
     assert!(
         reason.starts_with("the signature does not check out"),
         "{reason}"
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_description_changed_after_signing_is_refused() {
-    let signer = Signer::new();
-    let mut listing = signer.listing("t", "t-0.1.0.wasm", &sample(), &capabilities());
+async fn a_description_changed_after_signing_is_refused() -> Result<(), TestError> {
+    let signer = Signer::new()?;
+    let mut listing =
+        signer.listing("t", "t-0.1.0.wasm", &sample_component()?, &capabilities()?)?;
     listing["description"] = json!("Totally harmless.");
-    let (_server, harness) = registry_with(&signer, &listing, sample());
+    let (_server, harness) = registry_with(&signer, &listing, sample_component()?)?;
 
     let reason = failure(harness.prepare("extension.install", None, json!({ "id": "t" })));
 
     assert!(reason.contains("differ from the index"), "{reason}");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_older_version_than_the_installed_one_is_refused() {
-    let signer = Signer::new();
-    let listing = signer.listing("t", "t-0.1.0.wasm", &sample(), &capabilities());
-    let (_server, harness) = registry_with(&signer, &listing, sample());
+async fn an_older_version_than_the_installed_one_is_refused() -> Result<(), TestError> {
+    let signer = Signer::new()?;
+    let listing = signer.listing("t", "t-0.1.0.wasm", &sample_component()?, &capabilities()?)?;
+    let (_server, harness) = registry_with(&signer, &listing, sample_component()?)?;
 
     let newer = SAMPLE_MANIFEST.replace("version = \"0.1.0\"", "version = \"0.2.0\"");
-    let build = harness.build("newer", &newer);
+    let build = harness.build("newer", &newer)?;
     harness.install_local(&build).await.unwrap();
 
     let reason = failure(harness.prepare("extension.install", None, json!({ "id": "t" })));
@@ -375,13 +419,16 @@ async fn an_older_version_than_the_installed_one_is_refused() {
         reason.contains("older than the installed 0.2.0"),
         "{reason}"
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn replacing_a_signed_extension_with_a_local_build_clears_its_storage() {
-    let signer = Signer::new();
-    let listing = signer.listing("t", "t-0.1.0.wasm", &sample(), &capabilities());
-    let (_server, harness) = registry_with(&signer, &listing, sample());
+async fn replacing_a_signed_extension_with_a_local_build_clears_its_storage()
+-> Result<(), TestError> {
+    let signer = Signer::new()?;
+    let listing = signer.listing("t", "t-0.1.0.wasm", &sample_component()?, &capabilities()?)?;
+    let (_server, harness) = registry_with(&signer, &listing, sample_component()?)?;
 
     harness
         .call("extension.install", None, json!({ "id": "t" }))
@@ -392,7 +439,7 @@ async fn replacing_a_signed_extension_with_a_local_build_clears_its_storage() {
         .await
         .unwrap();
 
-    let build = harness.build("local", SAMPLE_MANIFEST);
+    let build = harness.build("local", SAMPLE_MANIFEST)?;
     let params = json!({ "path": build.to_string_lossy() });
     let prepared = harness
         .prepare("extension.install_local", None, params)
@@ -412,12 +459,14 @@ async fn replacing_a_signed_extension_with_a_local_build_clears_its_storage() {
         )
         .unwrap();
     assert_eq!(items, 0);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_edited_manifest_is_not_loaded() {
-    let harness = Harness::new();
-    harness.install_sample().await;
+async fn an_edited_manifest_is_not_loaded() -> Result<(), TestError> {
+    let harness = Harness::new()?;
+    harness.install_sample().await?;
     let Harness { folder, .. } = harness;
 
     let manifest = folder.path().join("data/extensions/t/extension.toml");
@@ -425,15 +474,17 @@ async fn an_edited_manifest_is_not_loaded() {
     fs::write(&manifest, text.replace("storage = true", "storage = false")).unwrap();
 
     let restarted =
-        Harness::in_folder(folder, Runtime::new().unwrap(), Remote::official().unwrap());
+        Harness::in_folder(folder, Runtime::new().unwrap(), Remote::official().unwrap())?;
 
     assert_eq!(restarted.extensions.load_enabled().unwrap(), 0);
     assert!(restarted.handle("t.echo").is_none());
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn installs_a_signed_api_0_2_extension_with_its_contributions() {
-    let signer = Signer::new();
+async fn installs_a_signed_api_0_2_extension_with_its_contributions() -> Result<(), TestError> {
+    let signer = Signer::new()?;
     let every = everything_component();
     let capabilities = json!({ "call": ["core.ping"], "storage": true, "timers": true });
     let mut listing = signer.listing_for(
@@ -443,17 +494,17 @@ async fn installs_a_signed_api_0_2_extension_with_its_contributions() {
         "every-0.2.0.wasm",
         &every,
         &capabilities,
-    );
+    )?;
     listing["contributes"] = json!({
         "command": [{ "title": "Ping the core", "action": "every.ping" }],
         "status": [{ "id": "beat", "title": "Beat", "view": "beat" }]
     });
 
-    let server = FileServer::start();
-    publish(&server, &signer, &listing, SERIAL, later());
+    let server = FileServer::start()?;
+    publish(&server, &signer, &listing, SERIAL, later()?)?;
     server.put("every-0.2.0.wasm", every);
     let harness =
-        Harness::with_remote(Remote::new(server.address(), &signer.public_key()).unwrap());
+        Harness::with_remote(Remote::new(server.address(), &signer.public_key()).unwrap())?;
 
     let shown = harness
         .prepare("extension.install", None, json!({ "id": "every" }))
@@ -471,4 +522,6 @@ async fn installs_a_signed_api_0_2_extension_with_its_contributions() {
     assert_eq!(shown["contributes"]["status"][0]["view"], "beat");
     assert_eq!(installed["api"], "0.2");
     assert!(harness.handle("every.ping").is_some());
+
+    Ok(())
 }

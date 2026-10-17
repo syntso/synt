@@ -28,6 +28,7 @@ tokio-util.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+synt-testkit.workspace = true
 sha2.workspace = true
 synt-test-servers.workspace = true
 tempfile.workspace = true

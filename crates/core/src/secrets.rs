@@ -145,10 +145,10 @@ mod tests {
 
     use synt_extensions::{ExtensionId, SecretSource};
     use synt_platform::SecretName;
+    use synt_testkit::MemoryVault;
 
     use super::Secrets;
     use crate::state::State;
-    use crate::vault::MemoryVault;
 
     fn secrets() -> (Secrets, SecretName, tempfile::TempDir) {
         let folder = tempfile::tempdir().unwrap();

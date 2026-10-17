@@ -1,11 +1,6 @@
-#![allow(clippy::unwrap_used)]
-
-mod common;
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use common::{Grounds, Harness, eventually, rejection};
 use serde_json::{Value, json};
 use synt_actions::Action;
 use synt_client::Client;
@@ -15,6 +10,8 @@ use synt_core::{
 };
 use synt_proto::{ActionCall, ApprovalDecision, ErrorCode, ResourceRef, Risk};
 use synt_ssh::Pool;
+use synt_testkit::TestError;
+use synt_testkit::core::{Grounds, Harness, eventually, rejection};
 
 const PROJECT_ID: &str = "4f2c9a7e1b3d5f60718293a4b5c6d7e8";
 
@@ -44,71 +41,55 @@ user = "deploy"
 via = "bastion"
 "#;
 
-fn core(grounds: &Grounds) -> Core {
-    let projects = Projects::start(grounds.state()).unwrap();
-    let mut registry = grounds.registry();
+fn core(grounds: &Grounds) -> Result<Core, TestError> {
+    let projects = Projects::start(grounds.state()?)?;
+    let mut registry = grounds.registry()?;
 
-    registry
-        .register(ProjectOpen::new(projects.clone()))
-        .unwrap();
-    registry
-        .register(ProjectClose::new(projects.clone()))
-        .unwrap();
-    registry
-        .register(ProjectList::new(projects.clone()))
-        .unwrap();
-    registry
-        .register(ResourceList::new(projects.clone()))
-        .unwrap();
-    registry
-        .register(ResourceGet::new(projects.clone()))
-        .unwrap();
-    registry
-        .register(ResourcePut::new(projects.clone()))
-        .unwrap();
-    registry
-        .register(ResourceRemove::new(projects.clone()))
-        .unwrap();
-    registry
-        .register(SshExec::new(Pool::new(), projects))
-        .unwrap();
+    registry.register(ProjectOpen::new(projects.clone()))?;
+    registry.register(ProjectClose::new(projects.clone()))?;
+    registry.register(ProjectList::new(projects.clone()))?;
+    registry.register(ResourceList::new(projects.clone()))?;
+    registry.register(ResourceGet::new(projects.clone()))?;
+    registry.register(ResourcePut::new(projects.clone()))?;
+    registry.register(ResourceRemove::new(projects.clone()))?;
+    registry.register(SshExec::new(Pool::new(), projects))?;
 
-    Core::new(registry, grounds.journal(), Broker::new())
+    Ok(Core::new(registry, grounds.journal(), Broker::new()))
 }
 
-fn start() -> Harness {
-    let grounds = Grounds::new();
-    let core = core(&grounds);
+fn start() -> Result<Harness, TestError> {
+    let grounds = Grounds::new()?;
+    let core = core(&grounds)?;
 
     Harness::serve(grounds, core)
 }
 
-fn orders(harness: &Harness) -> PathBuf {
+fn orders(harness: &Harness) -> Result<PathBuf, TestError> {
     let folder = harness.grounds().path().join("orders");
     let resources = folder.join("resources");
-    fs::create_dir_all(&resources).unwrap();
+    fs::create_dir_all(&resources)?;
 
-    fs::write(folder.join("synt.toml"), PROJECT_FILE).unwrap();
-    fs::write(resources.join("bastion.toml"), BASTION).unwrap();
-    fs::write(resources.join("api-1.toml"), API).unwrap();
+    fs::write(folder.join("synt.toml"), PROJECT_FILE)?;
+    fs::write(resources.join("bastion.toml"), BASTION)?;
+    fs::write(resources.join("api-1.toml"), API)?;
 
-    folder
+    Ok(folder)
 }
 
 fn resource_file(folder: &Path, name: &str) -> PathBuf {
     folder.join("resources").join(format!("{name}.toml"))
 }
 
-async fn open(app: &Client, folder: &Path) -> Value {
+async fn open(app: &Client, folder: &Path) -> Result<Value, TestError> {
     let call = ActionCall::new(ProjectOpen::ID).params(json!({ "path": folder }));
 
-    app.call(call).await.unwrap().value
+    Ok(app.call(call).await?.value)
 }
 
-async fn listing(app: &Client) -> Value {
+async fn listing(app: &Client) -> Result<Value, TestError> {
     let call = ActionCall::new(ResourceList::ID).params(json!({ "project": "orders" }));
 
-    app.call(call).await.unwrap().value
+    Ok(app.call(call).await?.value)
 }
 
 async fn address(app: &Client, name: &str) -> Option<String> {
@@ -119,19 +100,27 @@ async fn address(app: &Client, name: &str) -> Option<String> {
     entry["address"].as_str().map(str::to_owned)
 }
 
-async fn names(app: &Client) -> Vec<String> {
-    let listed = listing(app).await;
+async fn names(app: &Client) -> Result<Vec<String>, TestError> {
+    let listed = listing(app).await?;
 
-    listed["resources"]
+    let resources = listed["resources"]
         .as_array()
-        .unwrap()
+        .ok_or("the listing has no resources")?;
+
+    Ok(resources
         .iter()
-        .map(|entry| entry["name"].as_str().unwrap().to_owned())
-        .collect()
+        .filter_map(|entry| entry["name"].as_str())
+        .map(str::to_owned)
+        .collect())
 }
 
-async fn problems(app: &Client) -> Vec<Value> {
-    listing(app).await["problems"].as_array().unwrap().clone()
+async fn problems(app: &Client) -> Result<Vec<Value>, TestError> {
+    let listed = listing(app).await?;
+    let problems = listed["problems"]
+        .as_array()
+        .ok_or("the listing has no problems list")?;
+
+    Ok(problems.clone())
 }
 
 fn exec(target: &str) -> ActionCall {
@@ -141,13 +130,13 @@ fn exec(target: &str) -> ActionCall {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn opening_a_plain_folder_gives_it_an_id_and_a_resources_folder() {
-    let harness = start();
-    let app = harness.app().await;
+async fn opening_a_plain_folder_gives_it_an_id_and_a_resources_folder() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
     let folder = harness.grounds().path().join("billing");
     fs::create_dir(&folder).unwrap();
 
-    let info = open(&app, &folder).await;
+    let info = open(&app, &folder).await?;
     let written = fs::read_to_string(folder.join("synt.toml")).unwrap();
     let id = info["id"].as_str().unwrap();
 
@@ -159,31 +148,35 @@ async fn opening_a_plain_folder_gives_it_an_id_and_a_resources_folder() {
     assert_eq!(info["read_only"], json!(false));
     assert_eq!(info["resources"], json!(0));
     assert!(folder.join("resources").is_dir());
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn opening_reads_the_project_file_and_the_resources_already_there() {
-    let harness = start();
-    let app = harness.app().await;
-    let folder = orders(&harness);
+async fn opening_reads_the_project_file_and_the_resources_already_there() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
+    let folder = orders(&harness)?;
 
-    let info = open(&app, &folder).await;
+    let info = open(&app, &folder).await?;
 
     assert_eq!(info["id"], json!(PROJECT_ID));
     assert_eq!(info["name"], json!("Orders Platform"));
     assert_eq!(info["resources"], json!(2));
-    assert_eq!(names(&app).await, ["api-1", "bastion"]);
+    assert_eq!(names(&app).await?, ["api-1", "bastion"]);
     assert_eq!(address(&app, "api-1").await.as_deref(), Some("10.0.1.12"));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn opening_the_same_folder_twice_keeps_one_project() {
-    let harness = start();
-    let app = harness.app().await;
-    let folder = orders(&harness);
+async fn opening_the_same_folder_twice_keeps_one_project() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
+    let folder = orders(&harness)?;
 
-    let first = open(&app, &folder).await;
-    let second = open(&app, &folder).await;
+    let first = open(&app, &folder).await?;
+    let second = open(&app, &folder).await?;
     let listed = app
         .call(ActionCall::new(ProjectList::ID))
         .await
@@ -200,73 +193,84 @@ async fn opening_the_same_folder_twice_keeps_one_project() {
             .count(),
         1
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_second_folder_with_the_same_id_is_refused() {
-    let harness = start();
-    let app = harness.app().await;
-    let folder = orders(&harness);
+async fn a_second_folder_with_the_same_id_is_refused() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
+    let folder = orders(&harness)?;
     let copy = harness.grounds().path().join("orders-copy");
     fs::create_dir(&copy).unwrap();
     fs::write(copy.join("synt.toml"), PROJECT_FILE).unwrap();
 
-    open(&app, &folder).await;
+    open(&app, &folder).await?;
     let call = ActionCall::new(ProjectOpen::ID).params(json!({ "path": copy }));
     let error = rejection(app.call(call).await);
 
     assert_eq!(error.code, ErrorCode::ACTION_FAILED);
     assert!(error.message.contains("same id"), "{}", error.message);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_relative_path_is_refused() {
-    let harness = start();
-    let app = harness.app().await;
+async fn a_relative_path_is_refused() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
 
     let call = ActionCall::new(ProjectOpen::ID).params(json!({ "path": "orders" }));
     let error = rejection(app.call(call).await);
 
     assert_eq!(error.code, ErrorCode::INVALID_PARAMS);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn opening_and_closing_projects_is_for_the_person_only() {
-    let harness = start();
-    let agent = harness.agent("deploy-bot").await;
-    let folder = orders(&harness);
+async fn opening_and_closing_projects_is_for_the_person_only() -> Result<(), TestError> {
+    let harness = start()?;
+    let agent = harness.agent("deploy-bot").await?;
+    let folder = orders(&harness)?;
 
     let opening = ActionCall::new(ProjectOpen::ID).params(json!({ "path": folder }));
     let closing = ActionCall::new(ProjectClose::ID).params(json!({ "id": "orders" }));
 
     assert_eq!(rejection(agent.call(opening).await).code, ErrorCode::DENIED);
     assert_eq!(rejection(agent.call(closing).await).code, ErrorCode::DENIED);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_resource_file_added_later_is_loaded() {
-    let harness = start();
-    let app = harness.app().await;
-    let folder = orders(&harness);
-    open(&app, &folder).await;
+async fn a_resource_file_added_later_is_loaded() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
+    let folder = orders(&harness)?;
+    open(&app, &folder).await?;
 
     fs::write(resource_file(&folder, "api-2"), API).unwrap();
 
     eventually("api-2 to be loaded", async || {
         names(&app)
             .await
+            .ok()?
             .contains(&"api-2".to_owned())
             .then_some(())
     })
     .await;
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_changed_resource_file_is_reloaded() {
-    let harness = start();
-    let app = harness.app().await;
-    let folder = orders(&harness);
-    open(&app, &folder).await;
+async fn a_changed_resource_file_is_reloaded() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
+    let folder = orders(&harness)?;
+    open(&app, &folder).await?;
 
     fs::write(resource_file(&folder, "api-1"), MOVED_API).unwrap();
 
@@ -274,29 +278,34 @@ async fn a_changed_resource_file_is_reloaded() {
         (address(&app, "api-1").await.as_deref() == Some("10.0.9.9")).then_some(())
     })
     .await;
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_deleted_resource_file_is_forgotten() {
-    let harness = start();
-    let app = harness.app().await;
-    let folder = orders(&harness);
-    open(&app, &folder).await;
+async fn a_deleted_resource_file_is_forgotten() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
+    let folder = orders(&harness)?;
+    open(&app, &folder).await?;
 
     fs::remove_file(resource_file(&folder, "api-1")).unwrap();
 
     eventually("api-1 to be forgotten", async || {
-        (names(&app).await == ["bastion"]).then_some(())
+        (names(&app).await.ok()? == ["bastion"]).then_some(())
     })
     .await;
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_broken_file_is_reported_and_the_last_good_version_stays_in_use() {
-    let harness = start();
-    let app = harness.app().await;
-    let folder = orders(&harness);
-    open(&app, &folder).await;
+async fn a_broken_file_is_reported_and_the_last_good_version_stays_in_use() -> Result<(), TestError>
+{
+    let harness = start()?;
+    let app = harness.app().await?;
+    let folder = orders(&harness)?;
+    open(&app, &folder).await?;
 
     fs::write(
         resource_file(&folder, "api-1"),
@@ -304,7 +313,7 @@ async fn a_broken_file_is_reported_and_the_last_good_version_stays_in_use() {
     )
     .unwrap();
     let reported = eventually("the broken file to be reported", async || {
-        problems(&app).await.pop()
+        problems(&app).await.ok()?.pop()
     })
     .await;
 
@@ -320,23 +329,25 @@ async fn a_broken_file_is_reported_and_the_last_good_version_stays_in_use() {
 
     fs::write(resource_file(&folder, "api-1"), MOVED_API).unwrap();
     eventually("the fixed file to be loaded", async || {
-        let fixed = problems(&app).await.is_empty()
+        let fixed = problems(&app).await.ok()?.is_empty()
             && address(&app, "api-1").await.as_deref() == Some("10.0.9.9");
         fixed.then_some(())
     })
     .await;
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_new_file_that_is_broken_is_reported_and_not_loaded() {
-    let harness = start();
-    let app = harness.app().await;
-    let folder = orders(&harness);
-    open(&app, &folder).await;
+async fn a_new_file_that_is_broken_is_reported_and_not_loaded() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
+    let folder = orders(&harness)?;
+    open(&app, &folder).await?;
 
     fs::write(resource_file(&folder, "db"), "kind = \"database\"").unwrap();
     eventually("the broken file to be reported", async || {
-        problems(&app).await.pop()
+        problems(&app).await.ok()?.pop()
     })
     .await;
 
@@ -349,19 +360,21 @@ async fn a_new_file_that_is_broken_is_reported_and_not_loaded() {
         "{}",
         error.message
     );
-    assert_eq!(names(&app).await, ["api-1", "bastion"]);
+    assert_eq!(names(&app).await?, ["api-1", "bastion"]);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_project_target_resolves_through_its_via_chain() {
-    let harness = start();
-    let mut approver = harness.approver().await;
-    let agent = harness.agent("deploy-bot").await;
-    open(approver.app(), &orders(&harness)).await;
+async fn a_project_target_resolves_through_its_via_chain() -> Result<(), TestError> {
+    let harness = start()?;
+    let mut approver = harness.approver().await?;
+    let agent = harness.agent("deploy-bot").await?;
+    open(approver.app(), &orders(&harness)?).await?;
 
     let (question, _) = approver
         .decide(&agent, exec("@orders/api-1"), ApprovalDecision::Deny)
-        .await;
+        .await?;
 
     assert_eq!(
         question.target.as_ref().map(ResourceRef::as_str),
@@ -375,14 +388,16 @@ async fn a_project_target_resolves_through_its_via_chain() {
         )
     );
     assert_eq!(question.risk, Risk::Write);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_project_can_be_named_by_its_id() {
-    let harness = start();
-    let mut approver = harness.approver().await;
-    let agent = harness.agent("deploy-bot").await;
-    open(approver.app(), &orders(&harness)).await;
+async fn a_project_can_be_named_by_its_id() -> Result<(), TestError> {
+    let harness = start()?;
+    let mut approver = harness.approver().await?;
+    let agent = harness.agent("deploy-bot").await?;
+    open(approver.app(), &orders(&harness)?).await?;
 
     let (question, _) = approver
         .decide(
@@ -390,63 +405,70 @@ async fn a_project_can_be_named_by_its_id() {
             exec(&format!("@{PROJECT_ID}/bastion")),
             ApprovalDecision::Deny,
         )
-        .await;
+        .await?;
 
     assert_eq!(
         question.destination.as_deref(),
         Some(format!("@{PROJECT_ID}/bastion = deploy@10.0.0.1:2222").as_str())
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_host_that_logs_in_as_root_is_asked_as_privileged() {
-    let harness = start();
-    let mut approver = harness.approver().await;
-    let agent = harness.agent("deploy-bot").await;
-    let folder = orders(&harness);
+async fn a_host_that_logs_in_as_root_is_asked_as_privileged() -> Result<(), TestError> {
+    let harness = start()?;
+    let mut approver = harness.approver().await?;
+    let agent = harness.agent("deploy-bot").await?;
+    let folder = orders(&harness)?;
     fs::write(
         resource_file(&folder, "db-1"),
         "kind = \"host\"\naddress = \"10.0.2.5\"\nuser = \"root\"\n",
     )
     .unwrap();
-    open(approver.app(), &folder).await;
+    open(approver.app(), &folder).await?;
 
     let (question, _) = approver
         .decide(&agent, exec("@orders/db-1"), ApprovalDecision::Deny)
-        .await;
+        .await?;
 
     assert_eq!(question.risk, Risk::Privileged);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_via_chain_that_loops_names_no_host() {
-    let harness = start();
-    let mut approver = harness.approver().await;
-    let agent = harness.agent("deploy-bot").await;
-    let folder = orders(&harness);
+async fn a_via_chain_that_loops_names_no_host() -> Result<(), TestError> {
+    let harness = start()?;
+    let mut approver = harness.approver().await?;
+    let agent = harness.agent("deploy-bot").await?;
+    let folder = orders(&harness)?;
     fs::write(
         resource_file(&folder, "bastion"),
         "kind = \"host\"\naddress = \"10.0.0.1\"\nuser = \"deploy\"\nvia = \"api-1\"\n",
     )
     .unwrap();
-    open(approver.app(), &folder).await;
+    open(approver.app(), &folder).await?;
 
     let error = rejection(agent.call(exec("@orders/api-1")).await);
 
     assert_eq!(error.code, ErrorCode::INVALID_PARAMS);
     assert!(approver.was_not_asked());
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_call_approved_for_one_place_does_not_run_after_its_file_moves_it() {
-    let harness = start();
-    let mut approver = harness.approver().await;
-    let agent = harness.agent("deploy-bot").await;
-    let folder = orders(&harness);
-    open(approver.app(), &folder).await;
+async fn a_call_approved_for_one_place_does_not_run_after_its_file_moves_it()
+-> Result<(), TestError> {
+    let harness = start()?;
+    let mut approver = harness.approver().await?;
+    let agent = harness.agent("deploy-bot").await?;
+    let folder = orders(&harness)?;
+    open(approver.app(), &folder).await?;
 
     let running = tokio::spawn(async move { agent.call(exec("@orders/api-1")).await });
-    let question = approver.next().await;
+    let question = approver.next().await?;
     fs::write(resource_file(&folder, "api-1"), MOVED_API).unwrap();
     eventually("api-1 to be reloaded", async || {
         (address(approver.app(), "api-1").await.as_deref() == Some("10.0.9.9")).then_some(())
@@ -460,14 +482,16 @@ async fn a_call_approved_for_one_place_does_not_run_after_its_file_moves_it() {
 
     assert_eq!(error.code, ErrorCode::ACTION_FAILED);
     assert!(error.message.contains("now leads to"), "{}", error.message);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_person_writes_resources_as_files() {
-    let harness = start();
-    let app = harness.app().await;
-    let folder = orders(&harness);
-    open(&app, &folder).await;
+async fn the_person_writes_resources_as_files() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
+    let folder = orders(&harness)?;
+    open(&app, &folder).await?;
 
     let call = ActionCall::new(ResourcePut::ID)
         .target("@orders/web-1")
@@ -481,20 +505,24 @@ async fn the_person_writes_resources_as_files() {
     assert!(written.contains("10.0.3.3"), "{written}");
     assert_eq!(address(&app, "web-1").await.as_deref(), Some("10.0.3.3"));
     assert!(!resource_file(&folder, "api-1").exists());
-    assert_eq!(names(&app).await, ["bastion", "web-1"]);
+    assert_eq!(names(&app).await?, ["bastion", "web-1"]);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_agent_changing_a_resource_is_asked_with_the_project_id() {
-    let harness = start();
-    let mut approver = harness.approver().await;
-    let agent = harness.agent("deploy-bot").await;
-    open(approver.app(), &orders(&harness)).await;
+async fn an_agent_changing_a_resource_is_asked_with_the_project_id() -> Result<(), TestError> {
+    let harness = start()?;
+    let mut approver = harness.approver().await?;
+    let agent = harness.agent("deploy-bot").await?;
+    open(approver.app(), &orders(&harness)?).await?;
 
     let call = ActionCall::new(ResourcePut::ID)
         .target("@orders/web-1")
         .params(json!({ "kind": "host", "address": "10.0.3.3" }));
-    let (question, outcome) = approver.decide(&agent, call, ApprovalDecision::Deny).await;
+    let (question, outcome) = approver
+        .decide(&agent, call, ApprovalDecision::Deny)
+        .await?;
 
     assert_eq!(question.risk, Risk::Write);
     assert_eq!(
@@ -502,14 +530,16 @@ async fn an_agent_changing_a_resource_is_asked_with_the_project_id() {
         Some(format!("@{PROJECT_ID}/web-1").as_str())
     );
     assert_eq!(rejection(outcome).code, ErrorCode::DENIED);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_resource_that_fails_its_checks_is_not_written() {
-    let harness = start();
-    let app = harness.app().await;
-    let folder = orders(&harness);
-    open(&app, &folder).await;
+async fn a_resource_that_fails_its_checks_is_not_written() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
+    let folder = orders(&harness)?;
+    open(&app, &folder).await?;
 
     let call = ActionCall::new(ResourcePut::ID)
         .target("@orders/web-1")
@@ -518,14 +548,16 @@ async fn a_resource_that_fails_its_checks_is_not_written() {
 
     assert_eq!(error.code, ErrorCode::ACTION_FAILED);
     assert!(!resource_file(&folder, "web-1").exists());
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_cluster_resource_is_written_as_a_file_and_listed() {
-    let harness = start();
-    let app = harness.app().await;
-    let folder = orders(&harness);
-    open(&app, &folder).await;
+async fn a_cluster_resource_is_written_as_a_file_and_listed() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
+    let folder = orders(&harness)?;
+    open(&app, &folder).await?;
 
     let call = ActionCall::new(ResourcePut::ID)
         .target("@orders/kube")
@@ -538,7 +570,7 @@ async fn a_cluster_resource_is_written_as_a_file_and_listed() {
         }));
     app.call(call).await.unwrap();
     let written = fs::read_to_string(resource_file(&folder, "kube")).unwrap();
-    let listed = listing(&app).await;
+    let listed = listing(&app).await?;
     let kube = listed["resources"]
         .as_array()
         .unwrap()
@@ -550,14 +582,16 @@ async fn a_cluster_resource_is_written_as_a_file_and_listed() {
     assert!(written.contains("via = \"bastion\""), "{written}");
     assert_eq!(kube["context"], "prod-eu");
     assert_eq!(kube["kubeconfig"], "~/.kube/orders.yaml");
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_cluster_is_neither_an_ssh_target_nor_a_way_in() {
-    let harness = start();
-    let mut approver = harness.approver().await;
-    let agent = harness.agent("deploy-bot").await;
-    let folder = orders(&harness);
+async fn a_cluster_is_neither_an_ssh_target_nor_a_way_in() -> Result<(), TestError> {
+    let harness = start()?;
+    let mut approver = harness.approver().await?;
+    let agent = harness.agent("deploy-bot").await?;
+    let folder = orders(&harness)?;
     fs::write(
         resource_file(&folder, "kube"),
         "kind = \"cluster\"\ncontext = \"prod-eu\"\nvia = \"bastion\"\n",
@@ -568,7 +602,7 @@ async fn a_cluster_is_neither_an_ssh_target_nor_a_way_in() {
         "kind = \"host\"\naddress = \"10.0.4.4\"\nuser = \"deploy\"\nvia = \"kube\"\n",
     )
     .unwrap();
-    open(approver.app(), &folder).await;
+    open(approver.app(), &folder).await?;
 
     let on_cluster = rejection(agent.call(exec("@orders/kube")).await);
     let through_cluster = rejection(agent.call(exec("@orders/behind")).await);
@@ -576,12 +610,14 @@ async fn a_cluster_is_neither_an_ssh_target_nor_a_way_in() {
     assert_eq!(on_cluster.code, ErrorCode::INVALID_PARAMS);
     assert_eq!(through_cluster.code, ErrorCode::INVALID_PARAMS);
     assert!(approver.was_not_asked());
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_personal_project_is_read_only() {
-    let harness = start();
-    let app = harness.app().await;
+async fn the_personal_project_is_read_only() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
 
     let put = ActionCall::new(ResourcePut::ID)
         .target("@personal/anything")
@@ -600,12 +636,14 @@ async fn the_personal_project_is_read_only() {
         removing.message
     );
     assert!(closing.message.contains("built in"), "{}", closing.message);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_personal_project_is_always_listed_first_and_read_only() {
-    let harness = start();
-    let app = harness.app().await;
+async fn the_personal_project_is_always_listed_first_and_read_only() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
 
     let listed = app
         .call(ActionCall::new(ProjectList::ID))
@@ -615,12 +653,14 @@ async fn the_personal_project_is_always_listed_first_and_read_only() {
 
     assert_eq!(listed[0]["slug"], json!("personal"));
     assert_eq!(listed[0]["read_only"], json!(true));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_folder_cannot_take_the_name_of_the_personal_project() {
-    let harness = start();
-    let app = harness.app().await;
+async fn a_folder_cannot_take_the_name_of_the_personal_project() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
     let folder = harness.grounds().path().join("Personal");
     fs::create_dir(&folder).unwrap();
 
@@ -632,22 +672,25 @@ async fn a_folder_cannot_take_the_name_of_the_personal_project() {
         "{}",
         error.message
     );
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn open_projects_are_reopened_from_the_state_database_after_a_restart() {
-    let harness = start();
-    let app = harness.app().await;
-    let folder = orders(&harness);
+async fn open_projects_are_reopened_from_the_state_database_after_a_restart()
+-> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
+    let folder = orders(&harness)?;
     let closed = harness.grounds().path().join("billing");
     fs::create_dir(&closed).unwrap();
-    open(&app, &folder).await;
-    open(&app, &closed).await;
+    open(&app, &folder).await?;
+    open(&app, &closed).await?;
     let close = ActionCall::new(ProjectClose::ID).params(json!({ "id": "billing" }));
     app.call(close).await.unwrap();
 
-    let harness = harness.restart(core).await;
-    let app = harness.app().await;
+    let harness = harness.restart(core).await?;
+    let app = harness.app().await?;
     let listed = app
         .call(ActionCall::new(ProjectList::ID))
         .await
@@ -662,15 +705,17 @@ async fn open_projects_are_reopened_from_the_state_database_after_a_restart() {
 
     assert_eq!(slugs, ["personal", "orders"]);
     assert_eq!(listed[1]["id"], json!(PROJECT_ID));
-    assert_eq!(names(&app).await, ["api-1", "bastion"]);
+    assert_eq!(names(&app).await?, ["api-1", "bastion"]);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_closed_project_is_no_longer_watched_or_reachable() {
-    let harness = start();
-    let app = harness.app().await;
-    let folder = orders(&harness);
-    open(&app, &folder).await;
+async fn a_closed_project_is_no_longer_watched_or_reachable() -> Result<(), TestError> {
+    let harness = start()?;
+    let app = harness.app().await?;
+    let folder = orders(&harness)?;
+    open(&app, &folder).await?;
 
     let close = ActionCall::new(ProjectClose::ID).params(json!({ "id": PROJECT_ID }));
     app.call(close).await.unwrap();
@@ -682,4 +727,6 @@ async fn a_closed_project_is_no_longer_watched_or_reachable() {
         "{}",
         error.message
     );
+
+    Ok(())
 }

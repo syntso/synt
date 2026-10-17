@@ -4,6 +4,7 @@ use synt_client::{Client, ClientError};
 use synt_proto::{
     ActionCall, ActionOutcome, ApprovalDecision, ApprovalRequest, Notice, Notification,
 };
+use synt_testkit::TestError;
 use tokio::sync::Mutex;
 use tokio::sync::broadcast::{self, error::RecvError};
 use tokio::time;
@@ -28,28 +29,34 @@ impl Desk {
         caller: &Client,
         call: ActionCall,
         decision: ApprovalDecision,
-    ) -> (ApprovalRequest, Result<ActionOutcome, ClientError>) {
+    ) -> Result<(ApprovalRequest, Result<ActionOutcome, ClientError>), TestError> {
         let mut questions = self.questions.lock().await;
         let caller = caller.clone();
         let running = tokio::spawn(async move { caller.call(call).await });
 
-        let Ok(question) = time::timeout(PATIENCE, next_question(&mut questions)).await else {
-            panic!("the core did not ask the person in time");
-        };
-        self.app.respond(question.id, decision).await.unwrap();
+        let question = time::timeout(PATIENCE, next_question(&mut questions))
+            .await
+            .map_err(|_| "the core did not ask the person in time")??;
+        self.app.respond(question.id, decision).await?;
 
-        (question, running.await.unwrap())
+        Ok((question, running.await?))
     }
 }
 
-async fn next_question(questions: &mut broadcast::Receiver<Notification>) -> ApprovalRequest {
+async fn next_question(
+    questions: &mut broadcast::Receiver<Notification>,
+) -> Result<ApprovalRequest, TestError> {
     loop {
         match questions.recv().await {
             Ok(notification) if notification.method == ApprovalRequest::METHOD => {
-                return notification.read::<ApprovalRequest>().unwrap().unwrap();
+                let question = notification
+                    .read::<ApprovalRequest>()
+                    .ok_or("the notification carries no question")?;
+
+                return Ok(question?);
             }
             Ok(_) | Err(RecvError::Lagged(_)) => {}
-            Err(RecvError::Closed) => panic!("the app connection closed"),
+            Err(RecvError::Closed) => return Err("the app connection closed".into()),
         }
     }
 }

@@ -20,4 +20,5 @@ tokio = { workspace = true, features = ["io-util"] }
 tokio-util.workspace = true
 
 [dev-dependencies]
+synt-testkit.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }

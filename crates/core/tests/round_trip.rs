@@ -1,58 +1,61 @@
-#![allow(clippy::unwrap_used)]
-
-mod common;
-
-use common::{Harness, kinds, ping};
 use serde_json::json;
 use synt_core::Pong;
 use synt_journal::{ActionId, Actor, EventKind, Name, Seq};
 use synt_proto::ProtocolVersion;
+use synt_testkit::TestError;
+use synt_testkit::core::{Harness, kinds, ping};
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_app_is_welcomed_with_the_current_protocol() {
-    let harness = Harness::start();
-    let client = harness.app().await;
+async fn the_app_is_welcomed_with_the_current_protocol() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let client = harness.app().await?;
 
     let welcome = client.welcome();
 
     assert_eq!(welcome.protocol, ProtocolVersion::CURRENT);
     assert_eq!(welcome.core, env!("CARGO_PKG_VERSION"));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn ping_answers_with_its_own_request() {
-    let harness = Harness::start();
-    let client = harness.app().await;
+async fn ping_answers_with_its_own_request() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let client = harness.app().await?;
 
     let outcome = client.call(ping()).await.unwrap();
     let pong: Pong = serde_json::from_value(outcome.value).unwrap();
 
     assert_eq!(pong.request, outcome.request);
     assert_eq!(pong.core, env!("CARGO_PKG_VERSION"));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_request_is_the_seq_of_the_requested_event() {
-    let harness = Harness::start();
-    let client = harness.app().await;
+async fn the_request_is_the_seq_of_the_requested_event() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let client = harness.app().await?;
 
     let outcome = client.call(ping()).await.unwrap();
-    let trail = harness.trail(outcome.request);
+    let trail = harness.trail(outcome.request)?;
 
     assert_eq!(trail[0].kind(), EventKind::Requested);
     assert_eq!(trail[0].seq(), Seq::new(outcome.request.get()));
     assert_eq!(trail[0].call(), None);
     assert_eq!(trail[0].details().value(), &json!({ "params": null }));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_call_is_journaled_as_requested_started_finished() {
-    let harness = Harness::start();
-    let client = harness.app().await;
+async fn a_call_is_journaled_as_requested_started_finished() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let client = harness.app().await?;
 
     let outcome = client.call(ping()).await.unwrap();
     let request = Seq::new(outcome.request.get());
-    let trail = harness.trail(outcome.request);
+    let trail = harness.trail(outcome.request)?;
     let ping_id = ActionId::new("core.ping").unwrap();
 
     assert_eq!(
@@ -67,43 +70,49 @@ async fn a_call_is_journaled_as_requested_started_finished() {
     assert!(trail.windows(2).all(|pair| pair[0].seq() < pair[1].seq()));
     assert!(trail.iter().all(|event| event.actor() == &Actor::Person));
     assert!(trail.iter().all(|event| event.action() == &ping_id));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_journal_holds_nothing_but_the_call() {
-    let harness = Harness::start();
-    let client = harness.app().await;
+async fn the_journal_holds_nothing_but_the_call() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let client = harness.app().await?;
 
     let outcome = client.call(ping()).await.unwrap();
 
-    assert_eq!(harness.events(), harness.trail(outcome.request));
-    assert!(harness.is_intact());
+    assert_eq!(harness.events()?, harness.trail(outcome.request)?);
+    assert!(harness.is_intact()?);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn an_agent_is_journaled_under_its_own_name() {
-    let harness = Harness::start();
-    let client = harness.agent("deploy-bot").await;
+async fn an_agent_is_journaled_under_its_own_name() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let client = harness.agent("deploy-bot").await?;
 
     let outcome = client.call(ping()).await.unwrap();
-    let trail = harness.trail(outcome.request);
+    let trail = harness.trail(outcome.request)?;
     let agent = Actor::Agent(Name::new("deploy-bot").unwrap());
 
     assert_eq!(trail.len(), 3);
     assert!(trail.iter().all(|event| event.actor() == &agent));
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn each_connection_keeps_its_own_actor() {
-    let harness = Harness::start();
-    let person = harness.app().await;
-    let agent = harness.agent("reviewer").await;
+async fn each_connection_keeps_its_own_actor() -> Result<(), TestError> {
+    let harness = Harness::start()?;
+    let person = harness.app().await?;
+    let agent = harness.agent("reviewer").await?;
 
     let by_person = person.call(ping()).await.unwrap();
     let by_agent = agent.call(ping()).await.unwrap();
 
-    let person_trail = harness.trail(by_person.request);
-    let agent_trail = harness.trail(by_agent.request);
+    let person_trail = harness.trail(by_person.request)?;
+    let agent_trail = harness.trail(by_agent.request)?;
     let reviewer = Actor::Agent(Name::new("reviewer").unwrap());
 
     assert!(
@@ -112,4 +121,6 @@ async fn each_connection_keeps_its_own_actor() {
             .all(|event| event.actor() == &Actor::Person)
     );
     assert!(agent_trail.iter().all(|event| event.actor() == &reviewer));
+
+    Ok(())
 }

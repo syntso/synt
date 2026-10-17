@@ -31,6 +31,7 @@ tokio-util.workspace = true
 tower.workspace = true
 
 [dev-dependencies]
+synt-testkit.workspace = true
 synt-test-servers.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }

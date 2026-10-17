@@ -1,6 +1,5 @@
-use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde_json::{Value, json};
@@ -14,18 +13,19 @@ use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Event, EventKind, Filter, Seq};
 use synt_proto::{ActionCall, ActionOutcome, ApprovalDecision, Notice, Notification};
 use synt_sync::Syncer;
+use synt_testkit::TestError;
+use synt_testkit::core::{Approver, Grounds, Harness, register_sync};
+use synt_testkit::extensions::everything_component;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 
 use super::EchoServer;
-use crate::common::{Approver, Grounds, Harness, register_sync};
 
 pub const PROJECT: &str = "orders";
 const PROJECT_FILE: &str = "id = \"0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e\"\nname = \"Orders\"\n";
 
 const UNUSED_REGISTRY: &str = "http://127.0.0.1:9";
 const UNUSED_KEY: &str = "RWQOuk/x7vRoqs2E6Vxffy293iLd8y+C5Yo2oilreJ2V22RL3qFeV7f2";
-const BUILT_FIXTURE: &str = "SYNT_EVERYTHING_WASM";
 
 const MANIFEST: &str = r#"
 id = "every"
@@ -89,10 +89,10 @@ pub struct Stage {
 }
 
 impl Stage {
-    pub async fn start() -> Self {
-        let grounds = Grounds::new();
-        let echo = EchoServer::start();
-        let (core, extensions, projects, syncer) = assemble(&grounds);
+    pub async fn start() -> Result<Self, TestError> {
+        let grounds = Grounds::new()?;
+        let echo = EchoServer::start()?;
+        let (core, extensions, projects, syncer) = assemble(&grounds)?;
 
         extensions.connect(
             Arc::new(CoreCaller::new(&core)),
@@ -100,11 +100,11 @@ impl Stage {
         );
         let feed = EventFeed::start(&extensions, &grounds.journal(), &projects);
 
-        let harness = Harness::serve(grounds, core);
-        let approver = harness.approver().await;
+        let harness = Harness::serve(grounds, core)?;
+        let approver = harness.approver().await?;
         let project = harness.grounds().path().join(PROJECT);
-        fs::create_dir(&project).unwrap();
-        fs::write(project.join("synt.toml"), PROJECT_FILE).unwrap();
+        fs::create_dir(&project)?;
+        fs::write(project.join("synt.toml"), PROJECT_FILE)?;
 
         let mut stage = Self {
             harness,
@@ -114,18 +114,18 @@ impl Stage {
             syncer,
             _feed: feed,
         };
-        stage.open_project().await;
-        stage.install().await;
+        stage.open_project().await?;
+        stage.install().await?;
 
-        stage
+        Ok(stage)
     }
 
     pub fn app(&self) -> &Client {
         self.approver.app()
     }
 
-    pub async fn call(&self, action: &str, params: Value) -> Value {
-        self.try_call(action, params).await.unwrap().value
+    pub async fn call(&self, action: &str, params: Value) -> Result<Value, TestError> {
+        Ok(self.try_call(action, params).await?.value)
     }
 
     pub async fn try_call(
@@ -138,7 +138,7 @@ impl Stage {
             .await
     }
 
-    pub async fn every(&self, action: &str, params: Value) -> Value {
+    pub async fn every(&self, action: &str, params: Value) -> Result<Value, TestError> {
         self.call(&format!("every.{action}"), params).await
     }
 
@@ -150,35 +150,37 @@ impl Stage {
         self.try_call(&format!("every.{action}"), params).await
     }
 
-    pub async fn watcher(&self) -> (Client, broadcast::Receiver<Notification>) {
-        let app = self.harness.app().await;
+    pub async fn watcher(&self) -> Result<(Client, broadcast::Receiver<Notification>), TestError> {
+        let app = self.harness.app().await?;
         let notifications = app.notifications();
 
-        (app, notifications)
+        Ok((app, notifications))
     }
 
-    pub fn events(&self) -> Vec<Event> {
-        self.harness.events()
+    pub fn events(&self) -> Result<Vec<Event>, TestError> {
+        Ok(self.harness.events()?)
     }
 
-    pub fn journal_text(&self) -> String {
-        self.events()
+    pub fn journal_text(&self) -> Result<String, TestError> {
+        Ok(self
+            .events()?
             .iter()
             .map(|event| format!("{} {}", event.action(), event.details().value()))
             .collect::<Vec<_>>()
-            .join("\n")
+            .join("\n"))
     }
 
-    pub fn trail(&self, request: Seq) -> Vec<Event> {
-        self.harness.matching(&Filter::all().call(request))
+    pub fn trail(&self, request: Seq) -> Result<Vec<Event>, TestError> {
+        Ok(self.harness.matching(&Filter::all().call(request))?)
     }
 
-    pub fn nested(&self, action: &str) -> Vec<Event> {
-        self.events()
+    pub fn nested(&self, action: &str) -> Result<Vec<Event>, TestError> {
+        Ok(self
+            .events()?
             .into_iter()
             .filter(|event| event.kind() == EventKind::Requested)
             .filter(|event| event.action().as_str() == action)
-            .collect()
+            .collect())
     }
 
     pub async fn sync(&self) {
@@ -187,32 +189,37 @@ impl Stage {
         }
     }
 
-    pub async fn put_secret(&self, name: &str, value: &str) {
+    pub async fn put_secret(&self, name: &str, value: &str) -> Result<(), TestError> {
         self.call("secret.put", json!({ "name": name, "value": value }))
-            .await;
+            .await?;
+
+        Ok(())
     }
 
-    async fn open_project(&self) {
+    async fn open_project(&self) -> Result<(), TestError> {
         self.call("project.open", json!({ "path": self.project }))
-            .await;
+            .await?;
+
+        Ok(())
     }
 
-    async fn install(&mut self) {
+    async fn install(&mut self) -> Result<(), TestError> {
         let build = self.harness.grounds().path().join("every-build");
-        fs::create_dir(&build).unwrap();
-        fs::write(build.join("extension.wasm"), fixture()).unwrap();
+        fs::create_dir(&build)?;
+        fs::write(build.join("extension.wasm"), everything_component())?;
         fs::write(
             build.join("extension.toml"),
             MANIFEST.replace("PORT", &self.echo.port().to_string()),
-        )
-        .unwrap();
+        )?;
 
         let app = self.approver.app().clone();
         let call = ActionCall::new("extension.install_local").params(json!({ "path": build }));
 
         self.approver
             .approve(&app, call, ApprovalDecision::AllowOnce)
-            .await;
+            .await?;
+
+        Ok(())
     }
 }
 
@@ -220,30 +227,23 @@ pub fn read<T: Notice>(notification: &Notification) -> Option<T> {
     notification.read::<T>().and_then(Result::ok)
 }
 
-fn assemble(grounds: &Grounds) -> (Arc<Core>, Extensions, Projects, Syncer) {
-    let projects = Projects::start(grounds.state()).unwrap();
-    let secrets = Secrets::new(grounds.vault(), grounds.state());
+fn assemble(grounds: &Grounds) -> Result<(Arc<Core>, Extensions, Projects, Syncer), TestError> {
+    let projects = Projects::start(grounds.state()?)?;
+    let secrets = Secrets::new(grounds.vault(), grounds.state()?);
 
-    let mut registry = grounds.registry();
-    registry
-        .register(ProjectOpen::new(projects.clone()))
-        .unwrap();
-    registry
-        .register(ProjectList::new(projects.clone()))
-        .unwrap();
-    registry.register(SecretPut::new(secrets.clone())).unwrap();
-    registry.register(SecretList::new(secrets.clone())).unwrap();
-    registry
-        .register(SecretRemove::new(secrets.clone()))
-        .unwrap();
+    let mut registry = grounds.registry()?;
+    registry.register(ProjectOpen::new(projects.clone()))?;
+    registry.register(ProjectList::new(projects.clone()))?;
+    registry.register(SecretPut::new(secrets.clone()))?;
+    registry.register(SecretList::new(secrets.clone()))?;
+    registry.register(SecretRemove::new(secrets.clone()))?;
 
     let extensions = Extensions::open(
         &grounds.path().join("data"),
         &grounds.state_path(),
-        Runtime::new().unwrap(),
-        Remote::new(UNUSED_REGISTRY, UNUSED_KEY).unwrap(),
-    )
-    .unwrap()
+        Runtime::new()?,
+        Remote::new(UNUSED_REGISTRY, UNUSED_KEY)?,
+    )?
     .with_secrets(Arc::new(secrets))
     .with_projects(Arc::new(projects.clone()));
 
@@ -254,21 +254,11 @@ fn assemble(grounds: &Grounds) -> (Arc<Core>, Extensions, Projects, Syncer) {
     )
     .journal(grounds.journal())
     .merger(Arc::new(ExtensionMerger::new(extensions.clone())))
-    .open()
-    .unwrap();
-    register_sync(&mut registry, &syncer);
-    extensions.register(&mut registry).unwrap();
+    .open()?;
+    register_sync(&mut registry, &syncer)?;
+    extensions.register(&mut registry)?;
 
     let core = Arc::new(Core::new(registry, grounds.journal(), Broker::new()));
 
-    (core, extensions, projects, syncer)
-}
-
-fn fixture() -> Vec<u8> {
-    let path = env::var_os(BUILT_FIXTURE).map_or_else(
-        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/extension/everything.wasm"),
-        PathBuf::from,
-    );
-
-    fs::read(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+    Ok((core, extensions, projects, syncer))
 }

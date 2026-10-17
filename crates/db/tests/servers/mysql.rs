@@ -3,6 +3,7 @@ use synt_db::{
     Access, Classification, Database, DbError, Effect, Engine, Page, Query, Server, TlsMode,
 };
 use synt_test_servers::DbServers;
+use synt_testkit::TestError;
 
 use crate::lab::{connect, read, run, server, write};
 
@@ -17,8 +18,8 @@ fn refused_as_read_only(error: &DbError) -> bool {
     matches!(error, DbError::Server { code: Some(code), .. } if code.starts_with("1792"))
 }
 
-async fn refused(database: &mut Database, text: &str) -> DbError {
-    database
+async fn refused(database: &mut Database, text: &str) -> Result<DbError, TestError> {
+    let refusal = database
         .query(&Query {
             text,
             params: &[],
@@ -26,18 +27,21 @@ async fn refused(database: &mut Database, text: &str) -> DbError {
             page: Page::new(10, 1 << 20),
         })
         .await
-        .unwrap_err()
+        .err()
+        .ok_or("the server ran a query it should refuse")?;
+
+    Ok(refusal)
 }
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
-async fn values_keep_their_types_in_both_protocols() {
+async fn values_keep_their_types_in_both_protocols() -> Result<(), TestError> {
     let Some(servers) = DbServers::running() else {
-        return;
+        return Ok(());
     };
 
     for (name, server) in both(&servers) {
-        let mut database = connect(&server).await;
+        let mut database = connect(&server).await?;
         let text = "SELECT 42 AS answer, CAST(12.50 AS DECIMAL(6,2)) AS price, 'ann' AS name, \
                     CAST('2026-10-14 09:05:00' AS DATETIME) AS at, NULL AS nothing";
 
@@ -61,17 +65,20 @@ async fn values_keep_their_types_in_both_protocols() {
         assert_eq!(prepared.rows[0][..5], expected[..], "{name}");
         assert_eq!(prepared.rows[0][5], json!(7), "{name}");
     }
+
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
-async fn a_write_the_classifier_takes_for_a_read_is_refused_by_the_server() {
+async fn a_write_the_classifier_takes_for_a_read_is_refused_by_the_server() -> Result<(), TestError>
+{
     let Some(servers) = DbServers::running() else {
-        return;
+        return Ok(());
     };
 
     for (name, server) in both(&servers) {
-        let mut database = connect(&server).await;
+        let mut database = connect(&server).await?;
         write(&mut database, "DROP TABLE IF EXISTS sneaked").await;
         write(&mut database, "CREATE TABLE sneaked (id int)").await;
         write(&mut database, "DROP FUNCTION IF EXISTS sneak").await;
@@ -84,24 +91,27 @@ async fn a_write_the_classifier_takes_for_a_read_is_refused_by_the_server() {
         let text = "SELECT sneak()";
 
         let classified = Classification::of_sql(Engine::Mysql, text);
-        let error = refused(&mut database, text).await;
+        let error = refused(&mut database, text).await?;
         let left = read(&mut database, "SELECT count(*) FROM sneaked").await;
 
         assert_eq!(classified.effect, Effect::Read, "{name}");
         assert!(refused_as_read_only(&error), "{name}: {error:?}");
         assert_eq!(left.rows[0], vec![json!(0)], "{name}");
     }
+
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
-async fn a_read_carries_one_statement_even_when_the_server_lexes_backslashes_plainly() {
+async fn a_read_carries_one_statement_even_when_the_server_lexes_backslashes_plainly()
+-> Result<(), TestError> {
     let Some(servers) = DbServers::running() else {
-        return;
+        return Ok(());
     };
 
     for (name, server) in both(&servers) {
-        let mut database = connect(&server).await;
+        let mut database = connect(&server).await?;
         write(&mut database, "DROP TABLE IF EXISTS smuggled").await;
         write(&mut database, "CREATE TABLE smuggled (id int)").await;
         write(&mut database, "INSERT INTO smuggled VALUES (1)").await;
@@ -114,7 +124,7 @@ async fn a_read_carries_one_statement_even_when_the_server_lexes_backslashes_pla
             r"SELECT 'a\'; COMMIT; SET SESSION TRANSACTION READ WRITE; DELETE FROM smuggled; -- '";
 
         let classified = Classification::of_sql(Engine::Mysql, text);
-        let error = refused(&mut database, text).await;
+        let error = refused(&mut database, text).await?;
         let explained = database.explain(text, &[]).await;
         let left = read(&mut database, "SELECT count(*) FROM smuggled").await;
 
@@ -123,20 +133,22 @@ async fn a_read_carries_one_statement_even_when_the_server_lexes_backslashes_pla
         assert!(explained.is_err(), "{name}: {explained:?}");
         assert_eq!(left.rows[0], vec![json!(1)], "{name}");
     }
+
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
-async fn schema_changes_cannot_slip_out_of_a_read_by_committing_it() {
+async fn schema_changes_cannot_slip_out_of_a_read_by_committing_it() -> Result<(), TestError> {
     let Some(servers) = DbServers::running() else {
-        return;
+        return Ok(());
     };
 
     for (name, server) in both(&servers) {
-        let mut database = connect(&server).await;
+        let mut database = connect(&server).await?;
         write(&mut database, "DROP TABLE IF EXISTS slipped").await;
 
-        let error = refused(&mut database, "CREATE TABLE slipped (id int)").await;
+        let error = refused(&mut database, "CREATE TABLE slipped (id int)").await?;
         let tables = database.tables().await.unwrap();
 
         assert!(refused_as_read_only(&error), "{name}: {error:?}");
@@ -145,17 +157,19 @@ async fn schema_changes_cannot_slip_out_of_a_read_by_committing_it() {
             "{name}"
         );
     }
+
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
-async fn the_schema_holds_keys_indexes_and_references() {
+async fn the_schema_holds_keys_indexes_and_references() -> Result<(), TestError> {
     let Some(servers) = DbServers::running() else {
-        return;
+        return Ok(());
     };
 
     for (name, server) in both(&servers) {
-        let mut database = connect(&server).await;
+        let mut database = connect(&server).await?;
         write(&mut database, "DROP TABLE IF EXISTS shop_lines").await;
         write(&mut database, "DROP TABLE IF EXISTS shop_orders").await;
         write(
@@ -214,17 +228,19 @@ async fn the_schema_holds_keys_indexes_and_references() {
             "{name}"
         );
     }
+
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
-async fn explain_returns_the_plan_as_json() {
+async fn explain_returns_the_plan_as_json() -> Result<(), TestError> {
     let Some(servers) = DbServers::running() else {
-        return;
+        return Ok(());
     };
 
     for (name, server) in both(&servers) {
-        let mut database = connect(&server).await;
+        let mut database = connect(&server).await?;
 
         let plan = database
             .explain(
@@ -236,18 +252,21 @@ async fn explain_returns_the_plan_as_json() {
 
         assert!(plan["query_block"].is_object(), "{name}: {plan}");
     }
+
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs the database test servers: tests/db/up.sh, then SYNT_DB_TESTS=1"]
-async fn tls_modes_encrypt_and_verify_full_refuses_an_untrusted_certificate() {
+async fn tls_modes_encrypt_and_verify_full_refuses_an_untrusted_certificate()
+-> Result<(), TestError> {
     let Some(servers) = DbServers::running() else {
-        return;
+        return Ok(());
     };
 
     for (name, server) in both(&servers) {
         for tls in [TlsMode::Disable, TlsMode::Prefer, TlsMode::Require] {
-            let mut database = connect(&server.clone().with_tls(tls)).await;
+            let mut database = connect(&server.clone().with_tls(tls)).await?;
             let cipher = read(&mut database, "SHOW SESSION STATUS LIKE 'Ssl_cipher'").await;
             let encrypted = cipher.rows[0][1]
                 .as_str()
@@ -260,4 +279,6 @@ async fn tls_modes_encrypt_and_verify_full_refuses_an_untrusted_certificate() {
 
         assert!(verified.is_err(), "{name}");
     }
+
+    Ok(())
 }
