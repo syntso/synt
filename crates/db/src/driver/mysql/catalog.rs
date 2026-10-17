@@ -106,5 +106,5 @@ impl CatalogRow for Row {
 fn field<T: FromValue>(row: &Row, name: &str) -> Result<T, DbError> {
     row.get_opt(name)
         .and_then(Result::ok)
-        .ok_or_else(DbError::unexpected_catalog_row)
+        .ok_or(DbError::UnexpectedRow)
 }

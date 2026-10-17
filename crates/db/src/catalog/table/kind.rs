@@ -43,7 +43,7 @@ impl FromStr for TableKind {
         ]
         .into_iter()
         .find(|kind| kind.name() == text)
-        .ok_or_else(DbError::unexpected_catalog_row)
+        .ok_or(DbError::UnexpectedRow)
     }
 }
 

@@ -3,9 +3,7 @@ mod postgres;
 mod redis;
 mod sqlite;
 
-use std::future;
-
-use futures_util::future::BoxFuture;
+use futures_util::future::{self, BoxFuture};
 use serde_json::Value;
 
 use crate::{DbError, Engine, Page, Query, Rows, Schema, TableName};
@@ -23,23 +21,23 @@ pub(crate) trait Driver: Send {
     fn ping(&mut self) -> Answer<'_, String>;
 
     fn query<'a>(&'a mut self, _query: Query<'a>) -> Answer<'a, Rows> {
-        unsupported(format!("{} takes commands, not sql", self.engine()))
+        refused(DbError::TakesCommands(self.engine()))
     }
 
     fn command<'a>(&'a mut self, _words: &'a [&'a str], _page: Page) -> Answer<'a, Rows> {
-        unsupported(format!("{} takes sql, not a command", self.engine()))
+        refused(DbError::TakesSql(self.engine()))
     }
 
     fn explain<'a>(&'a mut self, _text: &'a str, _params: &'a [Value]) -> Answer<'a, Value> {
-        unsupported(format!("{} takes commands, not sql", self.engine()))
+        refused(DbError::TakesCommands(self.engine()))
     }
 
     fn tables(&mut self) -> Answer<'_, Vec<TableName>> {
-        unsupported(no_tables(self.engine()))
+        refused(DbError::NoTables(self.engine()))
     }
 
     fn schema(&mut self) -> Answer<'_, Schema> {
-        unsupported(no_tables(self.engine()))
+        refused(DbError::NoTables(self.engine()))
     }
 
     fn close(self: Box<Self>) -> BoxFuture<'static, ()> {
@@ -47,10 +45,6 @@ pub(crate) trait Driver: Send {
     }
 }
 
-fn no_tables(engine: Engine) -> String {
-    format!("{engine} has no tables; look at keys with SCAN")
-}
-
-fn unsupported<'a, T: Send + 'a>(reason: String) -> Answer<'a, T> {
-    Box::pin(future::ready(Err(DbError::Unsupported(reason))))
+fn refused<'a, T: Send + 'a>(error: DbError) -> Answer<'a, T> {
+    Box::pin(future::ready(Err(error)))
 }

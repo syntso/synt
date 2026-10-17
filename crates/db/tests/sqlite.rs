@@ -188,7 +188,10 @@ async fn a_missing_file_is_not_created() {
 
     let failed = database.query(&write("CREATE TABLE t (id int)")).await;
 
-    assert!(matches!(failed, Err(DbError::Connect(_))), "{failed:?}");
+    assert!(
+        matches!(failed, Err(DbError::Unopened { .. })),
+        "{failed:?}"
+    );
     assert!(!Path::new(&path).exists());
 }
 

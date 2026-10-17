@@ -114,5 +114,5 @@ async fn sql_is_not_sent_to_redis() {
 
     let refused = database.tables().await.unwrap_err();
 
-    assert!(matches!(refused, DbError::Unsupported(_)));
+    assert!(matches!(refused, DbError::NoTables(_)));
 }

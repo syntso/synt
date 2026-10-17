@@ -40,8 +40,7 @@ impl TlsMode {
 
         let provider = Arc::new(ring::default_provider());
         let builder = ClientConfig::builder_with_provider(Arc::clone(&provider))
-            .with_safe_default_protocol_versions()
-            .map_err(|error| DbError::Tls(error.to_string()))?;
+            .with_safe_default_protocol_versions()?;
 
         let config = if self.verifies() {
             builder

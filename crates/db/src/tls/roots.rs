@@ -25,11 +25,7 @@ impl SystemRoots {
         let (added, _skipped) = store.add_parsable_certificates(self.certificates);
 
         if added == 0 {
-            return Err(DbError::Tls(
-                "no trusted root certificates were found on this computer, so verify-full \
-                 cannot check the server"
-                    .to_owned(),
-            ));
+            return Err(DbError::NoRootCertificates);
         }
 
         Ok(store)
