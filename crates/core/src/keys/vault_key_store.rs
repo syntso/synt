@@ -3,7 +3,6 @@ use std::sync::Arc;
 use synt_journal::{Anchors, DeviceKey, JournalId, KeyStore, KeyStoreError};
 use synt_platform::Vault;
 
-use super::encoding::{decode_anchors, decode_device_key, encode_anchors};
 use crate::CoreError;
 
 const DEVICE_KEY: &str = "device-key";
@@ -22,7 +21,7 @@ impl VaultKeyStore {
             return Ok(None);
         };
 
-        let key = decode_device_key(&bytes).ok_or_else(|| damaged(DEVICE_KEY))?;
+        let key = DeviceKey::from_slice(&bytes).ok_or_else(|| damaged(DEVICE_KEY))?;
 
         Ok(Some(key))
     }
@@ -42,7 +41,7 @@ impl VaultKeyStore {
             return Ok(None);
         };
 
-        let anchors = decode_anchors(&bytes).ok_or_else(|| damaged(&name))?;
+        let anchors = Anchors::from_bytes(&bytes).ok_or_else(|| damaged(&name))?;
 
         Ok(Some(anchors))
     }
@@ -70,7 +69,7 @@ impl KeyStore for VaultKeyStore {
     }
 
     fn save_anchors(&self, journal: JournalId, anchors: &Anchors) -> Result<(), KeyStoreError> {
-        let bytes = encode_anchors(anchors);
+        let bytes = anchors.to_bytes();
 
         self.vault
             .write(&anchors_name(journal), &bytes)

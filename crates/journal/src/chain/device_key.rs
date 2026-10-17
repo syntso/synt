@@ -1,6 +1,6 @@
 use std::fmt;
 
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct DeviceKey([u8; 32]);
@@ -15,6 +15,12 @@ impl DeviceKey {
 
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
         Self(bytes)
+    }
+
+    pub fn from_slice(bytes: &[u8]) -> Option<Self> {
+        let bytes = Zeroizing::new(<[u8; 32]>::try_from(bytes).ok()?);
+
+        Some(Self(*bytes))
     }
 
     pub fn expose(&self) -> &[u8; 32] {
@@ -44,5 +50,11 @@ mod tests {
         let other = DeviceKey::generate().unwrap();
 
         assert_ne!(one.expose(), other.expose());
+    }
+
+    #[test]
+    fn slices_of_the_wrong_length_are_refused() {
+        assert!(DeviceKey::from_slice(&[7; 31]).is_none());
+        assert_eq!(DeviceKey::from_slice(&[7; 32]).unwrap().expose(), &[7; 32]);
     }
 }
