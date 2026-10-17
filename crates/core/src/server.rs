@@ -18,7 +18,8 @@ use tokio::{task, time};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use crate::core::Core;
+use crate::CoreError;
+use crate::core::{Core, VERSION};
 use crate::idle::Activity;
 use session::Session;
 
@@ -36,6 +37,24 @@ pub struct Server {
 }
 
 impl Server {
+    pub fn start(endpoint: &Endpoint, core: Arc<Core>) -> Result<Self, CoreError> {
+        let apps = AppCheck::for_this_core()?;
+        eprintln!("a client that says it is the app acts for the person only if {apps}");
+
+        if let Some(weakness) = apps.weakness() {
+            eprintln!("warning: {weakness}");
+        }
+
+        let server = Self::bind(endpoint, core, apps).map_err(CoreError::Endpoint)?;
+
+        eprintln!(
+            "synt-core {VERSION} listening on {}",
+            endpoint.address().to_string_lossy()
+        );
+
+        Ok(server)
+    }
+
     pub fn bind(
         endpoint: &Endpoint,
         core: impl Into<Arc<Core>>,

@@ -30,14 +30,14 @@ mod vault;
 pub use arguments::Arguments;
 pub use broker::Broker;
 pub use builtin::{
-    DbActions, GrantActions, GrantList, GrantRevoke, JournalActions, JournalPage, JournalVerify,
-    K8sActions, KeyActions, KeyGenerate, KeyImport, KeyList, KeyRemove, LocalSessionOpen, Ping,
-    Pong, ProjectActions, ProjectClose, ProjectList, ProjectOpen, ResourceActions, ResourceGet,
-    ResourceList, ResourcePut, ResourceRemove, RunbookActions, SecretActions, SecretList,
-    SecretPut, SecretRemove, SessionActions, SessionAttach, SessionBlocks, SessionClose,
-    SessionIntegration, SessionList, SessionResize, SftpActions, SshActions, SshConnections,
-    SshExec, SshSessionOpen, SshWarm, SyncActions, TunnelActions, TunnelClose, TunnelList,
-    TunnelOpen,
+    Builtins, DbActions, GrantActions, GrantList, GrantRevoke, JournalActions, JournalPage,
+    JournalVerify, K8sActions, KeyActions, KeyGenerate, KeyImport, KeyList, KeyRemove,
+    LocalSessionOpen, Ping, Pong, ProjectActions, ProjectClose, ProjectList, ProjectOpen,
+    ResourceActions, ResourceGet, ResourceList, ResourcePut, ResourceRemove, RunbookActions,
+    SecretActions, SecretList, SecretPut, SecretRemove, SessionActions, SessionAttach,
+    SessionBlocks, SessionClose, SessionIntegration, SessionList, SessionResize, SftpActions,
+    SshActions, SshConnections, SshExec, SshSessionOpen, SshWarm, SyncActions, TunnelActions,
+    TunnelClose, TunnelList, TunnelOpen,
 };
 pub use core::{Core, VERSION};
 pub use error::CoreError;

@@ -4,6 +4,7 @@ use std::ffi::OsString;
 use synt_platform::{LoginStart, PlatformError};
 
 use crate::CoreError;
+use crate::blocking::blocking;
 
 const INSTALL: &str = "install";
 const UNINSTALL: &str = "uninstall";
@@ -20,6 +21,21 @@ pub enum LoginCommand {
 
 impl LoginCommand {
     pub const NAME: &str = "service";
+
+    pub fn from_args(
+        arguments: impl IntoIterator<Item = OsString>,
+    ) -> Result<Option<Self>, CoreError> {
+        let arguments: Vec<OsString> = arguments.into_iter().collect();
+
+        let Some((first, rest)) = arguments.split_first() else {
+            return Ok(None);
+        };
+        if first != Self::NAME {
+            return Ok(None);
+        }
+
+        Ok(Some(Self::parse(rest)?))
+    }
 
     pub fn parse(arguments: &[OsString]) -> Result<Self, CoreError> {
         let usage = CoreError::CommandUsage {
@@ -39,8 +55,8 @@ impl LoginCommand {
         }
     }
 
-    pub fn run(self) -> Result<String, CoreError> {
-        self.perform().map_err(CoreError::LoginStart)
+    pub async fn run(self) -> Result<String, CoreError> {
+        blocking(move || self.perform().map_err(CoreError::LoginStart)).await
     }
 
     fn perform(self) -> Result<String, PlatformError> {

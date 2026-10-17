@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use synt_actions::ActionError;
 use synt_db::Engine;
+use synt_extensions::ExtensionError;
 use synt_journal::{JournalError, JournalId, KeyStoreError};
 use synt_platform::{KeyPlace, PlatformError};
 use synt_ssh::SshError;
@@ -252,6 +253,12 @@ pub enum CoreError {
 
     #[error(transparent)]
     Sync(#[from] SyncError),
+
+    #[error(transparent)]
+    Extension(#[from] ExtensionError),
+
+    #[error(transparent)]
+    Action(#[from] ActionError),
 
     #[error("{} must be a plain folder, not a link", .0.display())]
     LinkedFolder(PathBuf),
