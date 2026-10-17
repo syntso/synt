@@ -1,11 +1,8 @@
-use std::sync::Arc;
-
 use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::SessionInfo;
-use crate::clock::milliseconds;
-use crate::terminal::{Terminal, Terminals};
+use crate::terminals::Terminals;
 
 #[derive(Debug, Clone)]
 pub struct SessionList {
@@ -33,32 +30,10 @@ impl Action for SessionList {
     async fn run(&self, _context: &Context, (): ()) -> Result<Vec<SessionInfo>, ActionError> {
         let mut sessions = Vec::new();
 
-        for terminal in self.terminals.all() {
-            sessions.push(describe(&terminal).await);
+        for session in self.terminals.all() {
+            sessions.push(SessionInfo::of(&session).await);
         }
 
         Ok(sessions)
-    }
-}
-
-async fn describe(terminal: &Arc<Terminal>) -> SessionInfo {
-    let origin = terminal.origin();
-    let size = terminal.size().await;
-
-    SessionInfo {
-        session: terminal.id(),
-        kind: terminal.kind(),
-        target: origin
-            .target
-            .as_ref()
-            .map(|target| target.as_str().to_owned()),
-        host: terminal.host(),
-        actor: origin.actor.clone(),
-        risk: origin.risk,
-        columns: size.columns,
-        rows: size.rows,
-        attached: terminal.attached().await,
-        blocks: terminal.blocks().await.len(),
-        age_ms: milliseconds(terminal.age()),
     }
 }

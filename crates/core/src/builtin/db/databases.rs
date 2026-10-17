@@ -14,7 +14,8 @@ use zeroize::Zeroizing;
 use super::failure::failure;
 use super::open::OpenDatabase;
 use super::{DbExplain, DbPing, DbQuery, DbSchema, DbTables};
-use crate::builtin::blocking::blocking;
+use crate::CoreError;
+use crate::blocking::blocking;
 use crate::builtin::ssh::{failure as ssh_failure, is_root};
 use crate::projects::{Projects, ResolvedDatabase};
 use crate::secrets::Secrets;
@@ -81,10 +82,7 @@ impl Databases {
         let target = target?;
         let resolved = self.resolve(Some(target))?;
 
-        Some(
-            self.projects
-                .database_destination(target.as_str(), &resolved),
-        )
+        Some(self.projects.destination(target.as_str(), &resolved))
     }
 
     pub(super) async fn with<T>(
@@ -117,10 +115,7 @@ impl Databases {
         let resolved = self.reach(context, target).await?;
         let password = self.password(&resolved).await?;
 
-        let server = resolved
-            .resource
-            .server(password)
-            .map_err(ActionError::Failed)?;
+        let server = resolved.resource.server(password)?;
 
         let Some(via) = &resolved.via else {
             let database = Database::connect(&server).await.map_err(failure)?;
@@ -142,7 +137,7 @@ impl Databases {
     ) -> Result<ResolvedDatabase, ActionError> {
         let projects = self.projects.clone();
         let text = target.as_str().to_owned();
-        let resolved = blocking(move || projects.database(&text)).await?;
+        let resolved = blocking::<_, CoreError>(move || projects.database(&text)).await?;
 
         if resolved.via.as_ref().is_some_and(|via| is_root(via.user()))
             && context.risk() != Risk::Privileged
@@ -153,9 +148,7 @@ impl Databases {
             )));
         }
 
-        let reached = self
-            .projects
-            .database_destination(target.as_str(), &resolved);
+        let reached = self.projects.destination(target.as_str(), &resolved);
 
         if context.destination() != Some(reached.as_str()) {
             return Err(ActionError::Failed(format!(
@@ -171,16 +164,12 @@ impl Databases {
         &self,
         resolved: &ResolvedDatabase,
     ) -> Result<Option<Zeroizing<String>>, ActionError> {
-        let Some(name) = resolved
-            .resource
-            .password_name()
-            .map_err(ActionError::Failed)?
-        else {
+        let Some(name) = resolved.resource.password_name()? else {
             return Ok(None);
         };
 
         let secrets = self.secrets.clone();
-        let used_for = format!("the database {}", resolved.describe());
+        let used_for = format!("the database {resolved}");
 
         blocking(move || secrets.read_text_for(&name, &used_for))
             .await

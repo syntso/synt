@@ -1,14 +1,20 @@
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
-use synt_journal::ResourceRef;
 
-use super::name_params::SecretNameParams;
-use crate::builtin::blocking::blocking;
-use crate::secrets::{SecretInfo, Secrets};
+use crate::blocking::blocking;
+use crate::secrets::{SecretInfo, SecretName, Secrets};
 
 #[derive(Clone)]
 pub struct SecretRemove {
     secrets: Secrets,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RemoveParams {
+    pub name: SecretName,
 }
 
 impl SecretRemove {
@@ -23,16 +29,8 @@ impl Action for SecretRemove {
     const RISK: Risk = Risk::Write;
     const PERSON_ONLY: bool = true;
 
-    type Params = SecretNameParams;
+    type Params = RemoveParams;
     type Output = SecretInfo;
-
-    fn check(
-        &self,
-        _target: Option<&ResourceRef>,
-        params: &SecretNameParams,
-    ) -> Result<(), ActionError> {
-        params.secret_name().map(drop)
-    }
 
     fn summary(&self, output: &SecretInfo) -> Value {
         output.summary()
@@ -41,11 +39,10 @@ impl Action for SecretRemove {
     async fn run(
         &self,
         _context: &Context,
-        params: SecretNameParams,
+        params: RemoveParams,
     ) -> Result<SecretInfo, ActionError> {
-        let name = params.secret_name()?;
         let secrets = self.secrets.clone();
 
-        blocking(move || secrets.remove(&name)).await
+        blocking(move || secrets.remove(&params.name)).await
     }
 }

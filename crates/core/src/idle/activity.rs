@@ -3,7 +3,7 @@ use tokio_util::task::TaskTracker;
 
 use crate::builtin::Kube;
 use crate::runbooks::Runs;
-use crate::terminal::Terminals;
+use crate::terminals::Terminals;
 
 pub trait Activity: Send + Sync {
     fn is_active(&self) -> bool;

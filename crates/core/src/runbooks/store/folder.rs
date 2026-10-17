@@ -24,7 +24,7 @@ impl RunbookFolder {
     }
 
     pub(super) fn slug(&self) -> &str {
-        &self.place.slug
+        self.place.slug.as_str()
     }
 
     pub(super) fn reference(&self, name: &str) -> String {
@@ -47,7 +47,7 @@ impl RunbookFolder {
 
     pub(super) fn listing(&self) -> Result<RunbookListing, CoreError> {
         let mut listing = RunbookListing {
-            project: self.place.slug.clone(),
+            project: self.place.slug.to_string(),
             runbooks: Vec::new(),
             problems: Vec::new(),
         };

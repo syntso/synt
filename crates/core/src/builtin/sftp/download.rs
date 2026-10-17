@@ -8,8 +8,9 @@ use synt_journal::ResourceRef;
 use synt_proto::StreamId;
 use synt_ssh::Download;
 
-use super::files::{failed, link};
+use super::files::failed;
 use super::{Files, RemotePath};
+use crate::link::Link;
 use crate::link::Outbound;
 
 #[derive(Debug, Clone)]
@@ -130,7 +131,7 @@ impl Action for SftpDownload {
         }
 
         let _slot = self.files.transfer_slot().await?;
-        let link = link(context)?;
+        let link = Link::of_call(context, "the file")?;
 
         let mut outbound = Outbound::open(&link, params.stream)?;
         let sent = self.transfer(context, &params, &mut outbound).await;

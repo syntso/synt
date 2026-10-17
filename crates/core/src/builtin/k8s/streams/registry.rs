@@ -94,7 +94,7 @@ impl Streams {
             action: &action,
             target: context.target(),
         };
-        let finished = Recorder::step(&call, EventKind::Finished, &ended.summary(about));
+        let finished = call.step(EventKind::Finished, &ended.summary(about));
 
         if let Err(error) = self
             .recorder

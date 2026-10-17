@@ -3,90 +3,77 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use tokio_util::sync::CancellationToken;
 
-use super::actor_text::actor_text;
-use super::holders::Holders;
-use super::{GrantId, GrantSeal, Hold, StandingGrant};
+use super::{
+    GrantId, GrantScope, GrantSeal, GrantTable, GrantUsers, Hold, Revocation, StandingGrant,
+};
 use crate::CoreError;
 use crate::access::AccessRequest;
 use crate::blocking::blocking;
 use crate::locked::locked;
-use crate::state::{NewGrant, State, StoredGrant};
+use crate::log::log;
+use crate::state::State;
 
-type Kept = BTreeMap<GrantId, (StoredGrant, StandingGrant)>;
+type Kept = BTreeMap<GrantId, StandingGrant>;
 
 #[derive(Debug, Clone)]
 pub struct AlwaysGrants {
-    state: State,
+    table: GrantTable,
     seal: Arc<GrantSeal>,
     kept: Arc<Mutex<Kept>>,
     writing: Arc<Mutex<()>>,
-    holders: Arc<Holders>,
+    users: Arc<GrantUsers>,
 }
 
 impl AlwaysGrants {
     pub fn load(state: State, seal: GrantSeal) -> Result<Self, CoreError> {
-        let stored = sealed_grants(&state, &seal)?;
-        let mut kept = Kept::new();
-
-        for stored in stored {
-            let id = stored.id;
-
-            match StandingGrant::from_stored(stored.clone()) {
-                Some(grant) => {
-                    kept.insert(grant.id, (stored, grant));
-                }
-                None => eprintln!("synt-core: grant {id} names an unknown actor; it is ignored"),
-            }
-        }
+        let table = GrantTable::new(state);
+        let sealed = Self::sealed(&table, &seal)?;
+        let kept = sealed
+            .into_iter()
+            .map(|grant| (grant.id(), grant))
+            .collect();
 
         Ok(Self {
-            state,
+            table,
             seal: Arc::new(seal),
             kept: Arc::new(Mutex::new(kept)),
             writing: Arc::default(),
-            holders: Arc::default(),
+            users: Arc::default(),
         })
     }
 
     pub fn list(&self) -> Vec<StandingGrant> {
+        self.lock().values().cloned().collect()
+    }
+
+    pub(crate) fn covering(&self, request: &AccessRequest<'_>) -> Option<GrantId> {
         self.lock()
             .values()
-            .map(|(_, grant)| grant.clone())
-            .collect()
+            .find(|grant| grant.scope().covers(request))
+            .map(StandingGrant::id)
     }
 
-    pub fn covering(&self, request: &AccessRequest<'_>) -> Option<GrantId> {
-        self.lock()
-            .values()
-            .find(|(_, grant)| grant.covers(request))
-            .map(|(_, grant)| grant.id)
-    }
-
-    pub async fn give(&self, request: &AccessRequest<'_>) -> Result<GrantId, CoreError> {
-        let grant = NewGrant {
-            actor: actor_text(request.actor),
-            action: request.action.as_str().to_owned(),
-            resource: request.target.map(|target| target.as_str().to_owned()),
-            destination: request.destination.map(str::to_owned),
-        };
+    pub(crate) async fn give(&self, request: &AccessRequest<'_>) -> Result<GrantId, CoreError> {
+        let scope = GrantScope::covering(request);
         let grants = self.clone();
 
-        blocking(move || grants.keep(grant)).await
+        blocking(move || grants.keep(scope)).await
     }
 
-    pub async fn revoke(&self, id: GrantId) -> Result<Option<(StandingGrant, usize)>, CoreError> {
+    pub(crate) async fn revoke(&self, id: GrantId) -> Result<Option<Revocation>, CoreError> {
         let grants = self.clone();
-        let Some(grant) = blocking(move || grants.forget(id)).await? else {
+
+        let Some(grant) = blocking::<_, CoreError>(move || grants.forget(id)).await? else {
             return Ok(None);
         };
 
-        let stopped = self.holders.stop_all(id);
+        let stopped = self.users.stop_all(id);
 
-        Ok(Some((grant, stopped)))
+        Ok(Some(Revocation { grant, stopped }))
     }
 
     pub(crate) fn hold(&self, id: GrantId, stop: &CancellationToken) -> Hold {
-        let hold = self.holders.hold(id, stop.clone());
+        let hold = self.users.hold(id, stop.clone());
 
         if !self.lock().contains_key(&id) {
             stop.cancel();
@@ -95,23 +82,40 @@ impl AlwaysGrants {
         hold
     }
 
-    fn keep(&self, grant: NewGrant) -> Result<GrantId, CoreError> {
+    fn sealed(table: &GrantTable, seal: &GrantSeal) -> Result<Vec<StandingGrant>, CoreError> {
+        let stored = table.all()?;
+
+        if seal.matches(&stored)? {
+            return Ok(stored);
+        }
+
+        log!(
+            "the standing grants were changed outside the core, so all {} of them are \
+             dropped; the person will be asked again",
+            stored.len()
+        );
+
+        table.clear()?;
+        seal.save(&[])?;
+
+        Ok(Vec::new())
+    }
+
+    fn keep(&self, scope: GrantScope) -> Result<GrantId, CoreError> {
         let _writing = locked(&self.writing);
 
-        let stored = self.state.insert_grant(grant)?;
-        let standing = StandingGrant::from_stored(stored.clone())
-            .ok_or_else(|| CoreError::Grant("the new grant cannot be read back".to_owned()))?;
+        let grant = self.table.insert(scope)?;
 
-        let mut all = self.stored();
-        all.push(stored.clone());
+        let mut all = self.list();
+        all.push(grant.clone());
 
         if let Err(error) = self.seal.save(&all) {
-            self.state.delete_grant(stored.id)?;
+            self.table.delete(grant.id())?;
             return Err(error);
         }
 
-        let id = standing.id;
-        self.lock().insert(id, (stored, standing));
+        let id = grant.id();
+        self.lock().insert(id, grant);
 
         Ok(id)
     }
@@ -123,46 +127,20 @@ impl AlwaysGrants {
             return Ok(None);
         }
 
-        self.state.delete_grant(id.0)?;
+        self.table.delete(id)?;
         let removed = self.lock().remove(&id);
 
-        if let Err(error) = self.seal.save(&self.stored()) {
-            eprintln!(
-                "synt-core: the grants could not be sealed after a revocation, so the next start \
+        if let Err(error) = self.seal.save(&self.list()) {
+            log!(
+                "the grants could not be sealed after a revocation, so the next start \
                  drops them all: {error}"
             );
         }
 
-        Ok(removed.map(|(_, grant)| grant))
-    }
-
-    fn stored(&self) -> Vec<StoredGrant> {
-        self.lock()
-            .values()
-            .map(|(stored, _)| stored.clone())
-            .collect()
+        Ok(removed)
     }
 
     fn lock(&self) -> MutexGuard<'_, Kept> {
         locked(&self.kept)
     }
-}
-
-fn sealed_grants(state: &State, seal: &GrantSeal) -> Result<Vec<StoredGrant>, CoreError> {
-    let stored = state.grants()?;
-
-    if seal.matches(&stored)? {
-        return Ok(stored);
-    }
-
-    eprintln!(
-        "synt-core: the standing grants were changed outside the core, so all {} of them are \
-         dropped; the person will be asked again",
-        stored.len()
-    );
-
-    state.clear_grants()?;
-    seal.save(&[])?;
-
-    Ok(Vec::new())
 }

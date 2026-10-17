@@ -5,7 +5,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::Drafted;
 use crate::runbooks::{Draft, DraftStep, Runbooks};
-use crate::terminal::{Block, SessionId};
+use crate::terminals::{Block, SessionId};
 
 const MOST_BLOCKS: usize = 100;
 const DEFAULT_NAME: &str = "Steps from a terminal session";

@@ -4,12 +4,15 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_ssh::{Pool, Shell, Target, TerminalSize};
 
-use super::AttachedSession;
-use super::checks::{connection, term, terminal_size};
-use super::revocation::close_when_revoked;
+use super::{AttachedSession, Dimensions};
 use crate::builtin::ssh::{failure, within_connect_limit};
+use crate::link::Link;
 use crate::projects::Projects;
-use crate::terminal::{Console, ConsoleOutput, Origin, SessionId, Terminals};
+use crate::terminals::{OpenConsole, Origin, SessionId, Terminals};
+
+pub(super) const CARRIED: &str = "a terminal";
+const DEFAULT_TERM: &str = "xterm-256color";
+const LONGEST_TERM: usize = 64;
 
 #[derive(Debug, Clone)]
 pub struct SshSessionOpen {
@@ -28,6 +31,25 @@ pub struct SessionOpenParams {
     pub term: Option<String>,
 }
 
+impl SessionOpenParams {
+    pub(super) fn term(&self) -> Result<&str, ActionError> {
+        let Some(term) = self.term.as_deref() else {
+            return Ok(DEFAULT_TERM);
+        };
+
+        let allowed =
+            |character: char| character.is_ascii_alphanumeric() || "-_.+".contains(character);
+
+        if term.is_empty() || term.len() > LONGEST_TERM || !term.chars().all(allowed) {
+            return Err(ActionError::InvalidParams(format!(
+                "term must be 1 to {LONGEST_TERM} letters, digits or -_.+"
+            )));
+        }
+
+        Ok(term)
+    }
+}
+
 impl SshSessionOpen {
     pub fn new(pool: Pool, terminals: Terminals, projects: Projects) -> Self {
         Self {
@@ -42,12 +64,12 @@ impl SshSessionOpen {
         target: &Target,
         term: &str,
         size: TerminalSize,
-    ) -> Result<(Console, ConsoleOutput), ActionError> {
+    ) -> Result<OpenConsole, ActionError> {
         let lease = within_connect_limit(self.pool.acquire(target)).await?;
 
         let (shell, output) = Shell::open(lease, term, size).await.map_err(failure)?;
 
-        Ok((Console::Remote(shell), ConsoleOutput::Remote(output)))
+        Ok(OpenConsole::new(shell, output))
     }
 }
 
@@ -80,9 +102,9 @@ impl Action for SshSessionOpen {
         params: SessionOpenParams,
     ) -> Result<AttachedSession, ActionError> {
         let host = context.target().ok_or(ActionError::TargetRequired)?;
-        let size = terminal_size(params.columns, params.rows)?;
-        let term = term(params.term.as_deref())?;
-        let link = connection(context)?;
+        let size = params.size()?;
+        let term = params.term()?;
+        let link = Link::of_call(context, CARRIED)?;
 
         let target = self.projects.reach_host(context).await?;
         let risk = context.risk();
@@ -98,14 +120,24 @@ impl Action for SshSessionOpen {
             risk,
         };
 
-        let terminal = self
+        let session = self
             .terminals
             .start(id, origin, opened, size)
             .ok_or_else(|| ActionError::failed("the core is stopping, so no session was opened"))?;
-        let attached = terminal.attach(&link).await;
+        let attached = session.attach(&link).await;
 
-        close_when_revoked(context, terminal);
+        session.close_when_revoked(context);
 
-        Ok(AttachedSession::new(id, &attached))
+        Ok(attached)
+    }
+}
+
+impl Dimensions for SessionOpenParams {
+    fn columns(&self) -> u16 {
+        self.columns
+    }
+
+    fn rows(&self) -> u16 {
+        self.rows
     }
 }

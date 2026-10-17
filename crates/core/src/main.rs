@@ -1,42 +1,39 @@
 use std::env;
 use std::error::Error;
-use std::ffi::{OsStr, OsString};
-use std::path::{self, Path, PathBuf};
+use std::ffi::OsString;
+use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
 use synt_actions::{ActionError, Registry};
 use synt_core::{
-    AlwaysGrants, Broker, Core, CoreCaller, CoreScreen, Databases, EventFeed, ExtensionMerger,
-    Files, GrantList, GrantRevoke, IdleWatch, JournalPage, JournalVerify, KeyGenerate, KeyImport,
-    KeyList, KeyRemove, Kube, LocalSessionOpen, LoginCommand, Ping, ProjectClose, ProjectList,
-    ProjectOpen, Projects, ResourceGet, ResourceList, ResourcePut, ResourceRemove, Runbooks,
-    SecretList, SecretPut, SecretRemove, Secrets, Server, SessionAttach, SessionBlocks,
-    SessionClose, SessionIntegration, SessionList, SessionResize, SshConnections, SshExec, SshKeys,
-    SshSessionOpen, SshWarm, Storage, Terminals, TunnelClose, TunnelList, TunnelOpen, VERSION,
+    AlwaysGrants, Arguments, Broker, Core, CoreCaller, CoreScreen, Databases, EventFeed,
+    ExtensionMerger, Files, GrantActions, IdleWatch, JournalActions, KeyActions, Kube,
+    LoginCommand, Ping, ProjectActions, Projects, ResourceActions, Runbooks, SecretActions,
+    Secrets, Server, SessionActions, SshActions, SshKeys, Storage, Terminals, TunnelActions,
+    VERSION,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Journal, JournalWriter};
-use synt_platform::{
-    AppCheck, Endpoint, WEAK_VAULT_FLAG, WeakVault, data_directory, open_vault, shutdown_signal,
-};
+use synt_platform::{AppCheck, WEAK_VAULT_FLAG, WeakVault, open_vault, shutdown_signal};
 use synt_ssh::{Pool, Tunnels};
 use synt_sync::{SyncLoop, Syncer};
 use tokio::task;
 
-const ENDPOINT_FLAG: &str = "--endpoint";
-const DATA_FLAG: &str = "--data";
-const STAY_FLAG: &str = "--stay";
-const IDLE_FLAG: &str = "--idle-minutes";
-const IDLE_LIMIT: Duration = Duration::from_mins(10);
 const SYNC_EVERY: Duration = Duration::from_secs(10);
 
-struct Arguments {
-    endpoint: Option<Endpoint>,
-    data: Option<PathBuf>,
-    weak_vault: WeakVault,
-    idle: Option<Duration>,
+struct Builtins {
+    journal: JournalWriter,
+    projects: Projects,
+    keys: SshKeys,
+    secrets: Secrets,
+    always: AlwaysGrants,
+    pool: Pool,
+    tunnels: Tunnels,
+    terminals: Terminals,
+    runbooks: Runbooks,
+    kube: Kube,
 }
 
 #[tokio::main]
@@ -55,18 +52,43 @@ async fn run() -> Result<(), Box<dyn Error>> {
         return login(command).await;
     }
 
-    let arguments = arguments()?;
-    let endpoint = match arguments.endpoint {
-        Some(endpoint) => endpoint,
-        None => Endpoint::for_user()?,
-    };
-    let data = match arguments.data {
-        Some(data) => path::absolute(data)?,
-        None => data_directory()?,
-    };
+    let arguments = Arguments::parse(env::args_os().skip(1))?;
+    let endpoint = arguments.endpoint()?;
+    let data = arguments.data()?;
 
-    let (journal, storage) = journal(&data, arguments.weak_vault)?;
-    let journal = JournalWriter::spawn(journal)?;
+    let (journal, storage) = journal(&data, arguments.weak_vault())?;
+    let builtins = builtins(&storage, JournalWriter::spawn(journal)?)?;
+
+    let mut registry = Registry::new();
+    register(&mut registry, &builtins)?;
+
+    let extensions = extensions(&data, &storage, &builtins)?;
+    let syncer = syncer(&storage, &builtins.projects, &builtins.journal, &extensions)?;
+    syncer.register(&mut registry)?;
+    extensions.register(&mut registry)?;
+    load_extensions(&extensions).await?;
+
+    let core = connect(registry, &builtins, &extensions);
+    let _feed = EventFeed::start(&extensions, &builtins.journal, &builtins.projects);
+    let server = Server::bind(&endpoint, core, apps()?)?;
+    let _sync: SyncLoop = syncer.start(SYNC_EVERY);
+
+    eprintln!(
+        "synt-core {VERSION} listening on {}",
+        endpoint.address().to_string_lossy()
+    );
+
+    let idle = IdleWatch::new(arguments.idle())
+        .watch(builtins.terminals.clone())
+        .watch(builtins.tunnels)
+        .watch(builtins.runbooks.runs())
+        .watch(builtins.kube);
+    serve(server, idle, builtins.terminals).await;
+
+    Ok(())
+}
+
+fn builtins(storage: &Storage, journal: JournalWriter) -> Result<Builtins, Box<dyn Error>> {
     let state = storage.state()?;
     let keys = SshKeys::new(storage.vault(), state.clone());
     let secrets = Secrets::new(storage.vault(), state.clone());
@@ -79,130 +101,78 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let runbooks = Runbooks::new(projects.clone(), journal.clone(), terminals.clone());
     let kube = Kube::new(pool.clone(), projects.clone(), journal.clone());
 
-    let mut registry = Registry::new();
-    register_hosts(&mut registry, &pool, &projects, &tunnels)?;
-    kube.register(&mut registry)?;
-    register_sessions(&mut registry, &pool, &projects, &terminals)?;
-    register_records(&mut registry, &journal, &projects, &always)?;
-    register_keys(&mut registry, &keys, &pool)?;
-    register_secrets(&mut registry, &secrets)?;
-    Databases::new(pool.clone(), projects.clone(), secrets.clone()).register(&mut registry)?;
-    runbooks.register(&mut registry)?;
+    Ok(Builtins {
+        journal,
+        projects,
+        keys,
+        secrets,
+        always,
+        pool,
+        tunnels,
+        terminals,
+        runbooks,
+        kube,
+    })
+}
 
+fn register(registry: &mut Registry, builtins: &Builtins) -> Result<(), ActionError> {
+    let Builtins {
+        journal,
+        projects,
+        keys,
+        secrets,
+        always,
+        pool,
+        tunnels,
+        terminals,
+        runbooks,
+        kube,
+    } = builtins;
+
+    registry.register(Ping)?;
+    SshActions::new(pool.clone(), projects.clone()).register(registry)?;
+    TunnelActions::new(tunnels.clone(), projects.clone()).register(registry)?;
+    Files::new(pool.clone(), projects.clone()).register(registry)?;
+    kube.register(registry)?;
+    SessionActions::new(pool.clone(), projects.clone(), terminals.clone()).register(registry)?;
+    JournalActions::new(journal.clone()).register(registry)?;
+    ProjectActions::new(projects.clone()).register(registry)?;
+    ResourceActions::new(projects.clone()).register(registry)?;
+    GrantActions::new(always.clone(), journal.clone()).register(registry)?;
+    KeyActions::new(keys.clone(), pool.clone()).register(registry)?;
+    SecretActions::new(secrets.clone()).register(registry)?;
+    Databases::new(pool.clone(), projects.clone(), secrets.clone()).register(registry)?;
+    runbooks.register(registry)
+}
+
+fn extensions(
+    data: &Path,
+    storage: &Storage,
+    builtins: &Builtins,
+) -> Result<Extensions, Box<dyn Error>> {
     let extensions = Extensions::open(
-        &data,
+        data,
         &storage.state_path(),
         Runtime::new()?,
         Remote::official()?,
     )?
-    .with_secrets(Arc::new(secrets))
-    .with_projects(Arc::new(projects.clone()));
+    .with_secrets(Arc::new(builtins.secrets.clone()))
+    .with_projects(Arc::new(builtins.projects.clone()));
 
-    let syncer = syncer(&storage, &projects, &journal, &extensions)?;
-    syncer.register(&mut registry)?;
+    Ok(extensions)
+}
 
-    extensions.register(&mut registry)?;
-    load_extensions(&extensions).await?;
+fn connect(registry: Registry, builtins: &Builtins, extensions: &Extensions) -> Arc<Core> {
+    let broker = Broker::with_always(builtins.always.clone());
+    let core = Arc::new(Core::new(registry, builtins.journal.clone(), broker));
 
-    let core = Arc::new(Core::new(
-        registry,
-        journal.clone(),
-        Broker::with_always(always),
-    ));
     extensions.connect(
         Arc::new(CoreCaller::new(&core)),
         Arc::new(CoreScreen::new(&core)),
     );
-    runbooks.connect(&core);
-    let _feed = EventFeed::start(&extensions, &journal, &projects);
-    let server = Server::bind(&endpoint, core, apps()?)?;
-    let _sync: SyncLoop = syncer.start(SYNC_EVERY);
+    builtins.runbooks.connect(&core);
 
-    eprintln!(
-        "synt-core {VERSION} listening on {}",
-        endpoint.address().to_string_lossy()
-    );
-
-    let idle = IdleWatch::new(arguments.idle)
-        .watch(terminals.clone())
-        .watch(tunnels)
-        .watch(runbooks.runs())
-        .watch(kube);
-    serve(server, idle, terminals).await;
-
-    Ok(())
-}
-
-fn register_hosts(
-    registry: &mut Registry,
-    pool: &Pool,
-    projects: &Projects,
-    tunnels: &Tunnels,
-) -> Result<(), ActionError> {
-    registry.register(Ping)?;
-    registry.register(SshExec::new(pool.clone(), projects.clone()))?;
-    registry.register(SshWarm::new(pool.clone(), projects.clone()))?;
-    registry.register(SshConnections::new(pool.clone()))?;
-
-    registry.register(TunnelOpen::new(tunnels.clone(), projects.clone()))?;
-    registry.register(TunnelList::new(tunnels.clone()))?;
-    registry.register(TunnelClose::new(tunnels.clone()))?;
-
-    Files::new(pool.clone(), projects.clone()).register(registry)
-}
-
-fn register_sessions(
-    registry: &mut Registry,
-    pool: &Pool,
-    projects: &Projects,
-    terminals: &Terminals,
-) -> Result<(), ActionError> {
-    registry.register(SshSessionOpen::new(
-        pool.clone(),
-        terminals.clone(),
-        projects.clone(),
-    ))?;
-    registry.register(LocalSessionOpen::new(terminals.clone()))?;
-    registry.register(SessionAttach::new(terminals.clone()))?;
-    registry.register(SessionResize::new(terminals.clone()))?;
-    registry.register(SessionClose::new(terminals.clone()))?;
-    registry.register(SessionList::new(terminals.clone()))?;
-    registry.register(SessionBlocks::new(terminals.clone()))?;
-    registry.register(SessionIntegration)
-}
-
-fn register_records(
-    registry: &mut Registry,
-    journal: &JournalWriter,
-    projects: &Projects,
-    always: &AlwaysGrants,
-) -> Result<(), ActionError> {
-    registry.register(JournalPage::new(journal.clone()))?;
-    registry.register(JournalVerify::new(journal.clone()))?;
-
-    registry.register(ProjectOpen::new(projects.clone()))?;
-    registry.register(ProjectClose::new(projects.clone()))?;
-    registry.register(ProjectList::new(projects.clone()))?;
-    registry.register(ResourceList::new(projects.clone()))?;
-    registry.register(ResourceGet::new(projects.clone()))?;
-    registry.register(ResourcePut::new(projects.clone()))?;
-    registry.register(ResourceRemove::new(projects.clone()))?;
-
-    registry.register(GrantList::new(always.clone()))?;
-    registry.register(GrantRevoke::new(always.clone(), journal.clone()))
-}
-
-fn register_keys(registry: &mut Registry, keys: &SshKeys, pool: &Pool) -> Result<(), ActionError> {
-    registry.register(KeyImport::new(keys.clone()))?;
-    registry.register(KeyGenerate::new(keys.clone()))?;
-    registry.register(KeyList::new(keys.clone()))?;
-    registry.register(KeyRemove::new(keys.clone(), pool.clone()))
-}
-
-fn register_secrets(registry: &mut Registry, secrets: &Secrets) -> Result<(), ActionError> {
-    registry.register(SecretPut::new(secrets.clone()))?;
-    registry.register(SecretList::new(secrets.clone()))?;
-    registry.register(SecretRemove::new(secrets.clone()))
+    core
 }
 
 fn syncer(
@@ -300,55 +270,6 @@ async fn login(command: LoginCommand) -> Result<(), Box<dyn Error>> {
     println!("{report}");
 
     Ok(())
-}
-
-fn arguments() -> Result<Arguments, Box<dyn Error>> {
-    let mut parsed = Arguments {
-        endpoint: None,
-        data: None,
-        weak_vault: WeakVault::Refuse,
-        idle: Some(IDLE_LIMIT),
-    };
-    let mut arguments = env::args_os().skip(1);
-
-    while let Some(argument) = arguments.next() {
-        if argument == WEAK_VAULT_FLAG {
-            parsed.weak_vault = WeakVault::Allow;
-            continue;
-        }
-
-        if argument == STAY_FLAG {
-            parsed.idle = None;
-            continue;
-        }
-
-        if argument != ENDPOINT_FLAG && argument != DATA_FLAG && argument != IDLE_FLAG {
-            return Err(format!("unknown argument {}", argument.to_string_lossy()).into());
-        }
-
-        let value = arguments
-            .next()
-            .ok_or_else(|| format!("{} needs a value", argument.to_string_lossy()))?;
-
-        if argument == ENDPOINT_FLAG {
-            parsed.endpoint = Some(Endpoint::new(value));
-        } else if argument == DATA_FLAG {
-            parsed.data = Some(PathBuf::from(value));
-        } else if parsed.idle.is_some() {
-            parsed.idle = Some(idle_limit(&value)?);
-        }
-    }
-
-    Ok(parsed)
-}
-
-fn idle_limit(value: &OsStr) -> Result<Duration, Box<dyn Error>> {
-    let minutes: u64 = value
-        .to_str()
-        .and_then(|text| text.parse().ok())
-        .ok_or_else(|| format!("{IDLE_FLAG} needs a whole number of minutes"))?;
-
-    Ok(Duration::from_mins(minutes))
 }
 
 fn weak_vault_reason(weak_vault: WeakVault) -> String {

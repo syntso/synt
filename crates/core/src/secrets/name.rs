@@ -1,45 +1,13 @@
-use std::fmt;
+use crate::vault::{VaultKind, VaultName};
 
-use crate::ssh_keys::KeyName;
+pub enum SecretItem {}
 
-const SECRET_PREFIX: &str = "secret://";
-const VAULT_PREFIX: &str = "secret.";
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SecretName(String);
-
-impl SecretName {
-    pub fn parse(text: &str) -> Result<Self, String> {
-        let checked =
-            KeyName::parse(text).map_err(|reason| reason.replace("a key name", "a secret name"))?;
-
-        Ok(Self(checked.as_str().to_owned()))
-    }
-
-    pub fn from_reference(reference: &str) -> Option<Result<Self, String>> {
-        let name = reference.strip_prefix(SECRET_PREFIX)?;
-
-        Some(Self::parse(name))
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    pub fn reference(&self) -> String {
-        KeyName::reference(&self.0)
-    }
-
-    pub(crate) fn vault_item(&self) -> String {
-        format!("{VAULT_PREFIX}{}", self.0.replace('/', "."))
-    }
+impl VaultKind for SecretItem {
+    const NOUN: &'static str = "secret";
+    const VAULT_PREFIX: &'static str = "secret.";
 }
 
-impl fmt::Display for SecretName {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
+pub type SecretName = VaultName<SecretItem>;
 
 #[cfg(test)]
 mod tests {

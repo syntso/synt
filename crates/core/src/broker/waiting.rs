@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use synt_proto::{ApprovalDecision, ApprovalId};
 use tokio::sync::oneshot;
 
-use super::open_question::OpenQuestion;
+use super::OpenQuestion;
 use crate::locked::locked;
 
 type Questions = HashMap<ApprovalId, oneshot::Sender<ApprovalDecision>>;

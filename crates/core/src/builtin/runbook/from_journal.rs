@@ -5,7 +5,8 @@ use synt_actions::{Action, ActionError, Context, Risk};
 
 use super::Drafted;
 use super::requests::Requests;
-use crate::builtin::blocking::blocking;
+use crate::CoreError;
+use crate::blocking::blocking;
 use crate::runbooks::Runbooks;
 
 const MOST_EVENTS: usize = 100;
@@ -57,7 +58,7 @@ impl Action for RunbookFromJournal {
         let journal = self.runbooks.journal().clone();
         let name = params.name.unwrap_or_else(|| DEFAULT_NAME.to_owned());
 
-        let runbook = blocking(move || {
+        let runbook = blocking::<_, CoreError>(move || {
             let reader = journal.reader()?;
 
             Requests::new(&reader).draft(&params.events, name)

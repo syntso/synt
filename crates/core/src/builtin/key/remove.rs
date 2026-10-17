@@ -1,16 +1,23 @@
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
-use synt_journal::ResourceRef;
 use synt_ssh::Pool;
 
-use super::KeyNameParams;
-use crate::builtin::blocking::blocking;
-use crate::ssh_keys::{KeyInfo, SshKeys};
+use crate::CoreError;
+use crate::blocking::blocking;
+use crate::ssh_keys::{KeyInfo, KeyName, SshKeys};
 
 #[derive(Clone)]
 pub struct KeyRemove {
     keys: SshKeys,
     pool: Pool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RemoveParams {
+    pub name: KeyName,
 }
 
 impl KeyRemove {
@@ -25,28 +32,19 @@ impl Action for KeyRemove {
     const RISK: Risk = Risk::Write;
     const PERSON_ONLY: bool = true;
 
-    type Params = KeyNameParams;
+    type Params = RemoveParams;
     type Output = KeyInfo;
-
-    fn check(
-        &self,
-        _target: Option<&ResourceRef>,
-        params: &KeyNameParams,
-    ) -> Result<(), ActionError> {
-        params.key_name().map(|_| ())
-    }
 
     fn summary(&self, output: &KeyInfo) -> Value {
         output.summary()
     }
 
-    async fn run(&self, _context: &Context, params: KeyNameParams) -> Result<KeyInfo, ActionError> {
-        let name = params.key_name()?;
+    async fn run(&self, _context: &Context, params: RemoveParams) -> Result<KeyInfo, ActionError> {
         let keys = self.keys.clone();
 
-        let removed = blocking(move || keys.remove(&name)).await?;
+        let removed = blocking::<_, CoreError>(move || keys.remove(&params.name)).await?;
 
-        self.pool.forget_vault_key(&removed.name);
+        self.pool.forget_vault_key(removed.name.as_str());
 
         Ok(removed)
     }

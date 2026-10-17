@@ -2,8 +2,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use synt_kube::{ClusterSpec, KubeconfigSource};
 
-use crate::projects::local_path::local_path;
-use crate::projects::names::check_name;
+use super::{ResourceName, ResourceSpec};
+use crate::CoreError;
+use crate::projects::LocalPath;
 
 const LONGEST_NAMESPACE: usize = 63;
 
@@ -24,34 +25,23 @@ pub struct ClusterResource {
 }
 
 impl ClusterResource {
-    pub(crate) fn check(&self) -> Result<(), String> {
-        if let Some(context) = &self.context
-            && (context.is_empty() || context.contains(char::is_control))
-        {
-            return Err(format!("context must be a context name, got {context:?}"));
+    pub(crate) fn of_context(context: String) -> Self {
+        Self {
+            kubeconfig: None,
+            context: Some(context),
+            namespace: None,
+            via: None,
         }
-
-        if let Some(namespace) = &self.namespace
-            && !is_namespace(namespace)
-        {
-            return Err(format!(
-                "namespace must be lowercase letters, digits and '-', at most \
-                 {LONGEST_NAMESPACE} characters, got {namespace:?}"
-            ));
-        }
-
-        if let Some(via) = &self.via {
-            check_name(via).map_err(|reason| format!("via: {reason}"))?;
-        }
-
-        self.spec().map(|_| ())
     }
 
-    pub(crate) fn spec(&self) -> Result<ClusterSpec, String> {
+    pub(crate) fn spec(&self) -> Result<ClusterSpec, CoreError> {
         let source = match &self.kubeconfig {
-            Some(path) => KubeconfigSource::File(
-                local_path(path).map_err(|reason| format!("kubeconfig: {reason}"))?,
-            ),
+            Some(path) => {
+                let path = LocalPath::parse(path)
+                    .map_err(|reason| CoreError::field("kubeconfig", reason))?;
+
+                KubeconfigSource::File(path.into_path())
+            }
             None => KubeconfigSource::Default,
         };
 
@@ -60,6 +50,35 @@ impl ClusterResource {
             context: self.context.clone(),
             namespace: self.namespace.clone(),
         })
+    }
+}
+
+impl ResourceSpec for ClusterResource {
+    fn kind(&self) -> &'static str {
+        "cluster"
+    }
+
+    fn check(&self) -> Result<(), CoreError> {
+        if let Some(context) = &self.context
+            && (context.is_empty() || context.contains(char::is_control))
+        {
+            return Err(CoreError::NotAContext(context.clone()));
+        }
+
+        if let Some(namespace) = &self.namespace
+            && !is_namespace(namespace)
+        {
+            return Err(CoreError::NotANamespace {
+                namespace: namespace.clone(),
+                longest: LONGEST_NAMESPACE,
+            });
+        }
+
+        if let Some(via) = &self.via {
+            ResourceName::check(via, "via")?;
+        }
+
+        self.spec().map(drop)
     }
 }
 
@@ -129,12 +148,7 @@ mod tests {
 
     #[test]
     fn a_cluster_writes_back_only_what_it_holds() {
-        let resource = Resource::Cluster(ClusterResource {
-            kubeconfig: None,
-            context: Some("kind-synt".to_owned()),
-            namespace: None,
-            via: None,
-        });
+        let resource = Resource::Cluster(ClusterResource::of_context("kind-synt".to_owned()));
 
         assert_eq!(
             resource.to_toml().expect("toml"),

@@ -14,15 +14,15 @@ fuzz_target!(|data: &[u8]| {
     assert_eq!(at_once.blocks, in_pieces.blocks);
 
     let mut previous_end = 0;
-    for (start, end, _) in &at_once.marks {
-        assert!(start < end, "a mark covers at least one byte");
-        assert!(*end <= length, "a mark ends inside the stream");
-        assert!(*start >= previous_end, "marks do not overlap");
-        previous_end = *end;
+    for mark in &at_once.marks {
+        assert!(mark.start < mark.end, "a mark covers at least one byte");
+        assert!(mark.end <= length, "a mark ends inside the stream");
+        assert!(mark.start >= previous_end, "marks do not overlap");
+        previous_end = mark.end;
     }
 
-    for (output_start, output_end) in &at_once.blocks {
-        assert!(output_start <= output_end);
-        assert!(*output_end <= length);
+    for block in &at_once.blocks {
+        assert!(block.output_start <= block.output_end);
+        assert!(block.output_end <= length);
     }
 });

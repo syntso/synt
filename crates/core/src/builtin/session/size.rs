@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::terminal::SessionId;
+use crate::terminals::SessionId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SessionSize {
