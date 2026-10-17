@@ -2,7 +2,6 @@ mod apply;
 mod clusters;
 mod contexts;
 mod delete;
-mod error;
 mod events;
 mod exec;
 mod forwards;
@@ -20,10 +19,10 @@ use apply::K8sApply;
 use clusters::{Clusters, Reach};
 use contexts::K8sContexts;
 use delete::K8sDelete;
-use error::K8sError;
 use events::K8sEvents;
 use exec::K8sExec;
-use forwards::{ForwardId, Forwards, K8sPortForward, K8sPortForwardClose, K8sPortForwardList};
+pub(crate) use forwards::ForwardId;
+use forwards::{Forwards, K8sPortForward, K8sPortForwardClose, K8sPortForwardList};
 use get::K8sGet;
 use kind_facts::KindFacts;
 use list::K8sList;
@@ -44,7 +43,8 @@ use synt_ssh::Pool;
 use tokio::runtime::Handle;
 use tokio::task;
 
-use crate::{CoreError, projects::Projects};
+use crate::CoreError;
+use crate::projects::Projects;
 
 #[derive(Debug, Clone)]
 pub struct Kube {
@@ -94,15 +94,15 @@ impl Kube {
         &self.streams
     }
 
-    async fn contexts(&self) -> Result<Vec<ContextInfo>, K8sError> {
+    async fn contexts(&self) -> Result<Vec<ContextInfo>, CoreError> {
         let source = self.projects.personal_kubeconfig().clone();
 
         let reading = task::spawn_blocking(move || source.contexts());
 
-        Ok(reading.await.map_err(|_| K8sError::KubeconfigStopped)??)
+        Ok(reading.await.map_err(|_| CoreError::KubeconfigStopped)??)
     }
 
-    fn reach(&self, target: Option<&ResourceRef>) -> Result<Reach, K8sError> {
+    fn reach(&self, target: Option<&ResourceRef>) -> Result<Reach, CoreError> {
         let target = target.ok_or(ActionError::TargetRequired)?;
 
         Reach::resolve(&self.projects, target)
@@ -123,7 +123,7 @@ impl Kube {
         &self,
         target: Option<&ResourceRef>,
         work: Work,
-    ) -> Result<Option<T>, K8sError>
+    ) -> Result<Option<T>, CoreError>
     where
         Work: FnOnce(Arc<Cluster>) -> Running,
         Running: Future<Output = Result<T, KubeError>>,
@@ -141,13 +141,13 @@ impl Kube {
         &self,
         target: Option<&ResourceRef>,
         name: &KindName,
-    ) -> Result<Option<KindFacts>, K8sError> {
+    ) -> Result<Option<KindFacts>, CoreError> {
         let kind = self.inspect(target, |cluster| async move { cluster.kind(name).await })?;
 
         Ok(kind.as_ref().map(KindFacts::from))
     }
 
-    async fn cluster(&self, context: &Context) -> Result<Arc<Cluster>, K8sError> {
+    async fn cluster(&self, context: &Context) -> Result<Arc<Cluster>, CoreError> {
         let target = context
             .target()
             .cloned()
@@ -155,7 +155,7 @@ impl Kube {
         let projects = self.projects.clone();
 
         let reach =
-            blocking::<_, CoreError, K8sError>(move || Ok(Reach::resolve(&projects, &target)))
+            blocking::<_, CoreError, CoreError>(move || Ok(Reach::resolve(&projects, &target)))
                 .await??;
         reach.check_admitted(context)?;
 
@@ -167,11 +167,11 @@ impl Kube {
         context: &Context,
         cluster: &Cluster,
         name: &KindName,
-    ) -> Result<Kind, K8sError> {
+    ) -> Result<Kind, CoreError> {
         let kind = cluster.kind(name).await?;
 
         if kind.is_secret() && context.risk() != Risk::Privileged {
-            return Err(K8sError::SecretsNow(name.to_string()));
+            return Err(CoreError::SecretsNow(name.to_string()));
         }
 
         Ok(kind)
@@ -180,7 +180,7 @@ impl Kube {
     fn inspected_cluster(
         &self,
         target: Option<&ResourceRef>,
-    ) -> Result<Option<Arc<Cluster>>, K8sError> {
+    ) -> Result<Option<Arc<Cluster>>, CoreError> {
         let reach = self.reach(target)?;
 
         if reach.logs_in_as_root() {
@@ -190,8 +190,8 @@ impl Kube {
         Self::block_on(self.clusters.connect(&reach))?.map(Some)
     }
 
-    fn block_on<T>(future: impl Future<Output = T>) -> Result<T, K8sError> {
-        let runtime = Handle::try_current().map_err(|_| K8sError::OutsideCore)?;
+    fn block_on<T>(future: impl Future<Output = T>) -> Result<T, CoreError> {
+        let runtime = Handle::try_current().map_err(|_| CoreError::OutsideCore)?;
 
         Ok(runtime.block_on(future))
     }

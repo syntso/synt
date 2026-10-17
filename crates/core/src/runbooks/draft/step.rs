@@ -2,7 +2,7 @@ use serde_json::{Map, Value};
 use synt_proto::OneLine;
 
 use super::placeholders::Placeholders;
-use crate::runbooks::RunbookError;
+use crate::CoreError;
 use crate::runbooks::document::{Step, StepAction};
 use crate::runbooks::template::{JsonTemplate, TextTemplate};
 
@@ -46,8 +46,9 @@ impl DraftStep {
         &self.params
     }
 
-    pub(super) fn templated(&self, placeholders: &Placeholders) -> Result<Step, RunbookError> {
-        let title = OneLine::new(TextTemplate::escape(&self.title))?;
+    pub(super) fn templated(&self, placeholders: &Placeholders) -> Result<Step, CoreError> {
+        let title =
+            OneLine::new(TextTemplate::escape(&self.title)).map_err(CoreError::NotOneLine)?;
         let action = StepAction::new(self.action.as_str())?;
 
         let target = self.target.as_deref().map(|target| {

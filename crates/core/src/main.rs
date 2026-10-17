@@ -8,11 +8,11 @@ use std::time::Duration;
 
 use synt_actions::{ActionError, Registry};
 use synt_core::{
-    AlwaysGrants, Arguments, Broker, Core, CoreCaller, CoreScreen, Databases, EventFeed,
+    AlwaysGrants, Arguments, Broker, Core, CoreCaller, CoreError, CoreScreen, Databases, EventFeed,
     ExtensionMerger, Files, GrantActions, IdleWatch, JournalActions, KeyActions, Kube,
-    LoginCommand, Ping, ProjectActions, Projects, ResourceActions, RunbookActions, RunbookError,
-    Runbooks, SecretActions, Secrets, Server, SessionActions, SshActions, SshKeys, Storage,
-    SyncActions, Terminals, TunnelActions, VERSION,
+    LoginCommand, Ping, ProjectActions, Projects, ResourceActions, RunbookActions, Runbooks,
+    SecretActions, Secrets, Server, SessionActions, SshActions, SshKeys, Storage, SyncActions,
+    Terminals, TunnelActions, VERSION,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Journal, JournalWriter};
@@ -166,7 +166,7 @@ fn connect(
     registry: Registry,
     builtins: &Builtins,
     extensions: &Extensions,
-) -> Result<Arc<Core>, RunbookError> {
+) -> Result<Arc<Core>, CoreError> {
     let broker = Broker::with_always(builtins.always.clone());
     let core = Arc::new(Core::new(registry, builtins.journal.clone(), broker));
 

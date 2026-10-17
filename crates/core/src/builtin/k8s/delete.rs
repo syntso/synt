@@ -5,7 +5,9 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::Deleted;
 
-use super::{K8sError, KindFacts, Kube, ObjectParams};
+use super::{KindFacts, Kube, ObjectParams};
+
+use crate::CoreError;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sDelete {
@@ -27,12 +29,12 @@ impl K8sDelete {
         Self { kube }
     }
 
-    async fn delete(&self, context: &Context, object: &ObjectParams) -> Result<Deleted, K8sError> {
+    async fn delete(&self, context: &Context, object: &ObjectParams) -> Result<Deleted, CoreError> {
         let cluster = self.kube.cluster(context).await?;
         let kind = self.kube.kind(context, &cluster, &object.kind).await?;
 
         if !kind.is_namespaced() && context.risk() != Risk::Privileged {
-            return Err(K8sError::ClusterScopedNow(kind.to_string()));
+            return Err(CoreError::ClusterScopedNow(kind.to_string()));
         }
 
         Ok(object.on(&cluster, &kind).delete().await?)

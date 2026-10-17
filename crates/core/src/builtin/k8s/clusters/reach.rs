@@ -4,7 +4,7 @@ use synt_kube::ClusterSpec;
 use synt_ssh::Target;
 
 use super::ClusterKey;
-use crate::builtin::k8s::K8sError;
+use crate::CoreError;
 use crate::builtin::ssh::is_root;
 use crate::projects::{Projects, Resolved};
 
@@ -16,12 +16,12 @@ pub(crate) struct Reach {
 }
 
 impl Reach {
-    pub(crate) fn resolve(projects: &Projects, target: &ResourceRef) -> Result<Self, K8sError> {
+    pub(crate) fn resolve(projects: &Projects, target: &ResourceRef) -> Result<Self, CoreError> {
         let Resolved::Cluster { spec, via } = projects.resolve_cluster(target.as_str())? else {
-            return Err(K8sError::NotACluster(target.clone()));
+            return Err(CoreError::NotAClusterTarget(target.clone()));
         };
 
-        let place = spec.place().map_err(K8sError::Place)?;
+        let place = spec.place().map_err(CoreError::KubePlace)?;
 
         let through = via
             .as_ref()
@@ -52,15 +52,15 @@ impl Reach {
         self.via.as_ref().is_some_and(|via| is_root(via.user()))
     }
 
-    pub(crate) fn check_admitted(&self, context: &Context) -> Result<(), K8sError> {
+    pub(crate) fn check_admitted(&self, context: &Context) -> Result<(), CoreError> {
         let target = context.target().ok_or(ActionError::TargetRequired)?;
 
         if self.logs_in_as_root() && context.risk() != Risk::Privileged {
-            return Err(K8sError::RootLoginNow(target.clone()));
+            return Err(CoreError::RootLoginNow(target.clone()));
         }
 
         if context.destination() != Some(self.destination.as_str()) {
-            return Err(K8sError::DestinationChanged {
+            return Err(CoreError::DestinationChanged {
                 target: target.clone(),
                 destination: self.destination.clone(),
             });

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
 #[serde(transparent)]
-pub(crate) struct ForwardId(u64);
+pub struct ForwardId(u64);
 
 impl ForwardId {
     pub(crate) fn new(number: u64) -> Self {

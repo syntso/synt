@@ -7,9 +7,10 @@ use synt_actions::Handle;
 use synt_journal::{ActionId, Actor, Name};
 use synt_proto::{OneLine, RunPhase};
 
-use super::RunbookError;
 use super::document::{RunbookDocument, Step};
 use super::param::Values;
+
+use crate::CoreError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Plan {
@@ -26,7 +27,7 @@ impl Plan {
         document: &RunbookDocument,
         given: &Map<String, Value>,
         lookup: &impl Fn(&ActionId) -> Option<Handle>,
-    ) -> Result<Self, RunbookError> {
+    ) -> Result<Self, CoreError> {
         let values = Values::resolve(document.params(), given)?;
 
         let steps = Self::plan_steps(document.steps(), RunPhase::Steps, &values, lookup)?;
@@ -68,8 +69,8 @@ impl Plan {
         &self.rollback
     }
 
-    pub(crate) fn actor(&self) -> Result<Actor, RunbookError> {
-        let name = Name::new(self.reference.as_str()).map_err(RunbookError::BadReference)?;
+    pub(crate) fn actor(&self) -> Result<Actor, CoreError> {
+        let name = Name::new(self.reference.as_str()).map_err(CoreError::BadReference)?;
 
         Ok(Actor::Runbook(name))
     }
@@ -90,7 +91,7 @@ impl Plan {
         phase: RunPhase,
         values: &Values,
         lookup: &impl Fn(&ActionId) -> Option<Handle>,
-    ) -> Result<Vec<PlannedStep>, RunbookError> {
+    ) -> Result<Vec<PlannedStep>, CoreError> {
         (1..)
             .zip(steps)
             .map(|(number, step)| {

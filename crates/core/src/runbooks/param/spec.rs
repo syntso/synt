@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::{ParamKind, ParamName};
-use crate::runbooks::RunbookError;
+
+use crate::CoreError;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -55,7 +56,7 @@ impl ParamSpec {
         })
     }
 
-    pub(crate) fn check(&self) -> Result<(), RunbookError> {
+    pub(crate) fn check(&self) -> Result<(), CoreError> {
         self.check_choices()?;
         self.check_bounds()?;
 
@@ -65,7 +66,7 @@ impl ParamSpec {
         }
     }
 
-    pub(crate) fn accept(&self, value: &Value) -> Result<Value, RunbookError> {
+    pub(crate) fn accept(&self, value: &Value) -> Result<Value, CoreError> {
         let accepted = self.kind.accept(value)?;
 
         self.within_choices(&accepted)?;
@@ -74,31 +75,31 @@ impl ParamSpec {
         Ok(accepted)
     }
 
-    fn check_choices(&self) -> Result<(), RunbookError> {
+    fn check_choices(&self) -> Result<(), CoreError> {
         let is_choice = self.kind == ParamKind::Choice;
 
         if is_choice && self.choices.is_empty() {
-            return Err(RunbookError::NoChoices(self.name.clone()));
+            return Err(CoreError::NoChoices(self.name.clone()));
         }
 
         if !is_choice && !self.choices.is_empty() {
-            return Err(RunbookError::StrayChoices(self.name.clone()));
+            return Err(CoreError::StrayChoices(self.name.clone()));
         }
 
         Ok(())
     }
 
-    fn check_bounds(&self) -> Result<(), RunbookError> {
+    fn check_bounds(&self) -> Result<(), CoreError> {
         let bounded = self.min.is_some() || self.max.is_some();
 
         if bounded && self.kind != ParamKind::Integer {
-            return Err(RunbookError::StrayBounds(self.name.clone()));
+            return Err(CoreError::StrayBounds(self.name.clone()));
         }
 
         if let (Some(min), Some(max)) = (self.min, self.max)
             && min > max
         {
-            return Err(RunbookError::UpsideDown {
+            return Err(CoreError::UpsideDown {
                 name: self.name.clone(),
                 min,
                 max,
@@ -108,7 +109,7 @@ impl ParamSpec {
         Ok(())
     }
 
-    fn within_choices(&self, value: &Value) -> Result<(), RunbookError> {
+    fn within_choices(&self, value: &Value) -> Result<(), CoreError> {
         if self.kind != ParamKind::Choice {
             return Ok(());
         }
@@ -119,19 +120,19 @@ impl ParamSpec {
             return Ok(());
         }
 
-        Err(RunbookError::NotAChoice {
+        Err(CoreError::NotAChoice {
             chosen: chosen.to_owned(),
             choices: self.choices.clone(),
         })
     }
 
-    fn within_bounds(&self, value: &Value) -> Result<(), RunbookError> {
+    fn within_bounds(&self, value: &Value) -> Result<(), CoreError> {
         let Some(number) = value.as_i64() else {
             return Ok(());
         };
 
         if self.min.is_some_and(|min| number < min) || self.max.is_some_and(|max| number > max) {
-            return Err(RunbookError::OutOfBounds {
+            return Err(CoreError::OutOfBounds {
                 number,
                 min: self.min,
                 max: self.max,

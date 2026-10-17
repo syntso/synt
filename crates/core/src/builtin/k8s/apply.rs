@@ -7,7 +7,9 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::{AppliedObject, Change, Manifest};
 
-use super::{K8sError, Kube};
+use super::Kube;
+
+use crate::CoreError;
 
 const NO_DRY_RUN: &str = "not run: the cluster is reached through a root login, which is asked \
                           for first; the diff shows once that connection is up";
@@ -39,7 +41,7 @@ impl K8sApply {
         &self,
         target: Option<&ResourceRef>,
         params: &ApplyParams,
-    ) -> Result<Value, K8sError> {
+    ) -> Result<Value, CoreError> {
         let manifest = &params.manifest;
         let plan = self.kube.inspect(target, |cluster| async move {
             manifest.plan(&cluster, params.force).await
@@ -61,7 +63,7 @@ impl K8sApply {
         }))
     }
 
-    async fn apply(&self, context: &Context, params: &ApplyParams) -> Result<Applied, K8sError> {
+    async fn apply(&self, context: &Context, params: &ApplyParams) -> Result<Applied, CoreError> {
         let cluster = self.kube.cluster(context).await?;
         let objects = params.manifest.apply(&cluster, params.force).await?;
 

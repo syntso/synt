@@ -27,7 +27,7 @@ use synt_journal::{ActionId, Actor, EventKind, JournalWriter, Seq};
 use synt_platform::Lock;
 use tokio_util::sync::CancellationToken;
 
-use super::K8sError;
+use crate::CoreError;
 use crate::log::log;
 use crate::recorder::{Call, Recorder};
 
@@ -73,12 +73,12 @@ impl Streams {
         });
     }
 
-    pub(crate) fn close(&self, request: Seq, actor: &Actor) -> Result<(), K8sError> {
+    pub(crate) fn close(&self, request: Seq, actor: &Actor) -> Result<(), CoreError> {
         let open = self.lock();
-        let stream = open.get(&request).ok_or(K8sError::NoStream(request))?;
+        let stream = open.get(&request).ok_or(CoreError::NoStream(request))?;
 
         if !stream.may_be_closed_by(actor) {
-            return Err(K8sError::StreamOfAnother(request));
+            return Err(CoreError::StreamOfAnother(request));
         }
 
         stream.close();

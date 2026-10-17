@@ -5,7 +5,7 @@ use synt_proto::StreamId;
 use tokio_util::sync::CancellationToken;
 
 use super::{EndReason, Feed, StreamEnd, Tally};
-use crate::builtin::k8s::K8sError;
+use crate::CoreError;
 use crate::link::{Link, Outbound};
 
 pub(crate) struct Pump {
@@ -13,8 +13,10 @@ pub(crate) struct Pump {
 }
 
 impl Pump {
-    pub(crate) fn open(context: &Context, stream: StreamId) -> Result<Self, K8sError> {
-        let link: Arc<Link> = context.connection::<Link>().ok_or(K8sError::NoConnection)?;
+    pub(crate) fn open(context: &Context, stream: StreamId) -> Result<Self, CoreError> {
+        let link: Arc<Link> = context
+            .connection::<Link>()
+            .ok_or(CoreError::NoStreamConnection)?;
 
         let outbound = Outbound::open(&link, stream)?;
 

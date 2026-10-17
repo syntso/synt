@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use super::Piece;
-use crate::runbooks::RunbookError;
+use crate::CoreError;
 use crate::runbooks::param::{ParamName, Values};
 
 const OPEN: char = '{';
@@ -59,7 +59,7 @@ impl TextTemplate {
         })
     }
 
-    pub(crate) fn render(&self, values: &Values) -> Result<Value, RunbookError> {
+    pub(crate) fn render(&self, values: &Values) -> Result<Value, CoreError> {
         if let [Piece::Param(name)] = self.pieces.as_slice() {
             return values.get(name.as_str()).cloned();
         }
@@ -67,7 +67,7 @@ impl TextTemplate {
         self.render_text(values).map(Value::String)
     }
 
-    pub(crate) fn render_text(&self, values: &Values) -> Result<String, RunbookError> {
+    pub(crate) fn render_text(&self, values: &Values) -> Result<String, CoreError> {
         let mut text = String::new();
 
         for piece in &self.pieces {

@@ -6,9 +6,10 @@ pub(crate) use step::DraftStep;
 
 use synt_proto::{OneLine, RunPhase};
 
-use super::RunbookError;
 use super::document::{RunbookDocument, Step};
 use placeholders::Placeholders;
+
+use crate::CoreError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Draft {
@@ -28,7 +29,7 @@ impl Draft {
         self.steps.push(step);
     }
 
-    pub(crate) fn build(self) -> Result<RunbookDocument, RunbookError> {
+    pub(crate) fn build(self) -> Result<RunbookDocument, CoreError> {
         let placeholders = Placeholders::for_steps(&self.steps)?;
         let steps = self.templated_steps(&placeholders)?;
 
@@ -38,7 +39,7 @@ impl Draft {
         Ok(document)
     }
 
-    fn templated_steps(&self, placeholders: &Placeholders) -> Result<Vec<Step>, RunbookError> {
+    fn templated_steps(&self, placeholders: &Placeholders) -> Result<Vec<Step>, CoreError> {
         (1..)
             .zip(&self.steps)
             .map(|(number, step)| {

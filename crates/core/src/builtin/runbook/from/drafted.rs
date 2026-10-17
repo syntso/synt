@@ -1,7 +1,8 @@
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::runbooks::{RunbookDocument, RunbookError};
+use crate::CoreError;
+use crate::runbooks::RunbookDocument;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Drafted {
@@ -10,8 +11,8 @@ pub struct Drafted {
 }
 
 impl Drafted {
-    pub(crate) fn new(runbook: RunbookDocument) -> Result<Self, RunbookError> {
-        let toml = runbook.to_toml().map_err(RunbookError::Unprintable)?;
+    pub(crate) fn new(runbook: RunbookDocument) -> Result<Self, CoreError> {
+        let toml = runbook.to_toml().map_err(CoreError::Unprintable)?;
 
         Ok(Self { runbook, toml })
     }

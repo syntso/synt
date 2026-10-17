@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use super::DraftStep;
 use super::literal::Literal;
-use crate::runbooks::RunbookError;
+use crate::CoreError;
 use crate::runbooks::param::{ParamName, ParamSpec};
 
 #[derive(Debug, Default)]
@@ -12,7 +12,7 @@ pub(super) struct Placeholders {
 }
 
 impl Placeholders {
-    pub(super) fn for_steps(steps: &[DraftStep]) -> Result<Self, RunbookError> {
+    pub(super) fn for_steps(steps: &[DraftStep]) -> Result<Self, CoreError> {
         let mut placeholders = Self::default();
 
         for literal in Literal::repeated_in(steps) {
@@ -33,7 +33,7 @@ impl Placeholders {
         self.specs
     }
 
-    fn free_name(&self, base: &str) -> Result<ParamName, RunbookError> {
+    fn free_name(&self, base: &str) -> Result<ParamName, CoreError> {
         let taken = |name: &str| self.specs.iter().any(|spec| spec.name().as_str() == name);
 
         let mut name = base.to_owned();

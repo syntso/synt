@@ -70,7 +70,7 @@ impl Action for RunbookPut {
         blocking(move || -> Result<_, CoreError> {
             let folder = runbooks.folder(&params.project)?;
 
-            Ok(folder.put(params.name, params.runbook, admitted.as_deref())?)
+            folder.put(params.name, params.runbook, admitted.as_deref())
         })
         .await
     }

@@ -1,4 +1,3 @@
-mod error;
 mod explain;
 mod open;
 mod ping;
@@ -20,13 +19,13 @@ use tokio::time;
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
 
-use self::error::DbActionError;
 use self::explain::DbExplain;
 use self::open::OpenDatabase;
 use self::ping::DbPing;
 use self::query::DbQuery;
 use self::schema::DbSchema;
 use self::tables::DbTables;
+use crate::CoreError;
 use crate::builtin::ssh::is_root;
 use crate::projects::{Projects, ResolvedDatabase};
 use crate::secrets::Secrets;
@@ -59,13 +58,13 @@ impl Databases {
         registry.register(DbPing::new(self.clone()))
     }
 
-    fn check_target(&self, target: Option<&ResourceRef>) -> Result<Engine, DbActionError> {
+    fn check_target(&self, target: Option<&ResourceRef>) -> Result<Engine, CoreError> {
         let target = target.ok_or(ActionError::TargetRequired)?;
 
         let resolved = self
             .projects
             .database(target.as_str())
-            .map_err(DbActionError::Target)?;
+            .map_err(|error| CoreError::DbTarget(Box::new(error)))?;
 
         Ok(resolved.resource.engine)
     }
@@ -75,9 +74,9 @@ impl Databases {
             .map(|resolved| resolved.resource.engine)
     }
 
-    fn current_engine(&self, context: &Context) -> Result<Engine, DbActionError> {
+    fn current_engine(&self, context: &Context) -> Result<Engine, CoreError> {
         self.engine(context.target())
-            .ok_or(DbActionError::NotADatabase)
+            .ok_or(CoreError::NoLongerDatabase)
     }
 
     fn risk(&self, target: Option<&ResourceRef>, effect: Effect) -> Risk {
@@ -108,12 +107,12 @@ impl Databases {
         context: &Context,
         limit: Duration,
         work: impl AsyncFnOnce(&mut Database) -> Result<T, DbError>,
-    ) -> Result<T, DbActionError> {
+    ) -> Result<T, CoreError> {
         let _permit = self
             .calls
             .acquire()
             .await
-            .map_err(|_| DbActionError::ShuttingDown)?;
+            .map_err(|_| CoreError::ShuttingDown)?;
 
         let running = async {
             let open = self.open(context).await?;
@@ -122,10 +121,10 @@ impl Databases {
 
         time::timeout(limit, running)
             .await
-            .map_err(|_| DbActionError::Timeout(limit))?
+            .map_err(|_| CoreError::DbTimeout(limit))?
     }
 
-    async fn open(&self, context: &Context) -> Result<OpenDatabase, DbActionError> {
+    async fn open(&self, context: &Context) -> Result<OpenDatabase, CoreError> {
         let target = context.target().ok_or(ActionError::TargetRequired)?;
         let resolved = self.reach(context, target).await?;
         let server = self.server(&resolved).await?;
@@ -146,15 +145,15 @@ impl Databases {
         &self,
         context: &Context,
         target: &ResourceRef,
-    ) -> Result<ResolvedDatabase, DbActionError> {
+    ) -> Result<ResolvedDatabase, CoreError> {
         let projects = self.projects.clone();
         let text = target.as_str().to_owned();
-        let resolved = blocking::<_, _, DbActionError>(move || projects.database(&text)).await?;
+        let resolved = blocking::<_, _, CoreError>(move || projects.database(&text)).await?;
 
         if resolved.via.as_ref().is_some_and(|via| is_root(via.user()))
             && context.risk() != Risk::Privileged
         {
-            return Err(DbActionError::RootLogin {
+            return Err(CoreError::RootLogin {
                 target: target.to_string(),
             });
         }
@@ -162,7 +161,7 @@ impl Databases {
         let reached = self.projects.destination(target.as_str(), &resolved);
 
         if context.destination() != Some(reached.as_str()) {
-            return Err(DbActionError::Moved {
+            return Err(CoreError::DbMoved {
                 target: target.to_string(),
                 reached,
             });
@@ -171,16 +170,16 @@ impl Databases {
         Ok(resolved)
     }
 
-    async fn server(&self, resolved: &ResolvedDatabase) -> Result<Server, DbActionError> {
+    async fn server(&self, resolved: &ResolvedDatabase) -> Result<Server, CoreError> {
         let password = self.password(resolved).await?;
 
-        Ok(resolved.resource.server(password)?)
+        resolved.resource.server(password)
     }
 
     async fn password(
         &self,
         resolved: &ResolvedDatabase,
-    ) -> Result<Option<Zeroizing<String>>, DbActionError> {
+    ) -> Result<Option<Zeroizing<String>>, CoreError> {
         let Some(name) = resolved.resource.password_name()? else {
             return Ok(None);
         };
@@ -188,8 +187,7 @@ impl Databases {
         let secrets = self.secrets.clone();
         let used_for = format!("the database {resolved}");
         let password =
-            blocking::<_, _, DbActionError>(move || secrets.read_text_for(&name, &used_for))
-                .await?;
+            blocking::<_, _, CoreError>(move || secrets.read_text_for(&name, &used_for)).await?;
 
         Ok(Some(password))
     }
@@ -199,11 +197,16 @@ impl Databases {
         via: &Target,
         resolved: &ResolvedDatabase,
         stop: CancellationToken,
-    ) -> Result<SocketAddr, DbActionError> {
+    ) -> Result<SocketAddr, CoreError> {
         let host = resolved.resource.host.clone().unwrap_or_default();
-        let destination = Destination::new(host, resolved.resource.port())?;
+        let destination =
+            Destination::new(host, resolved.resource.port()).map_err(CoreError::Tunnel)?;
 
-        let opened = self.tunnels.open(via, destination, None, stop).await?;
+        let opened = self
+            .tunnels
+            .open(via, destination, None, stop)
+            .await
+            .map_err(CoreError::Tunnel)?;
 
         Ok(SocketAddr::from((Ipv4Addr::LOCALHOST, opened.local_port)))
     }

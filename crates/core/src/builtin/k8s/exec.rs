@@ -6,7 +6,8 @@ use synt_journal::ResourceRef;
 use synt_kube::{ExecOutcome, ExecRequest};
 use synt_proto::ExecLimits;
 
-use super::{K8sError, Kube};
+use super::Kube;
+use crate::CoreError;
 use crate::builtin::ssh::escalates;
 
 #[derive(Debug, Clone)]
@@ -28,7 +29,7 @@ impl K8sExec {
         Self { kube }
     }
 
-    async fn exec(&self, context: &Context, params: &ExecParams) -> Result<ExecOutcome, K8sError> {
+    async fn exec(&self, context: &Context, params: &ExecParams) -> Result<ExecOutcome, CoreError> {
         let cluster = self.kube.cluster(context).await?;
         let stop = context.stop().cancelled();
 

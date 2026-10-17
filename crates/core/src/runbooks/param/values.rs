@@ -4,7 +4,8 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 
 use super::{ParamName, ParamSpec};
-use crate::runbooks::RunbookError;
+
+use crate::CoreError;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(transparent)]
@@ -16,7 +17,7 @@ impl Values {
     pub(crate) fn resolve(
         specs: &[ParamSpec],
         given: &Map<String, Value>,
-    ) -> Result<Self, RunbookError> {
+    ) -> Result<Self, CoreError> {
         let unknown = given.keys().find(|name| {
             !specs
                 .iter()
@@ -24,13 +25,13 @@ impl Values {
         });
 
         if let Some(unknown) = unknown {
-            return Err(RunbookError::UnknownParam(unknown.clone()));
+            return Err(CoreError::UnknownParam(unknown.clone()));
         }
 
         let values = specs
             .iter()
             .map(|spec| Ok((spec.name().clone(), Self::value_of(spec, given)?)))
-            .collect::<Result<_, RunbookError>>()?;
+            .collect::<Result<_, CoreError>>()?;
 
         Ok(Self { values })
     }
@@ -45,26 +46,26 @@ impl Values {
         Self { values }
     }
 
-    pub(crate) fn get(&self, name: &str) -> Result<&Value, RunbookError> {
+    pub(crate) fn get(&self, name: &str) -> Result<&Value, CoreError> {
         self.values
             .get(name)
-            .ok_or_else(|| RunbookError::NoValue(name.to_owned()))
+            .ok_or_else(|| CoreError::NoValue(name.to_owned()))
     }
 
-    pub(crate) fn text(&self, name: &str) -> Result<String, RunbookError> {
+    pub(crate) fn text(&self, name: &str) -> Result<String, CoreError> {
         match self.get(name)? {
             Value::String(text) => Ok(text.clone()),
             other => Ok(other.to_string()),
         }
     }
 
-    fn value_of(spec: &ParamSpec, given: &Map<String, Value>) -> Result<Value, RunbookError> {
+    fn value_of(spec: &ParamSpec, given: &Map<String, Value>) -> Result<Value, CoreError> {
         let name = spec.name();
 
         let value = given
             .get(name.as_str())
             .or(spec.default())
-            .ok_or_else(|| RunbookError::MissingParam(name.clone()))?;
+            .ok_or_else(|| CoreError::MissingParam(name.clone()))?;
 
         spec.accept(value).map_err(|error| error.in_param(name))
     }

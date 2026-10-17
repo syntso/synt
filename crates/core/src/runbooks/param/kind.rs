@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::given::Given;
-use crate::runbooks::RunbookError;
+
+use crate::CoreError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -18,7 +19,7 @@ pub enum ParamKind {
 }
 
 impl ParamKind {
-    pub(crate) fn accept(self, value: &Value) -> Result<Value, RunbookError> {
+    pub(crate) fn accept(self, value: &Value) -> Result<Value, CoreError> {
         let given = Given::new(value);
 
         match self {

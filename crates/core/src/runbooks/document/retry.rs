@@ -3,7 +3,7 @@ use std::time::Duration;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::runbooks::RunbookError;
+use crate::CoreError;
 
 const MOST_ATTEMPTS: u32 = 20;
 const LONGEST_PAUSE: u64 = 3600;
@@ -31,16 +31,16 @@ impl Retry {
         }
     }
 
-    pub(crate) fn check(&self) -> Result<(), RunbookError> {
+    pub(crate) fn check(&self) -> Result<(), CoreError> {
         if !(1..=MOST_ATTEMPTS).contains(&self.attempts) {
-            return Err(RunbookError::Attempts {
+            return Err(CoreError::Attempts {
                 attempts: self.attempts,
                 most: MOST_ATTEMPTS,
             });
         }
 
         if self.every_seconds > LONGEST_PAUSE {
-            return Err(RunbookError::Pause {
+            return Err(CoreError::Pause {
                 pause: self.every_seconds,
                 longest: LONGEST_PAUSE,
             });

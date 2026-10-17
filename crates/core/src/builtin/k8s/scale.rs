@@ -5,7 +5,9 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::{Replicas, Scaled};
 
-use super::{K8sError, Kube, ObjectParams};
+use super::{Kube, ObjectParams};
+
+use crate::CoreError;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sScale {
@@ -24,7 +26,7 @@ impl K8sScale {
         Self { kube }
     }
 
-    async fn scale(&self, context: &Context, params: &ScaleParams) -> Result<Scaled, K8sError> {
+    async fn scale(&self, context: &Context, params: &ScaleParams) -> Result<Scaled, CoreError> {
         let object = &params.object;
         let cluster = self.kube.cluster(context).await?;
         let kind = self.kube.kind(context, &cluster, &object.kind).await?;

@@ -5,7 +5,9 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::{KindName, ListQuery, Listing};
 
-use super::{K8sError, KindFacts, Kube};
+use super::{KindFacts, Kube};
+
+use crate::CoreError;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sList {
@@ -29,7 +31,7 @@ impl K8sList {
         Self { kube }
     }
 
-    async fn list(&self, context: &Context, params: &ListParams) -> Result<Listing, K8sError> {
+    async fn list(&self, context: &Context, params: &ListParams) -> Result<Listing, CoreError> {
         let cluster = self.kube.cluster(context).await?;
         let kind = self.kube.kind(context, &cluster, &params.kind).await?;
 

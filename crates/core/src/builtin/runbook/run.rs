@@ -4,7 +4,8 @@ use serde_json::{Map, Value};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use crate::runbooks::{Plan, RunReport, RunbookError, RunbookName, Runbooks};
+use crate::CoreError;
+use crate::runbooks::{Plan, RunReport, RunbookName, Runbooks};
 
 #[derive(Debug, Clone)]
 pub struct RunbookRun {
@@ -85,7 +86,7 @@ impl Action for RunbookRun {
         context: &Context,
         params: RunbookRunParams,
     ) -> Result<RunReport, ActionError> {
-        let plan = params.plan.ok_or(RunbookError::NotPlanned)?;
+        let plan = params.plan.ok_or(CoreError::NotPlanned)?;
 
         let report = self
             .runbooks

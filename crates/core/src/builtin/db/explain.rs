@@ -9,8 +9,9 @@ use synt_journal::ResourceRef;
 use synt_proto::Millis;
 
 use super::Databases;
-use super::error::DbActionError;
 use super::recorded::recorded_statement;
+
+use crate::CoreError;
 
 const LIMIT: Duration = Duration::from_secs(60);
 const EXPLAIN: &str = "explain";
@@ -103,19 +104,19 @@ impl Action for DbExplain {
 }
 
 impl ExplainParams {
-    fn classification(&self, engine: Engine) -> Result<Classification, DbActionError> {
+    fn classification(&self, engine: Engine) -> Result<Classification, CoreError> {
         if !engine.speaks_sql() {
-            return Err(DbActionError::NoPlans);
+            return Err(CoreError::NoPlans);
         }
 
         let classified = Classification::of_sql(engine, &self.sql);
 
         if !classified.is_one_statement() {
-            return Err(DbActionError::NotOneStatement(classified.kind));
+            return Err(CoreError::NotOneStatement(classified.kind));
         }
 
         if classified.kind.is(EXPLAIN) {
-            return Err(DbActionError::AlreadyExplained);
+            return Err(CoreError::AlreadyExplained);
         }
 
         Ok(classified)
