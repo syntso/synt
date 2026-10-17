@@ -89,7 +89,7 @@ impl PortForward {
     async fn listen(port: u16) -> Result<TcpListener, KubeError> {
         TcpListener::bind((Ipv4Addr::LOCALHOST, port))
             .await
-            .map_err(|error| KubeError::Io(format!("cannot listen on 127.0.0.1:{port}: {error}")))
+            .map_err(|source| KubeError::Listen { port, source })
     }
 }
 

@@ -5,6 +5,7 @@ use synt_actions::ActionError;
 use synt_db::Engine;
 use synt_journal::{JournalError, JournalId, KeyStoreError};
 use synt_platform::{KeyPlace, PlatformError, SecretName};
+use synt_proto::ProtoError;
 use synt_sync::SyncError;
 use thiserror::Error;
 use tokio::task::JoinError;
@@ -27,11 +28,23 @@ pub enum CoreError {
     #[error(transparent)]
     Journal(#[from] JournalError),
 
+    #[error("the revocation was not journaled: {0}")]
+    NotJournaled(#[source] JournalError),
+
+    #[error(transparent)]
+    Proto(#[from] ProtoError),
+
+    #[error("{0}")]
+    Json(#[from] serde_json::Error),
+
     #[error("state database: {0}")]
     State(#[from] rusqlite::Error),
 
     #[error("ssh: {0}")]
     Ssh(#[from] synt_ssh::SshError),
+
+    #[error("{0}")]
+    KeyImport(#[source] synt_ssh::SshError),
 
     #[error("system random source: {0}")]
     Random(#[from] getrandom::Error),

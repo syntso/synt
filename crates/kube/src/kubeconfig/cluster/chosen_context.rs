@@ -13,9 +13,7 @@ impl ChosenContext {
     pub(crate) async fn read(spec: ClusterSpec) -> Result<Self, KubeError> {
         let reading = task::spawn_blocking(move || Self::choose(&spec));
 
-        reading.await.map_err(|_| {
-            KubeError::Connect("reading the kubeconfig stopped unexpectedly".to_owned())
-        })?
+        reading.await?
     }
 
     pub(crate) async fn config(&self) -> Result<Config, KubeError> {

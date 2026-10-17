@@ -5,6 +5,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::{ActionId, Details, EventKind, JournalWriter, NewEvent};
 
 use super::GrantInfo;
+use crate::CoreError;
 use crate::grants::{AlwaysGrants, GrantId};
 
 #[derive(Clone)]
@@ -29,7 +30,7 @@ impl GrantRevoke {
         Self { grants, journal }
     }
 
-    async fn note(&self, context: &Context, grant: &GrantInfo) -> Result<(), ActionError> {
+    async fn note(&self, context: &Context, grant: &GrantInfo) -> Result<(), CoreError> {
         let details = json!({
             "revoked": grant.id,
             "actor": grant.actor,
@@ -37,10 +38,8 @@ impl GrantRevoke {
             "resource": grant.resource,
             "destination": grant.destination,
         });
-        let details = Details::from_serialize(&details)
-            .map_err(|error| ActionError::failed(error.to_string()))?;
-        let action =
-            ActionId::new(Self::ID).map_err(|error| ActionError::failed(error.to_string()))?;
+        let details = Details::from_serialize(&details)?;
+        let action = ActionId::new(Self::ID)?;
 
         let note = NewEvent::new(context.actor().clone(), EventKind::Note, action)
             .call(context.request())
@@ -49,10 +48,9 @@ impl GrantRevoke {
         self.journal
             .append_async(note)
             .await
-            .map(|_| ())
-            .map_err(|error| {
-                ActionError::failed(format!("the revocation was not journaled: {error}"))
-            })
+            .map_err(CoreError::NotJournaled)?;
+
+        Ok(())
     }
 }
 

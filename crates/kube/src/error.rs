@@ -1,12 +1,14 @@
+use std::error::Error as StdError;
 use std::fmt::Display;
 use std::io;
 use std::time::Duration;
 
 use thiserror::Error;
+use tokio::task::JoinError;
 
 use crate::ObjectRef;
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Error)]
 pub enum KubeError {
     #[error("kubeconfig {place}: {reason}")]
     Kubeconfig { place: String, reason: String },
@@ -18,7 +20,13 @@ pub enum KubeError {
     NoContext { place: String },
 
     #[error("cannot connect to the cluster: {0}")]
-    Connect(String),
+    Connect(#[source] kube::Error),
+
+    #[error("cannot connect to the cluster: {0}")]
+    Attach(#[source] Box<dyn StdError + Send + Sync>),
+
+    #[error("cannot connect to the cluster: reading the kubeconfig stopped unexpectedly")]
+    Interrupted(#[from] JoinError),
 
     #[error("the cluster has no kind {0:?}; use a kind, its plural or a short name, such as pods")]
     UnknownKind(String),
@@ -33,7 +41,17 @@ pub enum KubeError {
     Invalid(String),
 
     #[error("{0}")]
-    Io(String),
+    Io(#[from] io::Error),
+
+    #[error("cannot listen on 127.0.0.1:{port}: {source}")]
+    Listen {
+        port: u16,
+        #[source]
+        source: io::Error,
+    },
+
+    #[error("the cluster opened no stream for port {0}")]
+    NoStream(u16),
 
     #[error("timed out after {} s", .0.as_secs())]
     Timeout(Duration),
@@ -75,14 +93,8 @@ impl From<kube::Error> for KubeError {
             kube::Error::Api(status) => {
                 Self::Api(api_message(status.code, &status.reason, &status.message))
             }
-            other => Self::Connect(other.to_string()),
+            other => Self::Connect(other),
         }
-    }
-}
-
-impl From<io::Error> for KubeError {
-    fn from(error: io::Error) -> Self {
-        Self::Io(error.to_string())
     }
 }
 

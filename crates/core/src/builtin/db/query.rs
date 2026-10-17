@@ -17,6 +17,8 @@ use super::Databases;
 use super::error::DbActionError;
 use super::recorded::recorded_statement;
 
+use crate::CoreError;
+
 const DEFAULT_ROWS: usize = 100;
 const MOST_ROWS: usize = 10_000;
 const DEFAULT_BYTES: usize = 1024 * 1024;
@@ -82,8 +84,7 @@ impl Action for DbQuery {
         };
 
         let judged = params.statement.classification(engine);
-        let mut shown = serde_json::to_value(&*params)
-            .map_err(|error| ActionError::Failed(error.to_string()))?;
+        let mut shown = serde_json::to_value(&*params).map_err(CoreError::from)?;
 
         if let Some(fields) = shown.as_object_mut() {
             fields.retain(|_, value| !value.is_null());

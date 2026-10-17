@@ -35,7 +35,7 @@ mod tests {
 
     #[test]
     fn up_to_ten_thousand_replicas_are_allowed() {
-        assert_eq!(Replicas::try_from(10_000).map(Replicas::get), Ok(10_000));
+        assert_eq!(Replicas::try_from(10_000).unwrap().get(), 10_000);
     }
 
     #[test]

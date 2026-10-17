@@ -64,7 +64,7 @@ impl ExecRequest {
         process
             .join()
             .await
-            .map_err(|error| KubeError::Connect(error.to_string()))?;
+            .map_err(|error| KubeError::Attach(Box::new(error)))?;
 
         Ok(Captured {
             status: ExitStatus::from_status(status),
