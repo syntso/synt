@@ -10,7 +10,9 @@ use common::{Grounds, Harness};
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use synt_client::Client;
-use synt_core::{Broker, Core, Databases, ProjectOpen, Projects, Runbooks, Secrets, Terminals};
+use synt_core::{
+    Broker, Core, Databases, ProjectOpen, Projects, RunbookActions, Runbooks, Secrets, Terminals,
+};
 use synt_journal::{Actor, Event, EventKind, Name};
 use synt_proto::{ActionCall, ActionOutcome};
 use synt_ssh::Pool;
@@ -122,10 +124,12 @@ fn core(grounds: &Grounds) -> Arc<Core> {
     Databases::new(Pool::new(), projects, secrets)
         .register(&mut registry)
         .unwrap();
-    runbooks.register(&mut registry).unwrap();
+    RunbookActions::new(runbooks.clone())
+        .register(&mut registry)
+        .unwrap();
 
     let core = Arc::new(Core::new(registry, grounds.journal(), Broker::new()));
-    runbooks.connect(&core);
+    runbooks.connect(&core).unwrap();
 
     core
 }

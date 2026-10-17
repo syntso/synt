@@ -23,10 +23,7 @@ pub use key::{KeyActions, KeyGenerate, KeyImport, KeyList, KeyRemove};
 pub use ping::{Ping, Pong};
 pub use project::{ProjectActions, ProjectClose, ProjectList, ProjectOpen};
 pub use resource::{ResourceActions, ResourceGet, ResourceList, ResourcePut, ResourceRemove};
-pub use runbook::{
-    RunbookExport, RunbookFromBlocks, RunbookFromJournal, RunbookGet, RunbookList, RunbookPut,
-    RunbookRun, RunbookStop,
-};
+pub use runbook::RunbookActions;
 pub use secret::{SecretActions, SecretList, SecretPut, SecretRemove};
 pub use session::{
     LocalSessionOpen, SessionActions, SessionAttach, SessionBlocks, SessionClose,

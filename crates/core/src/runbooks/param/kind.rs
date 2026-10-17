@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::given::Given;
+use crate::runbooks::RunbookError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -17,7 +18,7 @@ pub enum ParamKind {
 }
 
 impl ParamKind {
-    pub(crate) fn accept(self, value: &Value) -> Result<Value, String> {
+    pub(crate) fn accept(self, value: &Value) -> Result<Value, RunbookError> {
         let given = Given::new(value);
 
         match self {
@@ -50,8 +51,8 @@ mod tests {
     #[test]
     fn text_refuses_new_lines_that_would_start_another_command() {
         assert_eq!(
-            ParamKind::String.accept(&json!("a b; c")),
-            Ok(json!("a b; c"))
+            ParamKind::String.accept(&json!("a b; c")).unwrap(),
+            json!("a b; c")
         );
         assert!(ParamKind::String.accept(&json!("a\nreboot")).is_err());
         assert!(ParamKind::String.accept(&json!(5)).is_err());
@@ -60,12 +61,12 @@ mod tests {
     #[test]
     fn a_word_holds_no_spaces_or_shell_symbols() {
         assert_eq!(
-            ParamKind::Word.accept(&json!("orders-api")),
-            Ok(json!("orders-api"))
+            ParamKind::Word.accept(&json!("orders-api")).unwrap(),
+            json!("orders-api")
         );
         assert_eq!(
-            ParamKind::Word.accept(&json!("v1.2+build=3")),
-            Ok(json!("v1.2+build=3"))
+            ParamKind::Word.accept(&json!("v1.2+build=3")).unwrap(),
+            json!("v1.2+build=3")
         );
         assert!(ParamKind::Word.accept(&json!("a b")).is_err());
         assert!(ParamKind::Word.accept(&json!("a;b")).is_err());
@@ -75,28 +76,36 @@ mod tests {
 
     #[test]
     fn integers_come_as_numbers_or_digits() {
-        assert_eq!(ParamKind::Integer.accept(&json!(3)), Ok(json!(3)));
-        assert_eq!(ParamKind::Integer.accept(&json!("42")), Ok(json!(42)));
+        assert_eq!(ParamKind::Integer.accept(&json!(3)).unwrap(), json!(3));
+        assert_eq!(ParamKind::Integer.accept(&json!("42")).unwrap(), json!(42));
         assert!(ParamKind::Integer.accept(&json!(1.5)).is_err());
         assert!(ParamKind::Integer.accept(&json!("four")).is_err());
     }
 
     #[test]
     fn booleans_come_as_flags_or_words() {
-        assert_eq!(ParamKind::Boolean.accept(&json!(false)), Ok(json!(false)));
-        assert_eq!(ParamKind::Boolean.accept(&json!("true")), Ok(json!(true)));
+        assert_eq!(
+            ParamKind::Boolean.accept(&json!(false)).unwrap(),
+            json!(false)
+        );
+        assert_eq!(
+            ParamKind::Boolean.accept(&json!("true")).unwrap(),
+            json!(true)
+        );
         assert!(ParamKind::Boolean.accept(&json!("yes")).is_err());
     }
 
     #[test]
     fn a_target_names_exactly_one_host() {
         assert_eq!(
-            ParamKind::Target.accept(&json!("@orders/api-1")),
-            Ok(json!("@orders/api-1"))
+            ParamKind::Target.accept(&json!("@orders/api-1")).unwrap(),
+            json!("@orders/api-1")
         );
         assert_eq!(
-            ParamKind::Target.accept(&json!("deploy@10.0.1.12:2222")),
-            Ok(json!("deploy@10.0.1.12:2222"))
+            ParamKind::Target
+                .accept(&json!("deploy@10.0.1.12:2222"))
+                .unwrap(),
+            json!("deploy@10.0.1.12:2222")
         );
         assert!(ParamKind::Target.accept(&json!("@orders/*")).is_err());
         assert!(
@@ -110,8 +119,8 @@ mod tests {
     #[test]
     fn a_path_is_any_text_but_empty() {
         assert_eq!(
-            ParamKind::Path.accept(&json!("/srv/my app")),
-            Ok(json!("/srv/my app"))
+            ParamKind::Path.accept(&json!("/srv/my app")).unwrap(),
+            json!("/srv/my app")
         );
         assert!(ParamKind::Path.accept(&json!("")).is_err());
     }

@@ -8,11 +8,11 @@ use std::time::Duration;
 
 use synt_actions::{ActionError, Registry};
 use synt_core::{
-    AlwaysGrants, Arguments, Broker, Core, CoreCaller, CoreScreen, Databases, EventFeed,
-    ExtensionMerger, Files, GrantActions, IdleWatch, JournalActions, KeyActions, Kube,
-    LoginCommand, Ping, ProjectActions, Projects, ResourceActions, Runbooks, SecretActions,
-    Secrets, Server, SessionActions, SshActions, SshKeys, Storage, SyncActions, Terminals,
-    TunnelActions, VERSION,
+    AlwaysGrants, Arguments, Broker, Core, CoreCaller, CoreFolders, CoreScreen, Databases,
+    EventFeed, ExtensionMerger, Files, GrantActions, IdleWatch, JournalActions, KeyActions, Kube,
+    LoginCommand, Ping, ProjectActions, Projects, ResourceActions, RunbookActions, RunbookError,
+    Runbooks, SecretActions, Secrets, Server, SessionActions, SshActions, SshKeys, Storage,
+    SyncActions, Terminals, TunnelActions, VERSION,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Journal, JournalWriter};
@@ -68,7 +68,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     extensions.register(&mut registry)?;
     load_extensions(&extensions).await?;
 
-    let core = connect(registry, &builtins, &extensions);
+    let core = connect(registry, &builtins, &extensions)?;
     let _feed = EventFeed::start(&extensions, &builtins.journal, &builtins.projects);
     let server = Server::bind(&endpoint, core, apps()?)?;
     let _sync: SyncLoop = syncer.start(SYNC_EVERY);
@@ -142,7 +142,7 @@ fn register(registry: &mut Registry, builtins: &Builtins) -> Result<(), ActionEr
     KeyActions::new(keys.clone(), pool.clone()).register(registry)?;
     SecretActions::new(secrets.clone()).register(registry)?;
     Databases::new(pool.clone(), projects.clone(), secrets.clone()).register(registry)?;
-    runbooks.register(registry)
+    RunbookActions::new(runbooks.clone()).register(registry)
 }
 
 fn extensions(
@@ -157,12 +157,16 @@ fn extensions(
         Remote::official()?,
     )?
     .with_secrets(Arc::new(builtins.secrets.clone()))
-    .with_projects(Arc::new(builtins.projects.clone()));
+    .with_projects(Arc::new(CoreFolders::new(builtins.projects.clone())));
 
     Ok(extensions)
 }
 
-fn connect(registry: Registry, builtins: &Builtins, extensions: &Extensions) -> Arc<Core> {
+fn connect(
+    registry: Registry,
+    builtins: &Builtins,
+    extensions: &Extensions,
+) -> Result<Arc<Core>, RunbookError> {
     let broker = Broker::with_always(builtins.always.clone());
     let core = Arc::new(Core::new(registry, builtins.journal.clone(), broker));
 
@@ -170,9 +174,9 @@ fn connect(registry: Registry, builtins: &Builtins, extensions: &Extensions) -> 
         Arc::new(CoreCaller::new(&core)),
         Arc::new(CoreScreen::new(&core)),
     );
-    builtins.runbooks.connect(&core);
+    builtins.runbooks.connect(&core)?;
 
-    core
+    Ok(core)
 }
 
 fn syncer(

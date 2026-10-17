@@ -45,9 +45,7 @@ impl Action for RunbookStop {
         _context: &Context,
         params: RunbookStopParams,
     ) -> Result<StoppedRun, ActionError> {
-        let runbook = self.runbooks.stop(params.run).ok_or_else(|| {
-            ActionError::failed(format!("there is no running run {}", params.run))
-        })?;
+        let runbook = self.runbooks.stop(params.run)?;
 
         Ok(StoppedRun {
             run: params.run,

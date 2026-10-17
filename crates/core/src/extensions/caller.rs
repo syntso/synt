@@ -34,14 +34,15 @@ impl CoreCaller {
         let actor = Actor::Plugin(call.extension().clone());
         let request = call.into_request();
 
-        let answer = match origin {
+        let outcome = match origin {
             Some(origin) => Self::on_behalf(&core, &actor, origin, request).await?,
-            None => core.dispatch_unprompted(&actor, request).await,
+            None => core
+                .dispatch_unprompted(&actor, request)
+                .await
+                .map_err(Self::failure)?,
         };
 
-        answer
-            .map(|outcome| outcome.value)
-            .map_err(|error| CallFailure::new(error.code.into(), error.message))
+        Ok(outcome.value)
     }
 
     async fn on_behalf(
@@ -49,7 +50,7 @@ impl CoreCaller {
         actor: &Actor,
         origin: &Context,
         request: ActionCall,
-    ) -> Result<Result<ActionOutcome, RpcError>, CallFailure> {
+    ) -> Result<ActionOutcome, CallFailure> {
         let link = origin.connection::<Link>().ok_or_else(|| {
             CallFailure::new(
                 FailureCode::Unavailable,
@@ -65,9 +66,13 @@ impl CoreCaller {
             stop: Some(origin.stop()),
         };
 
-        Ok(core
-            .dispatch_on_behalf(actor, behalf, request, origin.stop(), &link)
-            .await)
+        core.dispatch_on_behalf(actor, behalf, request, origin.stop(), &link)
+            .await
+            .map_err(Self::failure)
+    }
+
+    fn failure(error: RpcError) -> CallFailure {
+        CallFailure::new(error.code.into(), error.message)
     }
 }
 

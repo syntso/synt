@@ -33,9 +33,9 @@ impl Action for RunbookList {
 
     fn summary(&self, output: &RunbookListing) -> Value {
         json!({
-            "project": output.project,
-            "runbooks": output.runbooks.len(),
-            "problems": output.problems.len(),
+            "project": output.project(),
+            "runbooks": output.runbooks().len(),
+            "problems": output.problems().len(),
         })
     }
 
@@ -46,6 +46,6 @@ impl Action for RunbookList {
     ) -> Result<RunbookListing, ActionError> {
         let runbooks = self.runbooks.clone();
 
-        blocking(move || runbooks.store().list(&params.project)).await
+        blocking(move || runbooks.folder(&params.project)?.listing()).await
     }
 }

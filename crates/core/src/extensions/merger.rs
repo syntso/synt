@@ -1,6 +1,8 @@
 use synt_extensions::{Extensions, MergeSides};
 use synt_sync::{DocumentKind, DocumentMerger};
 
+use crate::log::log;
+
 pub struct ExtensionMerger {
     extensions: Extensions,
 }
@@ -23,8 +25,14 @@ impl DocumentMerger for ExtensionMerger {
             return None;
         };
 
-        self.extensions
-            .merge_document(extension, suffix, MergeSides::new(base, older, newer))
+        let merged =
+            self.extensions
+                .merge_document(extension, suffix, MergeSides::new(base, older, newer));
+
+        merged
+            .inspect_err(|error| {
+                log!("{extension} could not merge a .{suffix} document: {error}");
+            })
             .ok()
     }
 }

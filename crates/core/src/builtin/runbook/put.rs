@@ -5,7 +5,7 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
 use crate::blocking::blocking;
-use crate::runbooks::{Runbook, RunbookEntry, Runbooks};
+use crate::runbooks::{RunbookDocument, RunbookEntry, RunbookName, Runbooks};
 
 #[derive(Debug, Clone)]
 pub struct RunbookPut {
@@ -16,8 +16,8 @@ pub struct RunbookPut {
 #[serde(deny_unknown_fields)]
 pub struct RunbookPutParams {
     pub project: String,
-    pub name: String,
-    pub runbook: Runbook,
+    pub name: RunbookName,
+    pub runbook: RunbookDocument,
 }
 
 impl RunbookPut {
@@ -39,13 +39,10 @@ impl Action for RunbookPut {
         _target: Option<&ResourceRef>,
         params: &RunbookPutParams,
     ) -> Result<(), ActionError> {
-        params.runbook.check().map_err(ActionError::InvalidParams)?;
+        params.runbook.check()?;
+        self.runbooks.folder(&params.project)?;
 
-        self.runbooks
-            .store()
-            .reference(&params.project, &params.name)
-            .map(|_| ())
-            .map_err(ActionError::from)
+        Ok(())
     }
 
     fn destination(
@@ -53,14 +50,13 @@ impl Action for RunbookPut {
         _target: Option<&ResourceRef>,
         params: &RunbookPutParams,
     ) -> Option<String> {
-        self.runbooks
-            .store()
-            .reference(&params.project, &params.name)
-            .ok()
+        let folder = self.runbooks.folder(&params.project).ok()?;
+
+        Some(folder.reference(&params.name))
     }
 
     fn summary(&self, output: &RunbookEntry) -> Value {
-        json!({ "name": output.name, "steps": output.runbook.steps.len() })
+        json!({ "name": output.name(), "steps": output.runbook().steps().len() })
     }
 
     async fn run(
@@ -72,12 +68,9 @@ impl Action for RunbookPut {
         let runbooks = self.runbooks.clone();
 
         blocking(move || {
-            runbooks.store().put(
-                &params.project,
-                &params.name,
-                params.runbook,
-                admitted.as_deref(),
-            )
+            let folder = runbooks.folder(&params.project)?;
+
+            Ok(folder.put(params.name, params.runbook, admitted.as_deref())?)
         })
         .await
     }

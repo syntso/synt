@@ -1,24 +1,23 @@
 use serde_json::{Map, Value};
 
 use super::placeholders::Placeholders;
-use crate::runbooks::document::{OnFailure, Step};
+use crate::runbooks::RunbookError;
+use crate::runbooks::document::{OneLine, Step, StepAction};
 use crate::runbooks::template::{JsonTemplate, TextTemplate};
 
 const LONGEST_TITLE: usize = 80;
-const SHELL_ACTION: &str = "ssh.exec";
-const COMMAND: &str = "command";
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct DraftStep {
     title: String,
     action: String,
-    pub(super) target: Option<String>,
-    pub(super) params: Map<String, Value>,
+    target: Option<String>,
+    params: Map<String, Value>,
 }
 
 impl DraftStep {
     pub(crate) fn new(action: String, target: Option<String>, params: Map<String, Value>) -> Self {
-        let title = match (params.get(COMMAND).and_then(Value::as_str), &target) {
+        let title = match (params.get(Step::COMMAND).and_then(Value::as_str), &target) {
             (Some(command), _) => Self::title_from(command),
             (None, Some(target)) => format!("{action} on {target}"),
             (None, None) => action.clone(),
@@ -33,12 +32,23 @@ impl DraftStep {
     }
 
     pub(crate) fn shell(host: &str, command: String) -> Self {
-        let params = Map::from_iter([(COMMAND.to_owned(), Value::String(command))]);
+        let params = Map::from_iter([(Step::COMMAND.to_owned(), Value::String(command))]);
 
-        Self::new(SHELL_ACTION.to_owned(), Some(host.to_owned()), params)
+        Self::new(Step::SHELL_ACTION.to_owned(), Some(host.to_owned()), params)
     }
 
-    pub(super) fn templated(&self, placeholders: &Placeholders) -> Step {
+    pub(super) fn target(&self) -> Option<&str> {
+        self.target.as_deref()
+    }
+
+    pub(super) fn params(&self) -> &Map<String, Value> {
+        &self.params
+    }
+
+    pub(super) fn templated(&self, placeholders: &Placeholders) -> Result<Step, RunbookError> {
+        let title = OneLine::new(TextTemplate::escape(&self.title))?;
+        let action = StepAction::new(self.action.as_str())?;
+
         let target = self.target.as_deref().map(|target| {
             placeholders
                 .lift(target)
@@ -48,24 +58,16 @@ impl DraftStep {
         let params = self
             .params
             .iter()
-            .map(|(key, value)| {
-                let value = match value.as_str().and_then(|text| placeholders.lift(text)) {
-                    Some(placeholder) => Value::String(placeholder),
-                    None => value.escaped(),
-                };
-
-                (key.clone(), value)
-            })
+            .map(|(key, value)| (key.clone(), Self::templated_value(value, placeholders)))
             .collect();
 
-        Step {
-            title: TextTemplate::escape(&self.title),
-            action: self.action.clone(),
-            target,
-            params,
-            expect: None,
-            retry: None,
-            on_failure: OnFailure::Stop,
+        Ok(Step::new(title, action, target, params))
+    }
+
+    fn templated_value(value: &Value, placeholders: &Placeholders) -> Value {
+        match value.as_str().and_then(|text| placeholders.lift(text)) {
+            Some(placeholder) => Value::String(placeholder),
+            None => value.escaped(),
         }
     }
 

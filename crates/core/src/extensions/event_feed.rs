@@ -1,3 +1,5 @@
+mod journal_entry;
+
 use serde_json::json;
 use synt_extensions::{EventTopic, ExtensionEvent, Extensions};
 use synt_journal::{Appended, JournalWriter};
@@ -5,8 +7,8 @@ use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::task::JoinHandle;
 
-use super::journal_entry::JournalEntry;
 use crate::projects::{ProjectChange, Projects};
+use journal_entry::JournalEntry;
 
 #[derive(Clone)]
 pub struct EventFeed {
@@ -44,14 +46,19 @@ impl EventFeed {
     async fn follow_projects(self, mut changes: Receiver<ProjectChange>) {
         loop {
             match changes.recv().await {
-                Ok(change) => {
-                    let payload = json!({ "project": change.project, "change": change.change });
-                    self.publish([ExtensionEvent::new(EventTopic::Resource, payload)]);
+                Ok(change) => self.publish([Self::resource_event(&change)]),
+                Err(RecvError::Lagged(missed)) => {
+                    eprintln!("synt-core: extensions missed {missed} project changes");
                 }
-                Err(RecvError::Lagged(_)) => {}
                 Err(RecvError::Closed) => return,
             }
         }
+    }
+
+    fn resource_event(change: &ProjectChange) -> ExtensionEvent {
+        let payload = json!({ "project": change.project, "change": change.change });
+
+        ExtensionEvent::new(EventTopic::Resource, payload)
     }
 
     fn publish(&self, events: impl IntoIterator<Item = ExtensionEvent>) {

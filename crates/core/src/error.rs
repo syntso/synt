@@ -8,6 +8,7 @@ use synt_platform::{KeyPlace, PlatformError};
 use synt_sync::SyncError;
 use thiserror::Error;
 
+use crate::runbooks::RunbookError;
 use crate::secrets::SecretName;
 use crate::ssh_keys::KeyName;
 use crate::terminals::SessionId;
@@ -47,8 +48,8 @@ pub enum CoreError {
     #[error("{0}")]
     Project(String),
 
-    #[error("{0}")]
-    Runbook(String),
+    #[error(transparent)]
+    Runbook(#[from] RunbookError),
 
     #[error("{} needs one of {}", .command, .choices.join(", "))]
     CommandUsage {
@@ -406,7 +407,7 @@ impl CoreError {
 impl From<CoreError> for ActionError {
     fn from(error: CoreError) -> Self {
         match error {
-            CoreError::Runbook(reason) => Self::InvalidParams(reason),
+            CoreError::Runbook(error) => error.into(),
             other => Self::Failed(other.to_string()),
         }
     }
