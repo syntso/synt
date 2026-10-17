@@ -104,7 +104,9 @@ impl Action for SshExec {
             .map_err(|_| ActionError::failed("ssh.exec is shutting down"))?;
 
         let stop = context.stop().cancelled();
-        let output = synt_ssh::exec(&self.pool, &target, &params.command, limits, stop)
+        let output = self
+            .pool
+            .exec(&target, &params.command, limits, stop)
             .await
             .map_err(failure)?;
 

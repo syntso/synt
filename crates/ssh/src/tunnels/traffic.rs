@@ -1,11 +1,12 @@
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
+use synt_platform::Lock;
+
 use crate::SshError;
-use crate::locked::locked;
 
 #[derive(Debug, Default)]
-pub(crate) struct Traffic {
+pub(super) struct Traffic {
     sent: AtomicU64,
     received: AtomicU64,
     active: AtomicUsize,
@@ -14,40 +15,40 @@ pub(crate) struct Traffic {
 }
 
 impl Traffic {
-    pub(crate) fn sent(&self) -> u64 {
+    pub(super) fn sent(&self) -> u64 {
         self.sent.load(Ordering::Relaxed)
     }
 
-    pub(crate) fn received(&self) -> u64 {
+    pub(super) fn received(&self) -> u64 {
         self.received.load(Ordering::Relaxed)
     }
 
-    pub(crate) fn active(&self) -> usize {
+    pub(super) fn active(&self) -> usize {
         self.active.load(Ordering::Relaxed)
     }
 
-    pub(crate) fn connections(&self) -> u64 {
+    pub(super) fn connections(&self) -> u64 {
         self.connections.load(Ordering::Relaxed)
     }
 
-    pub(crate) fn last_error(&self) -> Option<String> {
-        locked(&self.last_error).clone()
+    pub(super) fn last_error(&self) -> Option<String> {
+        self.last_error.locked().clone()
     }
 
-    pub(crate) fn add_sent(&self, bytes: usize) {
-        self.sent.fetch_add(widen(bytes), Ordering::Relaxed);
+    pub(super) fn add_sent(&self, bytes: usize) {
+        self.sent.fetch_add(Self::widen(bytes), Ordering::Relaxed);
     }
 
-    pub(crate) fn add_received(&self, bytes: usize) {
-        self.received.fetch_add(widen(bytes), Ordering::Relaxed);
+    pub(super) fn add_received(&self, bytes: usize) {
+        self.received.fetch_add(Self::widen(bytes), Ordering::Relaxed);
     }
 
-    pub(crate) fn begin(&self) {
+    pub(super) fn begin(&self) {
         self.active.fetch_add(1, Ordering::Relaxed);
         self.connections.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub(crate) fn end(&self, outcome: Result<(), SshError>) {
+    pub(super) fn end(&self, outcome: Result<(), SshError>) {
         self.active.fetch_sub(1, Ordering::Relaxed);
 
         if let Err(error) = outcome {
@@ -55,11 +56,11 @@ impl Traffic {
         }
     }
 
-    pub(crate) fn note(&self, error: &SshError) {
-        *locked(&self.last_error) = Some(error.to_string());
+    pub(super) fn note(&self, error: &SshError) {
+        *self.last_error.locked() = Some(error.to_string());
     }
-}
 
-fn widen(bytes: usize) -> u64 {
-    u64::try_from(bytes).unwrap_or(u64::MAX)
+    fn widen(bytes: usize) -> u64 {
+        u64::try_from(bytes).unwrap_or(u64::MAX)
+    }
 }

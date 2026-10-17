@@ -1,7 +1,10 @@
+use std::time::Duration;
+
 use russh::client::Msg;
 use russh::{Channel, ChannelMsg};
 
-use super::{ExecOutput, StreamBuffer, signal_name};
+use super::{ExecOutput, StreamBuffer};
+use crate::signal_name::SignalName;
 use crate::{Algorithms, SshError};
 
 const STDERR: u32 = 1;
@@ -29,17 +32,10 @@ impl Collector {
                 ChannelMsg::Data { data } => self.stdout.push(&data),
                 ChannelMsg::ExtendedData { data, ext: STDERR } => self.stderr.push(&data),
                 ChannelMsg::ExitStatus { exit_status } => self.exit = Some(exit_status),
-                ChannelMsg::ExitSignal {
-                    signal_name: signal,
-                    ..
-                } => {
-                    self.signal = Some(signal_name(&signal));
+                ChannelMsg::ExitSignal { signal_name, .. } => {
+                    self.signal = Some(signal_name.to_name());
                 }
-                ChannelMsg::Failure => {
-                    return Err(SshError::Channel(
-                        "the server refused to run the command".to_owned(),
-                    ));
-                }
+                ChannelMsg::Failure => return Err(SshError::Refused("to run the command")),
                 ChannelMsg::Close => return Ok(self),
                 _ => {}
             }
@@ -52,8 +48,9 @@ impl Collector {
         Ok(self)
     }
 
-    pub(super) fn finish(self, duration_ms: u64, algorithms: Option<Algorithms>) -> ExecOutput {
+    pub(super) fn finish(self, elapsed: Duration, algorithms: Option<Algorithms>) -> ExecOutput {
         let truncated = self.stdout.truncated() || self.stderr.truncated();
+        let duration_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
 
         ExecOutput {
             exit: self.exit,

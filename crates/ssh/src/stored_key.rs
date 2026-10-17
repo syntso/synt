@@ -1,5 +1,7 @@
+mod summary;
+mod vault;
+
 use std::fmt::{self, Debug, Formatter};
-use std::io;
 use std::path::Path;
 
 use russh::keys::ssh_key::LineEnding;
@@ -7,9 +9,11 @@ use russh::keys::ssh_key::private::Ed25519Keypair;
 use russh::keys::{self, PrivateKey};
 use zeroize::Zeroizing;
 
-use super::KeySummary;
+pub use summary::KeySummary;
+pub use vault::{KeyVault, VaultError};
+
 use crate::SshError;
-use crate::auth::read_key_text;
+use crate::authenticator::KeyText;
 
 const SEED_LEN: usize = 32;
 
@@ -20,14 +24,20 @@ pub struct StoredKey {
 
 impl StoredKey {
     pub async fn import(path: &Path) -> Result<Self, SshError> {
-        let text = read_key_text(path)
-            .await
-            .map_err(|error| unreadable_file(path, &error))?;
+        let text = KeyText::read(path).await?;
 
-        let key = match keys::decode_secret_key(&text, None) {
+        let key = match text.decode() {
             Ok(key) => key,
-            Err(keys::Error::KeyIsEncrypted) => return Err(encrypted(path)),
-            Err(_) => return Err(not_a_private_key(path)),
+            Err(keys::Error::KeyIsEncrypted) => {
+                return Err(SshError::PassphraseKey {
+                    path: path.to_owned(),
+                });
+            }
+            Err(_) => {
+                return Err(SshError::NotPrivateKey {
+                    path: path.to_owned(),
+                });
+            }
         };
 
         Self::from_key(path, &key)
@@ -35,14 +45,19 @@ impl StoredKey {
 
     pub fn generate_ed25519(comment: &str) -> Result<Self, SshError> {
         let mut seed = Zeroizing::new([0; SEED_LEN]);
-        getrandom::fill(seed.as_mut_slice()).map_err(|error| SshError::KeyStore {
-            reason: format!("the system random source failed: {error}"),
-        })?;
+        getrandom::fill(seed.as_mut_slice()).map_err(SshError::Random)?;
 
         let mut key = PrivateKey::from(Ed25519Keypair::from_seed(&seed));
         key.set_comment(comment);
 
         Self::encode(&key)
+    }
+
+    pub(crate) fn decode(bytes: &[u8]) -> Option<PrivateKey> {
+        let text = std::str::from_utf8(bytes).ok()?;
+        let key = keys::decode_secret_key(text, None).ok()?;
+
+        (!key.is_encrypted()).then_some(key)
     }
 
     pub fn summary(&self) -> &KeySummary {
@@ -55,16 +70,14 @@ impl StoredKey {
 
     fn from_key(path: &Path, key: &PrivateKey) -> Result<Self, SshError> {
         if key.is_encrypted() {
-            return Err(encrypted(path));
+            return Err(SshError::PassphraseKey {
+                path: path.to_owned(),
+            });
         }
 
         if key.algorithm().is_rsa() {
-            return Err(SshError::KeyStore {
-                reason: format!(
-                    "{} is an RSA key; Synt keeps ed25519 and ecdsa keys, and RSA keys work \
-                     through ssh-agent only",
-                    path.display()
-                ),
+            return Err(SshError::RsaKey {
+                path: path.to_owned(),
             });
         }
 
@@ -74,9 +87,7 @@ impl StoredKey {
     fn encode(key: &PrivateKey) -> Result<Self, SshError> {
         let private = key
             .to_openssh(LineEnding::LF)
-            .map_err(|_| SshError::KeyStore {
-                reason: "the key could not be written in OpenSSH form".to_owned(),
-            })?;
+            .map_err(|_| SshError::KeyEncoding)?;
 
         Ok(Self {
             private,
@@ -94,54 +105,17 @@ impl Debug for StoredKey {
     }
 }
 
-pub(crate) fn decode_private_key(bytes: &[u8]) -> Option<PrivateKey> {
-    let text = std::str::from_utf8(bytes).ok()?;
-    let key = keys::decode_secret_key(text, None).ok()?;
-
-    (!key.is_encrypted()).then_some(key)
-}
-
-fn unreadable_file(path: &Path, error: &io::Error) -> SshError {
-    let reason = match error.kind() {
-        io::ErrorKind::NotFound => format!("there is no file at {}", path.display()),
-        io::ErrorKind::InvalidData => error.to_string(),
-        _ => format!("{} cannot be read: {error}", path.display()),
-    };
-
-    SshError::KeyStore { reason }
-}
-
-fn not_a_private_key(path: &Path) -> SshError {
-    SshError::KeyStore {
-        reason: format!(
-            "{} is not a private key Synt can read; give an OpenSSH or PEM private key file, \
-             not a .pub file",
-            path.display()
-        ),
-    }
-}
-
-fn encrypted(path: &Path) -> SshError {
-    SshError::KeyStore {
-        reason: format!(
-            "{} is protected by a passphrase; Synt cannot take passphrases yet, so decrypt a \
-             copy first (ssh-keygen -p -N \"\" -f <copy>), import the copy and delete it",
-            path.display()
-        ),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
 
-    use super::{StoredKey, decode_private_key};
+    use super::StoredKey;
     use crate::SshError;
 
     #[test]
     fn a_generated_key_decodes_back_to_the_same_public_key() {
         let stored = StoredKey::generate_ed25519("test").expect("generate");
-        let decoded = decode_private_key(stored.private_bytes()).expect("decode");
+        let decoded = StoredKey::decode(stored.private_bytes()).expect("decode");
 
         assert_eq!(stored.summary().kind, "ssh-ed25519");
         assert!(stored.summary().fingerprint.starts_with("SHA256:"));
@@ -161,7 +135,7 @@ mod tests {
 
     #[test]
     fn decoding_refuses_text_that_is_not_a_key() {
-        assert!(decode_private_key(b"not a key").is_none());
+        assert!(StoredKey::decode(b"not a key").is_none());
     }
 
     #[tokio::test]
@@ -185,8 +159,12 @@ mod tests {
 
         let refused = StoredKey::import(&path).await;
 
+        assert!(matches!(refused, Err(SshError::NotPrivateKey { .. })));
         assert!(
-            matches!(refused, Err(SshError::KeyStore { reason }) if reason.contains("not a private key"))
+            refused
+                .expect_err("refused")
+                .to_string()
+                .contains("not a private key")
         );
     }
 
@@ -196,8 +174,7 @@ mod tests {
 
         let refused = StoredKey::import(&folder.path().join("none")).await;
 
-        assert!(
-            matches!(refused, Err(SshError::KeyStore { reason }) if reason.contains("no file"))
-        );
+        assert!(matches!(refused, Err(SshError::NoKeyFile { .. })));
+        assert!(refused.expect_err("refused").to_string().contains("no file"));
     }
 }

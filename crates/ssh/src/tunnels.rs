@@ -1,18 +1,31 @@
+mod destination;
+mod forwarder;
+mod id;
+mod port_forward;
+mod status;
+mod traffic;
+
 use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Formatter};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use synt_platform::Lock;
 use tokio_util::sync::CancellationToken;
 
-use super::{Destination, Tunnel, TunnelId, TunnelStatus};
-use crate::locked::locked;
+pub use destination::Destination;
+use forwarder::Forwarder;
+pub use id::TunnelId;
+use port_forward::PortForward;
+pub use status::TunnelStatus;
+use traffic::Traffic;
+
 use crate::{Pool, SshError, Target};
 
 #[derive(Clone)]
 pub struct Tunnels {
     pool: Pool,
-    open: Arc<Mutex<BTreeMap<TunnelId, Tunnel>>>,
+    open: Arc<Mutex<BTreeMap<TunnelId, PortForward>>>,
     issued: Arc<AtomicU64>,
 }
 
@@ -34,37 +47,31 @@ impl Tunnels {
     ) -> Result<TunnelStatus, SshError> {
         let id = TunnelId::from(self.issued.fetch_add(1, Ordering::Relaxed) + 1);
 
-        let tunnel = Tunnel::open(
-            id,
-            &self.pool,
-            target,
-            destination,
-            local_port,
-            stop.clone(),
-        )
-        .await?;
-        let status = tunnel.status();
+        let forward = PortForward::open(id, &self.pool, target, destination, local_port, stop.clone())
+            .await?;
+        let status = forward.status();
 
-        locked(&self.open).insert(id, tunnel);
+        self.open.locked().insert(id, forward);
         self.close_when(id, stop);
 
         Ok(status)
     }
 
     pub fn list(&self) -> Vec<TunnelStatus> {
-        locked(&self.open).values().map(Tunnel::status).collect()
+        self.open.locked().values().map(PortForward::status).collect()
     }
 
     pub fn login_user(&self, id: TunnelId) -> Option<String> {
-        locked(&self.open)
+        self.open
+            .locked()
             .get(&id)
-            .map(|tunnel| tunnel.login_user().to_owned())
+            .map(|forward| forward.login_user().to_owned())
     }
 
     pub async fn close(&self, id: TunnelId) -> Option<TunnelStatus> {
-        let tunnel = locked(&self.open).remove(&id)?;
+        let forward = self.open.locked().remove(&id)?;
 
-        Some(tunnel.close().await)
+        Some(forward.close().await)
     }
 
     fn close_when(&self, id: TunnelId, stop: CancellationToken) {
@@ -81,7 +88,7 @@ impl Debug for Tunnels {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("Tunnels")
-            .field("open", &locked(&self.open).len())
+            .field("open", &self.open.locked().len())
             .finish_non_exhaustive()
     }
 }

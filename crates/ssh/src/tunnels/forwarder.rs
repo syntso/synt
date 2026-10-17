@@ -68,16 +68,13 @@ impl Forwarder {
     async fn pipe(&self, socket: TcpStream, peer: SocketAddr) -> Result<(), SshError> {
         socket.set_nodelay(true)?;
 
-        let channel = self
-            .lease
-            .open_direct(self.destination.host(), self.destination.port(), peer)
-            .await?;
+        let channel = self.lease.open_direct(&self.destination, peer).await?;
 
         let (remote_read, remote_write) = io::split(channel.into_stream());
         let (local_read, local_write) = socket.into_split();
 
-        let outgoing = pump(local_read, remote_write, &self.traffic, Traffic::add_sent);
-        let incoming = pump(
+        let outgoing = Self::pump(local_read, remote_write, &self.traffic, Traffic::add_sent);
+        let incoming = Self::pump(
             remote_read,
             local_write,
             &self.traffic,
@@ -88,30 +85,30 @@ impl Forwarder {
 
         Ok(())
     }
-}
 
-async fn pump<R, W>(
-    mut from: R,
-    mut to: W,
-    traffic: &Traffic,
-    count: fn(&Traffic, usize),
-) -> io::Result<()>
-where
-    R: AsyncRead + Unpin,
-    W: AsyncWrite + Unpin,
-{
-    let mut buffer = vec![0; BUFFER_BYTES];
+    async fn pump<R, W>(
+        mut from: R,
+        mut to: W,
+        traffic: &Traffic,
+        count: fn(&Traffic, usize),
+    ) -> io::Result<()>
+    where
+        R: AsyncRead + Unpin,
+        W: AsyncWrite + Unpin,
+    {
+        let mut buffer = vec![0; BUFFER_BYTES];
 
-    loop {
-        let read = from.read(&mut buffer).await?;
+        loop {
+            let read = from.read(&mut buffer).await?;
 
-        if read == 0 {
-            break;
+            if read == 0 {
+                break;
+            }
+
+            to.write_all(&buffer[..read]).await?;
+            count(traffic, read);
         }
 
-        to.write_all(&buffer[..read]).await?;
-        count(traffic, read);
+        to.shutdown().await
     }
-
-    to.shutdown().await
 }

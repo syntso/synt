@@ -1,21 +1,27 @@
 use russh::Sig;
 
-pub(crate) fn signal_name(signal: &Sig) -> String {
-    let name = match signal {
-        Sig::ABRT => "ABRT",
-        Sig::ALRM => "ALRM",
-        Sig::FPE => "FPE",
-        Sig::HUP => "HUP",
-        Sig::ILL => "ILL",
-        Sig::INT => "INT",
-        Sig::KILL => "KILL",
-        Sig::PIPE => "PIPE",
-        Sig::QUIT => "QUIT",
-        Sig::SEGV => "SEGV",
-        Sig::TERM => "TERM",
-        Sig::USR1 => "USR1",
-        Sig::Custom(name) => name,
-    };
+pub(crate) trait SignalName {
+    fn to_name(&self) -> String;
+}
 
-    name.to_owned()
+impl SignalName for Sig {
+    fn to_name(&self) -> String {
+        let name = match self {
+            Self::ABRT => "ABRT",
+            Self::ALRM => "ALRM",
+            Self::FPE => "FPE",
+            Self::HUP => "HUP",
+            Self::ILL => "ILL",
+            Self::INT => "INT",
+            Self::KILL => "KILL",
+            Self::PIPE => "PIPE",
+            Self::QUIT => "QUIT",
+            Self::SEGV => "SEGV",
+            Self::TERM => "TERM",
+            Self::USR1 => "USR1",
+            Self::Custom(name) => name,
+        };
+
+        name.to_owned()
+    }
 }

@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use russh::keys::PublicKey;
+use synt_platform::Lock;
 
 use crate::Target;
-use crate::locked::locked;
 
 #[derive(Default)]
 pub(crate) struct Logins {
@@ -13,10 +13,10 @@ pub(crate) struct Logins {
 
 impl Logins {
     pub(crate) fn accepted_key(&self, target: &Target) -> Option<PublicKey> {
-        locked(&self.accepted).get(&target.label()).cloned()
+        self.accepted.locked().get(&target.label()).cloned()
     }
 
     pub(crate) fn remember(&self, target: &Target, key: PublicKey) {
-        locked(&self.accepted).insert(target.label(), key);
+        self.accepted.locked().insert(target.label(), key);
     }
 }

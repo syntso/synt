@@ -1,10 +1,15 @@
-use std::collections::VecDeque;
+mod end;
+mod output;
+mod terminal_size;
 
 use bytes::Bytes;
 use russh::client::Msg;
 use russh::{ChannelWriteHalf, Sig};
 
-use super::{ShellOutput, TerminalSize, await_reply};
+pub use end::ShellEnd;
+pub use output::ShellOutput;
+pub use terminal_size::TerminalSize;
+
 use crate::{Algorithms, Lease, SshError, Target};
 
 pub struct Shell {
@@ -20,8 +25,8 @@ impl Shell {
         size: TerminalSize,
     ) -> Result<(Self, ShellOutput), SshError> {
         let channel = lease.open_session().await?;
-        let (mut reader, writer) = channel.split();
-        let mut early = VecDeque::new();
+        let (reader, writer) = channel.split();
+        let mut output = ShellOutput::new(reader);
 
         writer
             .request_pty(
@@ -34,12 +39,11 @@ impl Shell {
                 &[],
             )
             .await?;
-        await_reply(&mut reader, &mut early, "a terminal").await?;
+        output.await_reply("a terminal").await?;
 
         writer.request_shell(true).await?;
-        await_reply(&mut reader, &mut early, "a shell").await?;
+        output.await_reply("a shell").await?;
 
-        let output = ShellOutput::new(reader, early);
         let algorithms = lease.algorithms();
 
         let shell = Self {

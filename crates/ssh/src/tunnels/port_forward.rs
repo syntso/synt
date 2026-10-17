@@ -7,13 +7,12 @@ use tokio::task::JoinHandle;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
-use super::forwarder::Forwarder;
-use super::{Destination, Traffic, TunnelId, TunnelStatus};
+use super::{Destination, Forwarder, Traffic, TunnelId, TunnelStatus};
 use crate::{Lease, Pool, SshError, Target};
 
 const CONNECT_LIMIT: Duration = Duration::from_secs(30);
 
-pub(crate) struct Tunnel {
+pub(super) struct PortForward {
     id: TunnelId,
     lease: Arc<Lease>,
     local_port: u16,
@@ -23,8 +22,8 @@ pub(crate) struct Tunnel {
     stop: CancellationToken,
 }
 
-impl Tunnel {
-    pub(crate) async fn open(
+impl PortForward {
+    pub(super) async fn open(
         id: TunnelId,
         pool: &Pool,
         target: &Target,
@@ -32,7 +31,7 @@ impl Tunnel {
         local_port: Option<u16>,
         stop: CancellationToken,
     ) -> Result<Self, SshError> {
-        let listener = listen(local_port.unwrap_or(0)).await?;
+        let listener = Self::listen(local_port.unwrap_or(0)).await?;
         let local_port = listener.local_addr()?.port();
 
         let lease = time::timeout(CONNECT_LIMIT, pool.acquire(target))
@@ -59,11 +58,11 @@ impl Tunnel {
         })
     }
 
-    pub(crate) fn login_user(&self) -> &str {
+    pub(super) fn login_user(&self) -> &str {
         self.lease.target().user()
     }
 
-    pub(crate) fn status(&self) -> TunnelStatus {
+    pub(super) fn status(&self) -> TunnelStatus {
         TunnelStatus {
             id: self.id,
             target: self.lease.target().label(),
@@ -78,26 +77,26 @@ impl Tunnel {
         }
     }
 
-    pub(crate) async fn close(mut self) -> TunnelStatus {
+    pub(super) async fn close(mut self) -> TunnelStatus {
         self.serving.abort();
         let _stopped = (&mut self.serving).await;
 
         self.status()
     }
+
+    async fn listen(port: u16) -> Result<TcpListener, SshError> {
+        TcpListener::bind((Ipv4Addr::LOCALHOST, port))
+            .await
+            .map_err(|cause| SshError::Listen {
+                port,
+                cause: Arc::new(cause),
+            })
+    }
 }
 
-impl Drop for Tunnel {
+impl Drop for PortForward {
     fn drop(&mut self) {
         self.serving.abort();
         self.stop.cancel();
     }
-}
-
-async fn listen(port: u16) -> Result<TcpListener, SshError> {
-    TcpListener::bind((Ipv4Addr::LOCALHOST, port))
-        .await
-        .map_err(|error| SshError::Listen {
-            port,
-            reason: error.to_string(),
-        })
 }
