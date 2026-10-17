@@ -1,11 +1,7 @@
-#![allow(clippy::unwrap_used)]
-
-mod common;
-
 use std::fs;
 use std::path::Path;
 
-use common::{Approver, Grounds, Harness, rejection};
+use crate::common::{Approver, Grounds, Harness, rejection};
 use serde_json::{Value, json};
 use synt_client::Client;
 use synt_core::{Broker, Core, Databases, ProjectOpen, Projects, SecretPut, Secrets};

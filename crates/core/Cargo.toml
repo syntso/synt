@@ -64,12 +64,8 @@ name = "concurrency"
 path = "tests/concurrency.rs"
 
 [[test]]
-name = "database_servers"
-path = "tests/database_servers.rs"
-
-[[test]]
 name = "databases"
-path = "tests/databases.rs"
+path = "tests/databases/main.rs"
 
 [[test]]
 name = "describe"
@@ -116,12 +112,8 @@ name = "round_trip"
 path = "tests/round_trip.rs"
 
 [[test]]
-name = "runbook_databases"
-path = "tests/runbook_databases.rs"
-
-[[test]]
 name = "runbooks"
-path = "tests/runbooks.rs"
+path = "tests/runbooks/main.rs"
 
 [[test]]
 name = "secrets"

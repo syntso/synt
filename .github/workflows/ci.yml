@@ -126,10 +126,10 @@ jobs:
       - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: cargo-nextest
-      - run: cargo nextest run -p synt-db -p synt-core --test servers --test database_servers --no-run
+      - run: cargo nextest run -p synt-db -p synt-core --test servers --test databases --no-run
       - run: tests/ssh/up.sh
       - run: tests/db/up.sh
-      - run: cargo nextest run -p synt-db -p synt-core --test servers --test database_servers --run-ignored only -E 'package(synt-db) or binary(database_servers) or test(database)'
+      - run: cargo nextest run -p synt-db -p synt-core --test servers --test databases --run-ignored only -E 'package(synt-db) or binary(databases) or test(database)'
         env:
           SYNT_SSH_TESTS: "1"
           SYNT_DB_TESTS: "1"

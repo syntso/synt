@@ -1,6 +1,13 @@
 #![allow(clippy::unwrap_used)]
 
-mod common;
+#[path = ".."]
+mod shared {
+    pub mod common;
+}
+
+mod databases;
+
+use shared::common;
 
 use common::{RunbookDesk, eventually, kinds, rejection};
 use serde_json::{Value, json};

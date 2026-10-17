@@ -1,12 +1,8 @@
-#![allow(clippy::unwrap_used)]
-
-mod common;
-
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use common::{Grounds, Harness};
+use crate::common::{Grounds, Harness};
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use synt_client::Client;

@@ -1,11 +1,7 @@
-#![allow(clippy::unwrap_used)]
-
-mod common;
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use common::{Approver, Grounds, Harness, rejection};
+use crate::common::{Approver, Grounds, Harness, rejection};
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use synt_client::Client;

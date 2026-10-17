@@ -98,11 +98,11 @@ tests/kube/down.sh
 
 ## Database integration tests
 
-The tests in `crates/db/tests/servers` and `crates/core/tests/database_servers.rs` talk to real PostgreSQL, MySQL, MariaDB and Redis servers. They are ignored by default and skip themselves unless `SYNT_DB_TESTS=1` is set. SQLite needs no server, so its tests always run.
+The tests in `crates/db/tests/servers` and `crates/core/tests/databases/servers.rs` talk to real PostgreSQL, MySQL, MariaDB and Redis servers. They are ignored by default and skip themselves unless `SYNT_DB_TESTS=1` is set. SQLite needs no server, so its tests always run.
 
 ```bash
 tests/db/up.sh
-SYNT_DB_TESTS=1 cargo nextest run -p synt-db -p synt-core --test servers --test database_servers --run-ignored only
+SYNT_DB_TESTS=1 cargo nextest run -p synt-db -p synt-core --test servers --test databases --run-ignored only
 tests/db/down.sh
 ```
 
