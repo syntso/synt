@@ -10,7 +10,7 @@ use russh::keys::{self, PrivateKey};
 use zeroize::Zeroizing;
 
 pub use summary::KeySummary;
-pub use vault::{KeyVault, VaultError};
+pub use vault::KeyVault;
 
 use crate::SshError;
 use crate::authenticator::KeyText;

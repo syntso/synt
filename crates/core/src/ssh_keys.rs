@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use synt_journal::{Clock, SystemClock};
 use synt_platform::Vault;
-use synt_ssh::{KeyVault, StoredKey, VaultError};
+use synt_ssh::{KeyVault, SshError, StoredKey};
 use zeroize::Zeroizing;
 
 use crate::CoreError;
@@ -82,10 +82,10 @@ impl SshKeys {
 }
 
 impl KeyVault for SshKeys {
-    fn private_key(&self, name: &str) -> Result<Option<Zeroizing<Vec<u8>>>, VaultError> {
-        let name = KeyName::parse(name)?;
+    fn private_key(&self, name: &str) -> Result<Option<Zeroizing<Vec<u8>>>, SshError> {
+        let name = KeyName::parse(name).map_err(SshError::key_vault)?;
 
-        Ok(self.items.read(&name)?)
+        self.items.read(&name).map_err(SshError::key_vault)
     }
 }
 

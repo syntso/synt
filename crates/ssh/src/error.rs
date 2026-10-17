@@ -102,8 +102,20 @@ pub enum SshError {
     #[error("the key could not be written in OpenSSH form")]
     KeyEncoding,
 
-    #[error("key secret://{name}: {reason}")]
-    VaultKey { name: String, reason: &'static str },
+    #[error("key secret://{0}: this core has no key vault")]
+    NoKeyVault(String),
+
+    #[error("key secret://{0}: there is no such key in the vault")]
+    NotInVault(String),
+
+    #[error("key secret://{0}: reading the vault stopped unexpectedly")]
+    VaultStopped(String),
+
+    #[error("key secret://{0}: the key in the vault is damaged")]
+    DamagedVaultKey(String),
+
+    #[error(transparent)]
+    KeyVault(Cause),
 
     #[error("key secret://{name}: {cause}")]
     VaultRead { name: String, cause: Cause },
@@ -173,6 +185,10 @@ pub enum SshError {
 }
 
 impl SshError {
+    pub fn key_vault(error: impl Into<Box<dyn StdError + Send + Sync>>) -> Self {
+        Self::KeyVault(Arc::from(error.into()))
+    }
+
     pub(crate) fn connect(host: String, cause: impl StdError + Send + Sync + 'static) -> Self {
         Self::Connect {
             host,

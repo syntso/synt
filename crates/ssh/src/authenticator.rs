@@ -166,7 +166,7 @@ impl<'a> Authenticator<'a> {
         name: &str,
     ) -> Result<PrivateKey, SshError> {
         let Some(vault) = vault else {
-            return Err(Self::vault_refusal(name, "this core has no key vault"));
+            return Err(SshError::NoKeyVault(name.to_owned()));
         };
 
         let owned = name.to_owned();
@@ -174,28 +174,17 @@ impl<'a> Authenticator<'a> {
 
         let bytes = match reading {
             Ok(Ok(Some(bytes))) => bytes,
-            Ok(Ok(None)) => {
-                return Err(Self::vault_refusal(
-                    name,
-                    "there is no such key in the vault",
-                ));
-            }
+            Ok(Ok(None)) => return Err(SshError::NotInVault(name.to_owned())),
             Ok(Err(cause)) => {
                 return Err(SshError::VaultRead {
                     name: name.to_owned(),
-                    cause: Arc::from(cause),
+                    cause: Arc::new(cause),
                 });
             }
-            Err(_) => {
-                return Err(Self::vault_refusal(
-                    name,
-                    "reading the vault stopped unexpectedly",
-                ));
-            }
+            Err(_) => return Err(SshError::VaultStopped(name.to_owned())),
         };
 
-        StoredKey::decode(&bytes)
-            .ok_or_else(|| Self::vault_refusal(name, "the key in the vault is damaged"))
+        StoredKey::decode(&bytes).ok_or_else(|| SshError::DamagedVaultKey(name.to_owned()))
     }
 
     fn failure(self) -> SshError {
@@ -217,13 +206,6 @@ impl<'a> Authenticator<'a> {
         match handle.best_supported_rsa_hash().await {
             Ok(Some(Some(hash))) => Some(hash),
             _ => Some(HashAlg::Sha256),
-        }
-    }
-
-    fn vault_refusal(name: &str, reason: &'static str) -> SshError {
-        SshError::VaultKey {
-            name: name.to_owned(),
-            reason,
         }
     }
 }

@@ -58,11 +58,10 @@ async fn a_vault_key_that_is_not_there_is_refused_by_name() {
     let bastion = setup.bastion().with_vault_key("day");
     let refused = setup.run(&bastion, "true").await;
 
-    let Err(SshError::VaultKey { name, reason }) = refused else {
+    let Err(SshError::NotInVault(name)) = refused else {
         panic!("expected the vault key to be missing, got {refused:?}");
     };
     assert_eq!(name, "day");
-    assert!(reason.contains("no such key"));
 }
 
 fn with_vault(servers: &SshServers, pool: PoolBuilder) -> PoolBuilder {
