@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::fmt::{self, Debug, Formatter};
 use std::str;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -129,7 +130,11 @@ impl Debug for Secrets {
 }
 
 impl SecretSource for Secrets {
-    fn reveal(&self, name: &str, extension: &str) -> Result<Option<Zeroizing<Vec<u8>>>, String> {
+    fn reveal(
+        &self,
+        name: &str,
+        extension: &str,
+    ) -> Result<Option<Zeroizing<Vec<u8>>>, Box<dyn Error + Send + Sync>> {
         let name = SecretName::parse(name)?;
 
         if self

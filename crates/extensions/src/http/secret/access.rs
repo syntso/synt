@@ -47,7 +47,7 @@ impl<'a> SecretAccess<'a> {
         let value = self
             .source
             .reveal(secret, self.extension)
-            .map_err(HttpError::SecretUnreadable)?
+            .map_err(|error| HttpError::SecretUnreadable(error.to_string()))?
             .ok_or_else(|| HttpError::NoSuchSecret(secret.to_owned()))?;
 
         Ok(Revealed::new(attached, value))
