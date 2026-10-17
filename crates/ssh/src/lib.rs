@@ -24,5 +24,5 @@ pub use session::Algorithms;
 pub use sftp::{Directory, Download, FileEntry, FileKind, FileSessions, Sftp, Upload, WriteMode};
 pub use shell::{Shell, ShellEnd, ShellOutput, TerminalSize};
 pub use stored_key::{KeySummary, KeyVault, StoredKey, VaultError};
-pub use target::Target;
+pub use target::{Target, TargetProblem};
 pub use tunnels::{Destination, TunnelId, TunnelStatus, Tunnels};
