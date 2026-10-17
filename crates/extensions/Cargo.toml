@@ -6,6 +6,7 @@ rust-version.workspace = true
 license-file.workspace = true
 repository.workspace = true
 publish.workspace = true
+autotests = false
 
 [lints]
 workspace = true
@@ -40,3 +41,15 @@ minisign.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
 wat.workspace = true
+
+[[test]]
+name = "api"
+path = "tests/api.rs"
+
+[[test]]
+name = "install"
+path = "tests/install.rs"
+
+[[test]]
+name = "sandbox"
+path = "tests/sandbox.rs"
