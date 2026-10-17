@@ -2,18 +2,19 @@ use data_encoding::BASE64;
 use serde::Serialize;
 use serde_json::{Value, json};
 
+use super::Mime;
 use crate::manifest::AssetPath;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct AssetFile {
     path: AssetPath,
-    mime: &'static str,
+    mime: Mime,
     bytes: usize,
     data: String,
 }
 
 impl AssetFile {
-    pub(crate) fn new(path: AssetPath, mime: &'static str, data: &[u8]) -> Self {
+    pub(crate) fn new(path: AssetPath, mime: Mime, data: &[u8]) -> Self {
         Self {
             path,
             mime,

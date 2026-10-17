@@ -6,4 +6,4 @@ mod wasi;
 
 pub(crate) use imports::Imports;
 pub(crate) use sandbox::Sandbox;
-pub(super) use wasi::add_to_linker as add_wasi_to_linker;
+pub(super) use wasi::Wasi;

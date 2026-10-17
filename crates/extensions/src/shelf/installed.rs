@@ -90,8 +90,8 @@ impl Installed {
 
     pub(super) fn from_row(row: &Row<'_>) -> rusqlite::Result<Self> {
         Ok(Self {
-            id: checked(row, "id")?,
-            version: checked(row, "version")?,
+            id: Self::checked(row, "id")?,
+            version: Self::checked(row, "version")?,
             sha256: row.get("sha256")?,
             manifest_sha256: row.get("manifest_sha256")?,
             signed: row.get("signed")?,
@@ -99,14 +99,15 @@ impl Installed {
             added_at: Timestamp::from_millis(row.get("installed_at")?),
         })
     }
-}
 
-fn checked<T: TryFrom<String, Error = ManifestError>>(
-    row: &Row<'_>,
-    column: &str,
-) -> rusqlite::Result<T> {
-    let text: String = row.get(column)?;
+    fn checked<T: TryFrom<String, Error = ManifestError>>(
+        row: &Row<'_>,
+        column: &str,
+    ) -> rusqlite::Result<T> {
+        let text: String = row.get(column)?;
 
-    T::try_from(text)
-        .map_err(|error| rusqlite::Error::FromSqlConversionFailure(0, Type::Text, Box::new(error)))
+        T::try_from(text).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(0, Type::Text, Box::new(error))
+        })
+    }
 }

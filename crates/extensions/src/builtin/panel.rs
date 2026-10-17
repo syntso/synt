@@ -1,7 +1,6 @@
 mod asset;
 mod info;
 mod message;
-mod mime;
 mod open;
 
 pub(crate) use asset::ExtensionPanelAsset;

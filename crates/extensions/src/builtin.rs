@@ -13,4 +13,4 @@ mod view;
 pub(crate) use calling_actor::CallingActor;
 pub(crate) use http::ExtensionHttp;
 pub(crate) use lifecycle::{ExtensionInfo, SearchHit};
-pub(crate) use registration::register;
+pub(crate) use registration::Registration;

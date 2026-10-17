@@ -33,7 +33,7 @@ impl Revisions {
                 "SELECT revision, parents, body FROM extension_revisions \
                  WHERE project = ?1 AND path = ?2 AND revision = ?3",
                 [project, path, revision],
-                stored,
+                Self::stored,
             )
             .optional()?;
 
@@ -99,16 +99,16 @@ impl Revisions {
 
         Ok(())
     }
-}
 
-fn stored(row: &Row<'_>) -> rusqlite::Result<StoredRevision> {
-    let parents: String = row.get("parents")?;
+    fn stored(row: &Row<'_>) -> rusqlite::Result<StoredRevision> {
+        let parents: String = row.get("parents")?;
 
-    Ok(StoredRevision::recorded(
-        row.get("revision")?,
-        &parents,
-        row.get("body")?,
-    ))
+        Ok(StoredRevision::recorded(
+            row.get("revision")?,
+            &parents,
+            row.get("body")?,
+        ))
+    }
 }
 
 #[cfg(test)]

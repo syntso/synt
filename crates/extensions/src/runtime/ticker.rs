@@ -18,21 +18,21 @@ impl Ticker {
 
         thread::Builder::new()
             .name("synt-extension-ticker".to_owned())
-            .spawn(move || tick(&engine, &still_running))?;
+            .spawn(move || Self::tick(&engine, &still_running))?;
 
         Ok(Self { running })
+    }
+
+    fn tick(engine: &Engine, running: &AtomicBool) {
+        while running.load(Ordering::Relaxed) {
+            thread::sleep(TICK);
+            engine.increment_epoch();
+        }
     }
 }
 
 impl Drop for Ticker {
     fn drop(&mut self) {
         self.running.store(false, Ordering::Relaxed);
-    }
-}
-
-fn tick(engine: &Engine, running: &AtomicBool) {
-    while running.load(Ordering::Relaxed) {
-        thread::sleep(TICK);
-        engine.increment_epoch();
     }
 }

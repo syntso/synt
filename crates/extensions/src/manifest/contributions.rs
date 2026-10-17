@@ -126,14 +126,14 @@ impl Contributions {
     }
 
     fn check_unique(&self) -> Result<(), ManifestError> {
-        unique("sidebar id", self.sidebar.iter().map(SidebarSection::id))?;
-        unique("panel id", self.panel.iter().map(Panel::id))?;
-        unique("status id", self.status.iter().map(StatusItem::id))?;
-        unique(
+        Self::unique("sidebar id", self.sidebar.iter().map(SidebarSection::id))?;
+        Self::unique("panel id", self.panel.iter().map(Panel::id))?;
+        Self::unique("status id", self.status.iter().map(StatusItem::id))?;
+        Self::unique(
             "document type",
             self.document.iter().map(DocumentType::kind),
         )?;
-        unique(
+        Self::unique(
             "document suffix",
             self.document.iter().map(DocumentType::suffix),
         )
@@ -151,22 +151,22 @@ impl Contributions {
             None => Ok(()),
         }
     }
-}
 
-fn unique<'a, T: Ord + Display + 'a>(
-    field: &'static str,
-    values: impl Iterator<Item = &'a T>,
-) -> Result<(), ManifestError> {
-    let mut seen = BTreeSet::new();
+    fn unique<'a, T: Ord + Display + 'a>(
+        field: &'static str,
+        values: impl Iterator<Item = &'a T>,
+    ) -> Result<(), ManifestError> {
+        let mut seen = BTreeSet::new();
 
-    for value in values {
-        if !seen.insert(value) {
-            return Err(ManifestError::Duplicate {
-                field,
-                value: value.to_string(),
-            });
+        for value in values {
+            if !seen.insert(value) {
+                return Err(ManifestError::Duplicate {
+                    field,
+                    value: value.to_string(),
+                });
+            }
         }
-    }
 
-    Ok(())
+        Ok(())
+    }
 }

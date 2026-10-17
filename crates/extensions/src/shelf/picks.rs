@@ -27,7 +27,7 @@ impl Picks {
         )?;
 
         let picks = statement
-            .query_map([extension], picked)?
+            .query_map([extension], Self::picked)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(picks)
@@ -45,7 +45,7 @@ impl Picks {
                 "SELECT handle, path, access FROM extension_files \
                  WHERE extension = ?1 AND handle = ?2",
                 [extension, handle],
-                picked,
+                Self::picked,
             )
             .optional()?;
 
@@ -97,14 +97,14 @@ impl Picks {
 
         Ok(removed > 0)
     }
-}
 
-fn picked(row: &Row<'_>) -> rusqlite::Result<Picked> {
-    let path: String = row.get("path")?;
+    fn picked(row: &Row<'_>) -> rusqlite::Result<Picked> {
+        let path: String = row.get("path")?;
 
-    Ok(Picked::stored(
-        row.get("handle")?,
-        PathBuf::from(path),
-        row.get("access")?,
-    ))
+        Ok(Picked::stored(
+            row.get("handle")?,
+            PathBuf::from(path),
+            row.get("access")?,
+        ))
+    }
 }

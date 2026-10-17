@@ -6,7 +6,7 @@ use ureq::unversioned::transport::DefaultConnector;
 use ureq::{Agent, AsSendBody, Body, RequestExt};
 
 use super::{
-    CheckedResolver, Destination, HttpRequest, HttpResponse, Revealed, SecretAccess, trusted_tls,
+    CheckedResolver, Destination, HttpRequest, HttpResponse, Revealed, SecretAccess, TrustedTls,
 };
 use crate::error::HttpError;
 use crate::manifest::Capabilities;
@@ -18,7 +18,7 @@ pub(crate) struct Exchange {
 impl Exchange {
     pub(crate) fn new() -> Self {
         let config = Agent::config_builder()
-            .tls_config(trusted_tls())
+            .tls_config(TrustedTls::config())
             .max_redirects(0)
             .http_status_as_error(false)
             .proxy(None)

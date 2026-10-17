@@ -45,7 +45,7 @@ impl Revealed {
         let mut scrubbed = Vec::with_capacity(bytes.len());
         let mut rest = bytes;
 
-        while let Some(at) = find(rest, needle) {
+        while let Some(at) = Self::find(rest, needle) {
             scrubbed.extend_from_slice(&rest[..at]);
             scrubbed.extend_from_slice(self.reference.as_bytes());
             rest = &rest[at + needle.len()..];
@@ -58,12 +58,12 @@ impl Revealed {
     pub(crate) fn scrub_text(&self, text: &str) -> String {
         String::from_utf8_lossy(&self.scrub(text.as_bytes())).into_owned()
     }
-}
 
-fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack
-        .windows(needle.len())
-        .position(|window| window == needle)
+    fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+        haystack
+            .windows(needle.len())
+            .position(|window| window == needle)
+    }
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ use synt_journal::{ActionId, SystemClock};
 
 use crate::ExtensionError;
 use crate::background::ExtensionEvent;
-use crate::builtin::{self, ExtensionInfo, SearchHit};
+use crate::builtin::{ExtensionInfo, Registration, SearchHit};
 use crate::call::Caller;
 use crate::documents::{MergeSides, ProjectFolders};
 use crate::extension::{ActionSpec, Candidate, CoreLink, Guest, Loaded, Roster, Services};
@@ -71,7 +71,7 @@ impl Extensions {
     }
 
     pub fn register(&self, registry: &mut Registry) -> Result<(), ActionError> {
-        builtin::register(self, registry)?;
+        Registration::register(self, registry)?;
 
         self.admission.learn(registry);
         registry.attach(Arc::new(self.clone()));

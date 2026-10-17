@@ -16,7 +16,7 @@ pub(crate) use host::{Imports, Sandbox};
 pub(crate) use quota::{QuotaSpent, Spend};
 
 use budget::Budget;
-use host::add_wasi_to_linker;
+use host::Wasi;
 use ticker::Ticker;
 
 use crate::ExtensionError;
@@ -142,7 +142,7 @@ impl Runtime {
     fn linker(engine: &Engine) -> wasmtime::Result<Linker<Sandbox>> {
         let mut linker = Linker::new(engine);
 
-        add_wasi_to_linker(&mut linker)?;
+        Wasi::add_to_linker(&mut linker)?;
         v1::Extension::add_to_linker::<Sandbox, HasSelf<Sandbox>>(&mut linker, |sandbox| sandbox)?;
         v2::Extension::add_to_linker::<Sandbox, HasSelf<Sandbox>>(&mut linker, |sandbox| sandbox)?;
 

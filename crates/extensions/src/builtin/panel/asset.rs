@@ -1,4 +1,5 @@
 mod file;
+mod mime;
 
 use std::sync::Arc;
 
@@ -8,8 +9,8 @@ use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
 
 use file::AssetFile;
+use mime::Mime;
 
-use super::mime::mime_of;
 use crate::Extensions;
 use crate::blocking::Blocking;
 use crate::builtin::CallingActor;
@@ -36,7 +37,7 @@ impl ExtensionPanelAsset {
 }
 
 impl AssetParams {
-    fn checked(&self) -> Result<(AssetPath, &'static str), ActionError> {
+    fn checked(&self) -> Result<(AssetPath, Mime), ActionError> {
         let refused = || {
             ActionError::InvalidParams(format!(
                 "{:?} is not a file a web panel may load",
@@ -45,7 +46,7 @@ impl AssetParams {
         };
 
         let path = AssetPath::try_from(self.path.clone()).map_err(|_| refused())?;
-        let mime = mime_of(path.as_str()).ok_or_else(refused)?;
+        let mime = Mime::of(path.as_str()).ok_or_else(refused)?;
 
         Ok((path, mime))
     }

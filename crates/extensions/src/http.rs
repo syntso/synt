@@ -6,7 +6,7 @@ mod recorded_params;
 mod request;
 mod response;
 mod secret;
-mod tls;
+mod trusted_tls;
 
 pub(crate) use checked_resolver::CheckedResolver;
 pub(crate) use destination::Destination;
@@ -17,4 +17,4 @@ pub(crate) use request::HttpRequest;
 pub(crate) use response::HttpResponse;
 pub use secret::SecretSource;
 pub(crate) use secret::{Revealed, SecretAccess, SecretHeader};
-pub(crate) use tls::trusted_tls;
+pub(crate) use trusted_tls::TrustedTls;
