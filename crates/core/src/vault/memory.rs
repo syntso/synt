@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use synt_platform::{KeyPlace, PlatformError, Vault};
+use synt_platform::{KeyPlace, Lock, PlatformError, Vault};
 use zeroize::Zeroizing;
-
-use crate::locked::locked;
 
 #[derive(Default)]
 pub(crate) struct MemoryVault {
@@ -17,17 +15,17 @@ impl Vault for MemoryVault {
     }
 
     fn read(&self, name: &str) -> Result<Option<Zeroizing<Vec<u8>>>, PlatformError> {
-        Ok(locked(&self.items).get(name).cloned().map(Zeroizing::new))
+        Ok(self.items.locked().get(name).cloned().map(Zeroizing::new))
     }
 
     fn write(&self, name: &str, bytes: &[u8]) -> Result<(), PlatformError> {
-        locked(&self.items).insert(name.to_owned(), bytes.to_vec());
+        self.items.locked().insert(name.to_owned(), bytes.to_vec());
 
         Ok(())
     }
 
     fn remove(&self, name: &str) -> Result<(), PlatformError> {
-        locked(&self.items).remove(name);
+        self.items.locked().remove(name);
 
         Ok(())
     }

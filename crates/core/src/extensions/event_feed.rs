@@ -7,6 +7,7 @@ use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::task::JoinHandle;
 
+use crate::log::log;
 use crate::projects::{ProjectChange, Projects};
 use journal_entry::JournalEntry;
 
@@ -36,7 +37,7 @@ impl EventFeed {
             match appended.recv().await {
                 Ok(event) => self.publish(JournalEntry::new(&event).events()),
                 Err(RecvError::Lagged(missed)) => {
-                    eprintln!("synt-core: extensions missed {missed} journal events");
+                    log!("extensions missed {missed} journal events");
                 }
                 Err(RecvError::Closed) => return,
             }
@@ -48,7 +49,7 @@ impl EventFeed {
             match changes.recv().await {
                 Ok(change) => self.publish([Self::resource_event(&change)]),
                 Err(RecvError::Lagged(missed)) => {
-                    eprintln!("synt-core: extensions missed {missed} project changes");
+                    log!("extensions missed {missed} project changes");
                 }
                 Err(RecvError::Closed) => return,
             }

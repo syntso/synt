@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use synt_platform::Lock;
 use tokio_util::sync::CancellationToken;
 
 use super::{GrantId, Hold};
-use crate::locked::locked;
 
 type Held = HashMap<GrantId, HashMap<u64, CancellationToken>>;
 
@@ -49,6 +49,6 @@ impl GrantUsers {
     }
 
     fn lock(&self) -> MutexGuard<'_, Held> {
-        locked(&self.held)
+        self.held.locked()
     }
 }

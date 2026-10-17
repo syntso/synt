@@ -2,11 +2,11 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use synt_platform::Lock;
 use tokio::sync::broadcast;
 
 use super::{ProjectChange, ProjectFolder, ResourceFolder};
 use crate::CoreError;
-use crate::locked::locked;
 use crate::log::log;
 
 pub(crate) struct OpenProject {
@@ -30,7 +30,7 @@ impl OpenProject {
     }
 
     pub(crate) fn lock(&self) -> MutexGuard<'_, ProjectFolder> {
-        locked(&self.folder)
+        self.folder.locked()
     }
 
     fn watch(
@@ -70,7 +70,7 @@ impl OpenProject {
             return;
         };
 
-        let mut folder = locked(&folder);
+        let mut folder = folder.locked();
 
         match event {
             Ok(event) if matches!(event.kind, EventKind::Access(_)) => return,

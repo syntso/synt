@@ -39,9 +39,3 @@ impl fmt::Display for ResourceName {
         formatter.write_str(&self.0)
     }
 }
-
-pub(crate) fn check_name(name: &str) -> Result<(), String> {
-    ResourceName::parse(name)
-        .map(drop)
-        .map_err(|error| error.to_string())
-}

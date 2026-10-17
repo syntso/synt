@@ -22,12 +22,12 @@ pub use id::ProjectId;
 pub use info::ProjectInfo;
 pub(crate) use place::ProjectPlace;
 pub use problem::Problem;
-pub(crate) use resolved::{Resolved, ResolvedDatabase, login_label};
+pub(crate) use resolved::{Resolved, ResolvedDatabase};
 pub use resource::{
     ClusterResource, DatabaseResource, HostResource, Resource, ResourceEntry, ResourceListing,
     TunnelResource,
 };
-pub(crate) use resource::{ResourceFolder, ResourceName, check_name};
+pub(crate) use resource::{ResourceFolder, ResourceName};
 pub use slug::ProjectSlug;
 
 use file::ProjectFile;
@@ -46,11 +46,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use synt_kube::{ClusterSpec, KubeconfigSource};
+use synt_platform::Lock;
 use synt_ssh::Target;
 use tokio::sync::broadcast;
 
 use crate::CoreError;
-use crate::locked::locked;
 use crate::log::log;
 use crate::state::State;
 
@@ -367,7 +367,7 @@ impl Projects {
     }
 
     fn lock(&self) -> MutexGuard<'_, Opened> {
-        locked(&self.opened)
+        self.opened.locked()
     }
 }
 

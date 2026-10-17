@@ -3,20 +3,20 @@ use std::io;
 use serde_json::Value;
 use synt_actions::ActionError;
 use synt_journal::{ActionId, ResourceRef, Seq};
-use synt_proto::ProtoError;
-use synt_proto::RunPhase;
+use synt_proto::{ProtoError, RunPhase};
 use thiserror::Error;
 
 use super::RunbookName;
 use super::param::ParamName;
+use crate::CoreError;
 
 #[derive(Debug, Error)]
 pub enum RunbookError {
     #[error("{text:?} must be 1 to {longest} characters on one line")]
     NotOneLine { text: String, longest: usize },
 
-    #[error("{0}")]
-    BadName(String),
+    #[error(transparent)]
+    BadName(Box<CoreError>),
 
     #[error("param {0:?}: a name starts with a letter or _ and holds only letters, digits and _")]
     BadParamName(String),

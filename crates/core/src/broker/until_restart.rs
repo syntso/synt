@@ -1,9 +1,10 @@
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard};
 
+use synt_platform::Lock;
+
 use crate::access::AccessRequest;
 use crate::grants::GrantScope;
-use crate::locked::locked;
 
 #[derive(Debug, Default)]
 pub(super) struct UntilRestart {
@@ -20,6 +21,6 @@ impl UntilRestart {
     }
 
     fn lock(&self) -> MutexGuard<'_, HashSet<GrantScope>> {
-        locked(&self.scopes)
+        self.scopes.locked()
     }
 }

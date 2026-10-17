@@ -24,10 +24,11 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use serde_json::Value;
 use synt_actions::Context;
 use synt_journal::{ActionId, Actor, EventKind, JournalWriter, Seq};
+use synt_platform::Lock;
 use tokio_util::sync::CancellationToken;
 
 use super::K8sError;
-use crate::locked::locked;
+use crate::log::log;
 use crate::recorder::{Call, Recorder};
 
 type Open = BTreeMap<Seq, StreamEntry>;
@@ -112,15 +113,15 @@ impl Streams {
             .follow_up(context.request(), vec![finished])
             .await
         {
-            eprintln!(
-                "synt-core: journal: the stream of request {} ended but was not journaled: {error}",
+            log!(
+                "journal: the stream of request {} ended but was not journaled: {error}",
                 context.request()
             );
         }
     }
 
     fn lock(&self) -> MutexGuard<'_, Open> {
-        locked(&self.open)
+        self.open.locked()
     }
 }
 

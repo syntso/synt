@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use synt_actions::Context;
+use synt_platform::Lock;
 use synt_proto::EndReason;
 use synt_ssh::{ShellEnd, TerminalSize};
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
@@ -24,7 +25,6 @@ use super::{Attachment, Block, Console, Screen};
 use crate::CoreError;
 use crate::clock::milliseconds;
 use crate::link::Link;
-use crate::locked::locked;
 
 const CLOSE_GRACE: Duration = Duration::from_secs(5);
 
@@ -205,7 +205,7 @@ impl Session {
         };
 
         screen.end(ending.clone()).await;
-        *locked(&self.ending) = Some(ending.clone());
+        *self.ending.locked() = Some(ending.clone());
 
         ending
     }
@@ -221,13 +221,13 @@ impl Session {
     }
 
     fn request_end(&self, reason: EndReason) {
-        let mut requested = locked(&self.requested_end);
+        let mut requested = self.requested_end.locked();
 
         requested.get_or_insert(reason);
     }
 
     fn reason(&self, end: &ShellEnd) -> EndReason {
-        let requested = *locked(&self.requested_end);
+        let requested = *self.requested_end.locked();
 
         match requested {
             Some(reason) => reason,
@@ -237,6 +237,6 @@ impl Session {
     }
 
     fn ending(&self) -> Option<Ending> {
-        locked(&self.ending).clone()
+        self.ending.locked().clone()
     }
 }

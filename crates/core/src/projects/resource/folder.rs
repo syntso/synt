@@ -3,7 +3,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use synt_platform::replace_file;
+use synt_platform::{Found, replace_file};
 
 use super::{Resource, ResourceName};
 use crate::CoreError;
@@ -88,10 +88,9 @@ impl ResourceFolder {
     }
 
     pub(crate) fn remove(&self, name: &ResourceName) -> Result<(), CoreError> {
-        match fs::remove_file(self.path_of(name.as_str())) {
-            Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error.into()),
-            _ => Ok(()),
-        }
+        fs::remove_file(self.path_of(name.as_str())).found()?;
+
+        Ok(())
     }
 
     fn path_of(&self, name: &str) -> PathBuf {

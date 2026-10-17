@@ -45,9 +45,6 @@ pub enum CoreError {
     #[error("could not start the shell: {0}")]
     PtyStart(#[source] PlatformError),
 
-    #[error("{0}")]
-    Project(String),
-
     #[error(transparent)]
     Runbook(#[from] RunbookError),
 

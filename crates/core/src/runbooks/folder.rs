@@ -10,7 +10,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use synt_platform::{read_plain_file, replace_file};
+use synt_platform::{Found, read_plain_file, replace_file};
 
 use super::document::RunbookDocument;
 use super::{RunbookError, RunbookName};
@@ -108,10 +108,8 @@ impl RunbookFolder {
     fn names(&self) -> Result<Vec<RunbookName>, CoreError> {
         let folder = self.place.path.join(FOLDER);
 
-        let entries = match fs::read_dir(&folder) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => return Err(error.into()),
+        let Some(entries) = fs::read_dir(&folder).found()? else {
+            return Ok(Vec::new());
         };
 
         let mut names = Vec::new();
@@ -157,13 +155,10 @@ impl RunbookFolder {
     }
 
     fn read_file(path: &Path) -> Result<RunbookDocument, RunbookError> {
-        let bytes = match read_plain_file(path, LARGEST_FILE) {
-            Ok(bytes) => bytes,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                return Err(RunbookError::NoSuchRunbook);
-            }
-            Err(error) => return Err(RunbookError::Unreadable(error)),
-        };
+        let bytes = read_plain_file(path, LARGEST_FILE)
+            .found()
+            .map_err(RunbookError::Unreadable)?
+            .ok_or(RunbookError::NoSuchRunbook)?;
 
         let text = String::from_utf8(bytes).map_err(|_| RunbookError::NotUtf8)?;
 

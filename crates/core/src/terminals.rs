@@ -18,12 +18,12 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use futures_util::future::join_all;
 use synt_journal::{ActionId, EventKind, JournalWriter};
+use synt_platform::Lock;
 use synt_proto::EndReason;
 use synt_ssh::TerminalSize;
 use tokio::sync::mpsc;
 
 use crate::CoreError;
-use crate::locked::locked;
 use crate::log::log;
 use crate::recorder::{Call, Recorder};
 
@@ -159,7 +159,7 @@ impl Terminals {
     }
 
     fn lock(&self) -> MutexGuard<'_, Open> {
-        locked(&self.open)
+        self.open.locked()
     }
 }
 

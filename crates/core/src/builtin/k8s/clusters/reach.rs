@@ -6,7 +6,7 @@ use synt_ssh::Target;
 use super::ClusterKey;
 use crate::builtin::k8s::K8sError;
 use crate::builtin::ssh::is_root;
-use crate::projects::{Projects, Resolved, login_label};
+use crate::projects::{Projects, Resolved};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Reach {
@@ -25,7 +25,7 @@ impl Reach {
 
         let through = via
             .as_ref()
-            .map(|via| format!(" via {}", login_label(via)))
+            .map(|via| format!(" via {}", via.route()))
             .unwrap_or_default();
         let destination = format!("{} = {place}{through}", projects.canonical(target.as_str()));
 

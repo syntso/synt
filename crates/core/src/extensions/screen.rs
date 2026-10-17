@@ -3,6 +3,7 @@ use std::sync::{Arc, Weak};
 use synt_extensions::{Screen, ScreenUpdate};
 
 use crate::core::Core;
+use crate::log::log;
 
 pub struct CoreScreen {
     core: Weak<Core>,
@@ -28,7 +29,7 @@ impl Screen for CoreScreen {
             Ok(notification) => {
                 core.broker().tell_apps(&notification);
             }
-            Err(error) => eprintln!("synt-core: an extension update cannot be encoded: {error}"),
+            Err(error) => log!("an extension update cannot be encoded: {error}"),
         }
     }
 }

@@ -13,7 +13,6 @@ mod grants;
 mod idle;
 mod journal_keys;
 mod link;
-mod locked;
 mod log;
 mod login_command;
 mod on_behalf;

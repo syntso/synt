@@ -41,31 +41,19 @@ impl Resolved {
 impl fmt::Display for Resolved {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Host(host) => write!(formatter, "{}", login_label(host)),
+            Self::Host(host) => write!(formatter, "{}", host.route()),
             Self::Tunnel { host, remote, .. } => {
-                write!(formatter, "{} forwarding to {remote}", login_label(host))
+                write!(formatter, "{} forwarding to {remote}", host.route())
             }
             Self::Cluster { spec, via } => {
                 let context = spec.context.as_deref().unwrap_or("the current context");
                 write!(formatter, "{context} in {}", spec.kubeconfig)?;
 
                 match via {
-                    Some(via) => write!(formatter, " via {}", login_label(via)),
+                    Some(via) => write!(formatter, " via {}", via.route()),
                     None => Ok(()),
                 }
             }
         }
     }
-}
-
-pub(crate) fn login_label(target: &Target) -> String {
-    let place = format!("{}@{}:{}", target.user(), target.host(), target.port());
-
-    if target.jumps().is_empty() {
-        return place;
-    }
-
-    let jumps: Vec<String> = target.jumps().iter().map(login_label).collect();
-
-    format!("{place} via [{}]", jumps.join(", "))
 }

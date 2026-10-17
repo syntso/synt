@@ -4,9 +4,9 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::Connection;
+use synt_platform::Lock;
 
 use crate::CoreError;
-use crate::locked::locked;
 
 #[derive(Debug, Clone)]
 pub struct State {
@@ -27,6 +27,6 @@ impl State {
     }
 
     pub(crate) fn lock(&self) -> MutexGuard<'_, Connection> {
-        locked(&self.connection)
+        self.connection.locked()
     }
 }

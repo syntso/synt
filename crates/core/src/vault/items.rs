@@ -2,12 +2,11 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use synt_platform::Vault;
+use synt_platform::{Lock, Vault};
 use zeroize::Zeroizing;
 
 use super::{VaultKind, VaultName};
 use crate::CoreError;
-use crate::locked::locked;
 
 pub(crate) struct VaultItems<K> {
     vault: Arc<dyn Vault>,
@@ -25,7 +24,7 @@ impl<K: VaultKind> VaultItems<K> {
     }
 
     pub(crate) fn change(&self) -> MutexGuard<'_, ()> {
-        locked(&self.changes)
+        self.changes.locked()
     }
 
     pub(crate) fn read(

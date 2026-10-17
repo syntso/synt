@@ -15,12 +15,12 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use bytes::Bytes;
 use synt_actions::Context;
+use synt_platform::Lock;
 use synt_proto::{Frame, StreamId};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 
 use crate::CoreError;
-use crate::locked::locked;
 
 type Routes = HashMap<StreamId, Route>;
 
@@ -120,6 +120,6 @@ impl Link {
     }
 
     fn lock(&self) -> MutexGuard<'_, Routes> {
-        locked(&self.routes)
+        self.routes.locked()
     }
 }

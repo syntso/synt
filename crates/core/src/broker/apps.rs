@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use synt_platform::Lock;
 use synt_proto::{Message, Notification};
 use tokio::sync::mpsc;
 
 use super::Registration;
-use crate::locked::locked;
 
 type Sessions = HashMap<u64, mpsc::Sender<Message>>;
 
@@ -41,6 +41,6 @@ impl Apps {
     }
 
     fn lock(&self) -> MutexGuard<'_, Sessions> {
-        locked(&self.sessions)
+        self.sessions.locked()
     }
 }

@@ -9,7 +9,6 @@ use synt_platform::Vault;
 use zeroize::Zeroizing;
 
 use super::StandingGrant;
-use super::actor_text::ActorText;
 use crate::CoreError;
 
 const KEY_ITEM: &str = "grants.key";
@@ -79,13 +78,13 @@ impl GrantSeal {
 
     fn canonical(grant: &StandingGrant) -> Vec<u8> {
         let scope = grant.scope();
-        let actor = ActorText::from(scope.actor());
+        let actor = scope.actor().to_string();
         let created_at = u64::try_from(grant.created_at().as_millis()).unwrap_or_default();
 
         let mut bytes = Vec::new();
 
         bytes.extend_from_slice(&grant.id().get().to_be_bytes());
-        Self::push_text(&mut bytes, Some(actor.as_str()));
+        Self::push_text(&mut bytes, Some(&actor));
         Self::push_text(&mut bytes, Some(scope.action().as_str()));
         Self::push_text(&mut bytes, scope.target().map(ResourceRef::as_str));
         Self::push_text(&mut bytes, scope.destination());

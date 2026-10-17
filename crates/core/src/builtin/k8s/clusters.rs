@@ -14,12 +14,12 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use synt_kube::{Cluster, Dialer};
+use synt_platform::Lock;
 use synt_ssh::{Pool, Target};
 use tokio::time;
 
 use super::K8sError;
 use crate::builtin::ssh::within_connect_limit;
-use crate::locked::locked;
 
 const IDLE_LIMIT: Duration = Duration::from_mins(1);
 const LOOK_EVERY: Duration = Duration::from_secs(10);
@@ -78,7 +78,7 @@ impl Clusters {
             loop {
                 time::sleep(LOOK_EVERY).await;
 
-                let mut open = locked(&open);
+                let mut open = open.locked();
                 let Some(entry) = open.get(&key) else {
                     return;
                 };
@@ -92,7 +92,7 @@ impl Clusters {
     }
 
     fn lock(&self) -> MutexGuard<'_, Open> {
-        locked(&self.open)
+        self.open.locked()
     }
 }
 

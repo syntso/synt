@@ -2,7 +2,6 @@ use std::fmt;
 
 use synt_ssh::Target;
 
-use super::login_label;
 use crate::projects::DatabaseResource;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,7 +15,7 @@ impl fmt::Display for ResolvedDatabase {
         write!(formatter, "{}", self.resource)?;
 
         match &self.via {
-            Some(host) => write!(formatter, " via {}", login_label(host)),
+            Some(host) => write!(formatter, " via {}", host.route()),
             None => Ok(()),
         }
     }

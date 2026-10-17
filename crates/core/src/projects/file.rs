@@ -1,8 +1,7 @@
-use std::io;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
-use synt_platform::replace_file;
+use synt_platform::{Found, replace_file};
 
 use super::{ProjectId, ProjectSlug, Text};
 use crate::CoreError;
@@ -24,10 +23,8 @@ impl ProjectFile {
     }
 
     pub(crate) fn read(path: &Path) -> Result<Option<Self>, CoreError> {
-        let text = match Text::read(path) {
-            Ok(text) => text,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => return Err(CoreError::Unreadable(error)),
+        let Some(text) = Text::read(path).found().map_err(CoreError::Unreadable)? else {
+            return Ok(None);
         };
 
         Ok(Some(toml::from_str(text.as_str())?))

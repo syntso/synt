@@ -15,7 +15,7 @@ pub use entry::ResourceEntry;
 pub(crate) use folder::ResourceFolder;
 pub use host::HostResource;
 pub use listing::ResourceListing;
-pub(crate) use name::{ResourceName, check_name};
+pub(crate) use name::ResourceName;
 pub use tunnel::TunnelResource;
 
 use spec::ResourceSpec;

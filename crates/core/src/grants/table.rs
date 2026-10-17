@@ -1,7 +1,6 @@
 use rusqlite::Row;
-use synt_journal::{ActionId, Clock, ResourceRef, SystemClock, Timestamp};
+use synt_journal::{ActionId, Actor, Clock, ResourceRef, SystemClock, Timestamp};
 
-use super::actor_text::ActorText;
 use super::{GrantId, GrantScope, StandingGrant};
 use crate::CoreError;
 use crate::log::log;
@@ -33,14 +32,14 @@ impl GrantTable {
 
     pub(crate) fn insert(&self, scope: GrantScope) -> Result<StandingGrant, CoreError> {
         let created_at = SystemClock.now();
-        let actor = ActorText::from(scope.actor());
+        let actor = scope.actor().to_string();
         let connection = self.state.lock();
 
         connection.execute(
             "INSERT INTO grants (actor, action, resource, destination, created_at) \
              VALUES (?1, ?2, ?3, ?4, ?5)",
             (
-                actor.as_str(),
+                &actor,
                 scope.action().as_str(),
                 scope.target().map(ResourceRef::as_str),
                 scope.destination(),
@@ -84,7 +83,7 @@ impl GrantTable {
     }
 
     fn scope(row: &Row<'_>) -> rusqlite::Result<Option<GrantScope>> {
-        let actor = ActorText::new(row.get("actor")?).actor();
+        let actor = row.get::<_, String>("actor")?.parse::<Actor>().ok();
         let action = ActionId::new(row.get::<_, String>("action")?).ok();
         let resource: Option<String> = row.get("resource")?;
         let target = resource.map(ResourceRef::new).transpose().ok();

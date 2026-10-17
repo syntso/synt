@@ -18,9 +18,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use synt_actions::Risk;
+use synt_platform::Lock;
 use tokio_util::sync::CancellationToken;
-
-use crate::locked::locked;
 
 type Open = BTreeMap<ForwardId, ForwardEntry>;
 
@@ -79,7 +78,7 @@ impl Forwards {
     }
 
     fn lock(&self) -> MutexGuard<'_, Open> {
-        locked(&self.open)
+        self.open.locked()
     }
 }
 

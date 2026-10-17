@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use synt_platform::Lock;
 use tokio_util::sync::CancellationToken;
 
 use super::{
@@ -9,7 +10,6 @@ use super::{
 use crate::CoreError;
 use crate::access::AccessRequest;
 use crate::blocking::blocking;
-use crate::locked::locked;
 use crate::log::log;
 use crate::state::State;
 
@@ -102,7 +102,7 @@ impl AlwaysGrants {
     }
 
     fn keep(&self, scope: GrantScope) -> Result<GrantId, CoreError> {
-        let _writing = locked(&self.writing);
+        let _writing = self.writing.locked();
 
         let grant = self.table.insert(scope)?;
 
@@ -121,7 +121,7 @@ impl AlwaysGrants {
     }
 
     fn forget(&self, id: GrantId) -> Result<Option<StandingGrant>, CoreError> {
-        let _writing = locked(&self.writing);
+        let _writing = self.writing.locked();
 
         if !self.lock().contains_key(&id) {
             return Ok(None);
@@ -141,6 +141,6 @@ impl AlwaysGrants {
     }
 
     fn lock(&self) -> MutexGuard<'_, Kept> {
-        locked(&self.kept)
+        self.kept.locked()
     }
 }

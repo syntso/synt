@@ -6,10 +6,10 @@ pub(crate) use guard::RunGuard;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use synt_platform::Lock;
 use tokio_util::sync::CancellationToken;
 
 use super::RunbookError;
-use crate::locked::locked;
 use active::ActiveRun;
 
 type Active = HashMap<u64, ActiveRun>;
@@ -48,7 +48,7 @@ impl Runs {
     }
 
     fn lock(&self) -> MutexGuard<'_, Active> {
-        locked(&self.active)
+        self.active.locked()
     }
 }
 

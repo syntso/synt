@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::RunbookError;
-use crate::projects::check_name;
+use crate::projects::ResourceName;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(try_from = "String", into = "String")]
@@ -14,7 +14,7 @@ impl RunbookName {
     pub(crate) fn new(name: impl Into<String>) -> Result<Self, RunbookError> {
         let name = name.into();
 
-        check_name(&name).map_err(RunbookError::BadName)?;
+        ResourceName::parse(&name).map_err(|error| RunbookError::BadName(Box::new(error)))?;
 
         Ok(Self(name))
     }

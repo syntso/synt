@@ -3,6 +3,8 @@ use tokio::sync::mpsc;
 
 use super::Progress;
 
+use crate::log::log;
+
 pub(crate) struct LinkProgress {
     frames: mpsc::Sender<Frame>,
 }
@@ -25,19 +27,17 @@ impl Progress for LinkProgress {
         let frame = match Self::frame(&step) {
             Ok(frame) => frame,
             Err(error) => {
-                eprintln!(
-                    "synt-core: step {} of run {} cannot be encoded: {error}",
-                    step.step, step.run
+                log!(
+                    "step {} of run {} cannot be encoded: {error}",
+                    step.step,
+                    step.run
                 );
                 return;
             }
         };
 
         if self.frames.send(frame).await.is_err() {
-            eprintln!(
-                "synt-core: run {} goes on unseen, its connection is closed",
-                step.run
-            );
+            log!("run {} goes on unseen, its connection is closed", step.run);
         }
     }
 }
