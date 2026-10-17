@@ -26,4 +26,7 @@ pub use login::{LoginStart, LoginStatus};
 pub use peer::{AppCheck, Peer, UserId};
 pub use pty::{Pty, PtyEnd, PtyOutput};
 pub use shutdown::shutdown_signal;
-pub use vault::{KeyPlace, Vault, WEAK_VAULT_FLAG, WeakVault, open_vault};
+pub use vault::{
+    KeyPlace, SecretItem, SecretName, Vault, VaultKind, VaultName, WEAK_VAULT_FLAG, WeakVault,
+    open_vault,
+};

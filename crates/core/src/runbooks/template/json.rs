@@ -1,11 +1,11 @@
 use serde_json::{Map, Value};
 
 use super::TextTemplate;
-use crate::runbooks::RunbookError;
+use crate::CoreError;
 use crate::runbooks::param::{ParamName, Values};
 
 pub(crate) trait JsonTemplate: Sized {
-    fn render(&self, values: &Values) -> Result<Self, RunbookError>;
+    fn render(&self, values: &Values) -> Result<Self, CoreError>;
 
     fn placeholders(&self) -> Vec<ParamName>;
 
@@ -13,7 +13,7 @@ pub(crate) trait JsonTemplate: Sized {
 }
 
 impl JsonTemplate for Value {
-    fn render(&self, values: &Values) -> Result<Self, RunbookError> {
+    fn render(&self, values: &Values) -> Result<Self, CoreError> {
         match self {
             Value::String(text) => TextTemplate::parse(text).render(values),
             Value::Array(items) => items
@@ -46,7 +46,7 @@ impl JsonTemplate for Value {
 }
 
 impl JsonTemplate for Map<String, Value> {
-    fn render(&self, values: &Values) -> Result<Self, RunbookError> {
+    fn render(&self, values: &Values) -> Result<Self, CoreError> {
         self.iter()
             .map(|(key, value)| Ok((key.clone(), value.render(values)?)))
             .collect()

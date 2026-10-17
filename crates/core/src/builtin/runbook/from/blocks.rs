@@ -2,9 +2,11 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
 use synt_actions::{Action, ActionError, Context, Risk};
+use synt_proto::OneLine;
 
 use super::Drafted;
-use crate::runbooks::{Draft, DraftStep, OneLine, RunbookError, Runbooks};
+use crate::CoreError;
+use crate::runbooks::{Draft, DraftStep, Runbooks};
 use crate::terminals::{Block, SessionId};
 
 const MOST_BLOCKS: usize = 100;
@@ -30,17 +32,17 @@ impl RunbookFromBlocks {
         Self { runbooks }
     }
 
-    fn command_of(blocks: &[Block], number: u64) -> Result<String, RunbookError> {
+    fn command_of(blocks: &[Block], number: u64) -> Result<String, CoreError> {
         let block = blocks
             .iter()
             .find(|block| block.number == number)
-            .ok_or(RunbookError::NoBlock(number))?;
+            .ok_or(CoreError::NoBlock(number))?;
 
         block
             .command
             .clone()
             .filter(|command| !command.trim().is_empty())
-            .ok_or(RunbookError::NoCommand(number))
+            .ok_or(CoreError::NoCommand(number))
     }
 }
 
@@ -63,7 +65,7 @@ impl Action for RunbookFromBlocks {
         params: FromBlocksParams,
     ) -> Result<Drafted, ActionError> {
         if params.blocks.is_empty() || params.blocks.len() > MOST_BLOCKS {
-            return Err(RunbookError::Picks {
+            return Err(CoreError::Picks {
                 what: "blocks",
                 most: MOST_BLOCKS,
                 numbers: "block numbers",
@@ -76,17 +78,17 @@ impl Action for RunbookFromBlocks {
             .runbooks
             .terminals()
             .get(params.session)
-            .ok_or_else(|| RunbookError::NoSession(session.clone()))?;
+            .ok_or_else(|| CoreError::NoSessionNamed(session.clone()))?;
         let host = terminal
             .origin()
             .target
             .clone()
-            .ok_or(RunbookError::LocalSession(session))?;
+            .ok_or(CoreError::LocalSession(session))?;
 
         let blocks = terminal.blocks().await;
         let name = match params.name {
             Some(name) => name,
-            None => OneLine::new(DEFAULT_NAME)?,
+            None => OneLine::new(DEFAULT_NAME).map_err(CoreError::NotOneLine)?,
         };
         let mut draft = Draft::new(name);
 

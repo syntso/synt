@@ -4,8 +4,9 @@ use synt_journal::ResourceRef;
 use synt_kube::ForwardRequest;
 
 use super::{ForwardEntry, ForwardInfo};
+use crate::CoreError;
 use crate::builtin::hold::keep_hold_while_open;
-use crate::builtin::k8s::{K8sError, Kube};
+use crate::builtin::k8s::Kube;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sPortForward {
@@ -21,7 +22,7 @@ impl K8sPortForward {
         &self,
         context: &Context,
         request: &ForwardRequest,
-    ) -> Result<ForwardInfo, K8sError> {
+    ) -> Result<ForwardInfo, CoreError> {
         let cluster = self.kube.cluster(context).await?;
         let forward = request.open(&cluster).await?;
 

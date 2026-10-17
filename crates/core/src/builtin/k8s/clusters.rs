@@ -18,7 +18,7 @@ use synt_platform::Lock;
 use synt_ssh::{Pool, Target};
 use tokio::time;
 
-use super::K8sError;
+use crate::CoreError;
 use crate::builtin::ssh::within_connect_limit;
 
 const IDLE_LIMIT: Duration = Duration::from_mins(1);
@@ -44,7 +44,7 @@ impl Clusters {
         self.lock().get_mut(&reach.key()).map(ClusterEntry::take)
     }
 
-    pub(crate) async fn connect(&self, reach: &Reach) -> Result<Arc<Cluster>, K8sError> {
+    pub(crate) async fn connect(&self, reach: &Reach) -> Result<Arc<Cluster>, CoreError> {
         if let Some(cluster) = self.cached(reach) {
             return Ok(cluster);
         }
@@ -60,7 +60,7 @@ impl Clusters {
         Ok(cluster)
     }
 
-    async fn dialer_through(&self, via: &Target) -> Result<Arc<dyn Dialer>, K8sError> {
+    async fn dialer_through(&self, via: &Target) -> Result<Arc<dyn Dialer>, CoreError> {
         let lease = within_connect_limit(self.pool.acquire(via)).await?;
 
         Ok(Arc::new(SshDialer::new(lease)))

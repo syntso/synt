@@ -1,9 +1,9 @@
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use super::entry::FileEntry;
+use crate::ExtensionError;
 use crate::Extensions;
-use crate::blocking::Blocking;
 use crate::builtin::extension_params::ExtensionParams;
 
 #[derive(Clone)]
@@ -37,7 +37,7 @@ impl Action for ExtensionFileList {
     ) -> Result<Vec<FileEntry>, ActionError> {
         let extensions = self.extensions.clone();
 
-        Blocking::run(move || {
+        blocking(move || -> Result<_, ExtensionError> {
             let extension = params.extension();
             let picks = extensions.services().shelf().picks().all(extension)?;
 

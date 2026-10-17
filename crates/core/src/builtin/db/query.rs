@@ -9,13 +9,14 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_db::{Effect, Page, Rows, StatementKind};
 use synt_journal::ResourceRef;
+use synt_proto::Millis;
 
 use self::fields::QueryFields;
 use self::statement::Statement;
 use super::Databases;
-use super::error::DbActionError;
 use super::recorded::recorded_statement;
-use crate::clock::milliseconds;
+
+use crate::CoreError;
 
 const DEFAULT_ROWS: usize = 100;
 const MOST_ROWS: usize = 10_000;
@@ -48,7 +49,7 @@ pub(crate) struct QueryResult {
     #[serde(flatten)]
     pub rows: Rows,
 
-    pub duration_ms: u64,
+    pub duration_ms: Millis,
 }
 
 impl DbQuery {
@@ -82,8 +83,7 @@ impl Action for DbQuery {
         };
 
         let judged = params.statement.classification(engine);
-        let mut shown = serde_json::to_value(&*params)
-            .map_err(|error| ActionError::Failed(error.to_string()))?;
+        let mut shown = serde_json::to_value(&*params).map_err(CoreError::from)?;
 
         if let Some(fields) = shown.as_object_mut() {
             fields.retain(|_, value| !value.is_null());
@@ -145,7 +145,7 @@ impl Action for DbQuery {
             kind: judged.kind,
             effect: judged.effect,
             rows,
-            duration_ms: milliseconds(started.elapsed()),
+            duration_ms: Millis::from(started.elapsed()),
         })
     }
 }
@@ -165,9 +165,9 @@ impl QueryParams {
 }
 
 impl TryFrom<QueryFields> for QueryParams {
-    type Error = DbActionError;
+    type Error = CoreError;
 
-    fn try_from(fields: QueryFields) -> Result<Self, DbActionError> {
+    fn try_from(fields: QueryFields) -> Result<Self, CoreError> {
         within("limit", fields.limit, MOST_ROWS)?;
         within("max_bytes", fields.max_bytes, MOST_BYTES)?;
         within("timeout_seconds", fields.timeout_seconds, LONGEST_TIMEOUT)?;
@@ -184,7 +184,7 @@ impl TryFrom<QueryFields> for QueryParams {
     }
 }
 
-fn within<N>(field: &'static str, given: Option<N>, most: N) -> Result<(), DbActionError>
+fn within<N>(field: &'static str, given: Option<N>, most: N) -> Result<(), CoreError>
 where
     N: Copy + PartialOrd + Default + TryInto<u64>,
 {
@@ -196,7 +196,7 @@ where
         return Ok(());
     }
 
-    Err(DbActionError::OutOfRange {
+    Err(CoreError::OutOfRange {
         field,
         most: most.try_into().unwrap_or(u64::MAX),
     })

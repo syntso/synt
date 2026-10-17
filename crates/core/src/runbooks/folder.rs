@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 
 use synt_platform::{Found, read_plain_file, replace_file};
 
+use super::RunbookName;
 use super::document::RunbookDocument;
-use super::{RunbookError, RunbookName};
 use crate::CoreError;
 use crate::projects::{Problem, ProjectPlace};
 
@@ -51,7 +51,7 @@ impl RunbookFolder {
         Ok(listing)
     }
 
-    pub(crate) fn read(&self, name: &RunbookName) -> Result<RunbookDocument, RunbookError> {
+    pub(crate) fn read(&self, name: &RunbookName) -> Result<RunbookDocument, CoreError> {
         Self::read_file(&self.path(name))
             .map_err(|error| error.in_project(name, self.place.slug.as_str()))
     }
@@ -61,19 +61,17 @@ impl RunbookFolder {
         name: RunbookName,
         document: RunbookDocument,
         admitted: Option<&str>,
-    ) -> Result<RunbookEntry, RunbookError> {
+    ) -> Result<RunbookEntry, CoreError> {
         document.check()?;
         self.admit(&name, admitted)?;
 
-        let text = document
-            .to_toml()
-            .map_err(|source| RunbookError::Unwritable {
-                name: name.clone(),
-                source,
-            })?;
+        let text = document.to_toml().map_err(|source| CoreError::Unwritable {
+            name: name.clone(),
+            source,
+        })?;
 
         self.write(&name, &text)
-            .map_err(|source| RunbookError::NotSaved {
+            .map_err(|source| CoreError::NotSaved {
                 name: name.clone(),
                 source,
             })?;
@@ -81,14 +79,14 @@ impl RunbookFolder {
         Ok(RunbookEntry::new(name, document))
     }
 
-    fn admit(&self, name: &RunbookName, admitted: Option<&str>) -> Result<(), RunbookError> {
+    fn admit(&self, name: &RunbookName, admitted: Option<&str>) -> Result<(), CoreError> {
         let actual = self.reference(name);
 
         if admitted == Some(actual.as_str()) {
             return Ok(());
         }
 
-        Err(RunbookError::Moved {
+        Err(CoreError::Moved {
             name: name.clone(),
             project: self.place.slug.to_string(),
             actual,
@@ -154,13 +152,13 @@ impl RunbookFolder {
         RunbookName::new(stem).ok()
     }
 
-    fn read_file(path: &Path) -> Result<RunbookDocument, RunbookError> {
+    fn read_file(path: &Path) -> Result<RunbookDocument, CoreError> {
         let bytes = read_plain_file(path, LARGEST_FILE)
             .found()
-            .map_err(RunbookError::Unreadable)?
-            .ok_or(RunbookError::NoSuchRunbook)?;
+            .map_err(CoreError::UnreadableRunbook)?
+            .ok_or(CoreError::NoSuchRunbook)?;
 
-        let text = String::from_utf8(bytes).map_err(|_| RunbookError::NotUtf8)?;
+        let text = String::from_utf8(bytes).map_err(|_| CoreError::NotUtf8)?;
 
         RunbookDocument::from_toml(&text)
     }

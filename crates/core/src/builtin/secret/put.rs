@@ -1,11 +1,11 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
+use synt_platform::SecretName;
 use zeroize::Zeroizing;
 
-use crate::blocking::blocking;
-use crate::secrets::{SecretInfo, SecretName, Secrets};
+use crate::secrets::{SecretInfo, Secrets};
 
 #[derive(Clone)]
 pub struct SecretPut {

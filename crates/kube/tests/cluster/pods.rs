@@ -1,9 +1,8 @@
 use std::num::NonZeroU16;
 use std::time::Duration;
 
-use synt_kube::{
-    Command, ExecLimits, ExecRequest, ForwardRequest, ForwardTarget, LogRequest, ObjectName,
-};
+use synt_kube::{Command, ExecRequest, ForwardRequest, ForwardTarget, LogRequest, ObjectName};
+use synt_proto::ExecLimits;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time;
@@ -91,10 +90,14 @@ async fn a_command_runs_in_a_pod_and_reports_how_it_ended() {
     let slow = run(&["sleep", "30"]).run(cluster, limits, never()).await;
 
     assert_eq!(greeted.exit, Some(0));
-    assert_eq!(greeted.stdout, "hello\n");
+    assert_eq!(greeted.output.stdout, "hello\n");
     assert_ne!(failed.exit, Some(0));
     assert!(failed.exit.is_some());
-    assert!(failed.stderr.contains("nowhere"), "{}", failed.stderr);
+    assert!(
+        failed.output.stderr.contains("nowhere"),
+        "{}",
+        failed.output.stderr
+    );
     assert!(
         missing.is_err()
             || missing

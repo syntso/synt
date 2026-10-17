@@ -4,11 +4,12 @@ mod step;
 
 pub(crate) use step::DraftStep;
 
-use synt_proto::RunPhase;
+use synt_proto::{OneLine, RunPhase};
 
-use super::RunbookError;
-use super::document::{OneLine, RunbookDocument, Step};
+use super::document::{RunbookDocument, Step};
 use placeholders::Placeholders;
+
+use crate::CoreError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Draft {
@@ -28,7 +29,7 @@ impl Draft {
         self.steps.push(step);
     }
 
-    pub(crate) fn build(self) -> Result<RunbookDocument, RunbookError> {
+    pub(crate) fn build(self) -> Result<RunbookDocument, CoreError> {
         let placeholders = Placeholders::for_steps(&self.steps)?;
         let steps = self.templated_steps(&placeholders)?;
 
@@ -38,7 +39,7 @@ impl Draft {
         Ok(document)
     }
 
-    fn templated_steps(&self, placeholders: &Placeholders) -> Result<Vec<Step>, RunbookError> {
+    fn templated_steps(&self, placeholders: &Placeholders) -> Result<Vec<Step>, CoreError> {
         (1..)
             .zip(&self.steps)
             .map(|(number, step)| {
@@ -54,7 +55,9 @@ mod tests {
     use serde_json::{Map, Value, json};
 
     use super::{Draft, DraftStep};
-    use crate::runbooks::document::{OneLine, RunbookDocument};
+    use synt_proto::OneLine;
+
+    use crate::runbooks::document::RunbookDocument;
     use crate::runbooks::param::{ParamKind, Values};
     use crate::runbooks::template::JsonTemplate;
 

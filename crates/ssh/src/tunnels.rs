@@ -7,6 +7,7 @@ mod traffic;
 
 use std::collections::BTreeMap;
 use std::fmt::{self, Debug, Formatter};
+use std::num::NonZeroU16;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -42,7 +43,7 @@ impl Tunnels {
         &self,
         target: &Target,
         destination: Destination,
-        local_port: Option<u16>,
+        local_port: Option<NonZeroU16>,
         stop: CancellationToken,
     ) -> Result<TunnelStatus, SshError> {
         let id = TunnelId::from(self.issued.fetch_add(1, Ordering::Relaxed) + 1);

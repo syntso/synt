@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use synt_journal::ActionId;
 
-use crate::runbooks::RunbookError;
+use crate::CoreError;
 
 const RUNBOOK_ACTIONS: &str = "runbook.";
 
@@ -13,11 +13,11 @@ const RUNBOOK_ACTIONS: &str = "runbook.";
 pub struct StepAction(#[schemars(with = "String")] ActionId);
 
 impl StepAction {
-    pub(crate) fn new(action: impl Into<String>) -> Result<Self, RunbookError> {
-        let action = ActionId::new(action).map_err(RunbookError::BadAction)?;
+    pub(crate) fn new(action: impl Into<String>) -> Result<Self, CoreError> {
+        let action = ActionId::new(action).map_err(CoreError::BadAction)?;
 
         if action.as_str().starts_with(RUNBOOK_ACTIONS) {
-            return Err(RunbookError::NestedRunbook { action });
+            return Err(CoreError::NestedRunbook { action });
         }
 
         Ok(Self(action))
@@ -33,9 +33,9 @@ impl StepAction {
 }
 
 impl TryFrom<String> for StepAction {
-    type Error = RunbookError;
+    type Error = CoreError;
 
-    fn try_from(action: String) -> Result<Self, RunbookError> {
+    fn try_from(action: String) -> Result<Self, CoreError> {
         Self::new(action)
     }
 }

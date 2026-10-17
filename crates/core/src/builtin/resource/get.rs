@@ -1,8 +1,7 @@
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use super::ResourceParams;
-use crate::blocking::blocking;
 use crate::projects::{Projects, ResourceEntry};
 
 #[derive(Debug, Clone)]

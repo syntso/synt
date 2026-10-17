@@ -1,7 +1,8 @@
 use std::time::Instant;
 
+use synt_proto::Millis;
+
 use super::{EndReason, StreamEnd};
-use crate::clock::milliseconds;
 
 pub(crate) struct Tally {
     started: Instant,
@@ -29,7 +30,7 @@ impl Tally {
             error,
             bytes: self.bytes,
             items: self.items,
-            duration_ms: milliseconds(self.started.elapsed()),
+            duration_ms: Millis::from(self.started.elapsed()),
         }
     }
 }

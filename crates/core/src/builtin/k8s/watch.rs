@@ -7,7 +7,9 @@ use synt_kube::{KindName, WatchRequest};
 use synt_proto::StreamId;
 
 use super::streams::{Pump, StreamStarted};
-use super::{K8sError, KindFacts, Kube};
+use super::{KindFacts, Kube};
+
+use crate::CoreError;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sWatch {
@@ -38,7 +40,7 @@ impl K8sWatch {
         &self,
         context: &Context,
         params: &WatchParams,
-    ) -> Result<StreamStarted, K8sError> {
+    ) -> Result<StreamStarted, CoreError> {
         let cluster = self.kube.cluster(context).await?;
         let kind = self.kube.kind(context, &cluster, &params.kind).await?;
         let pump = Pump::open(context, params.stream)?;

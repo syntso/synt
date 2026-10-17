@@ -13,7 +13,7 @@ use wasmtime::{Config, Engine, Store, Trap, UpdateDeadline};
 
 pub(crate) use guest::{Compiled, Exports, GuestCall, Template};
 pub(crate) use host::{Imports, Sandbox};
-pub(crate) use quota::{QuotaSpent, Spend};
+pub(crate) use quota::Spend;
 
 use budget::Budget;
 use host::Wasi;

@@ -2,9 +2,10 @@ use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
 use synt_journal::{Event, EventKind, JournalReader, Seq};
+use synt_proto::OneLine;
 
 use crate::CoreError;
-use crate::runbooks::{Draft, DraftStep, OneLine, RunbookDocument, RunbookError};
+use crate::runbooks::{Draft, DraftStep, RunbookDocument};
 
 const PARAMS: &str = "params";
 
@@ -33,7 +34,7 @@ impl<'a> Requests<'a> {
             }
         }
 
-        Ok(draft.build()?)
+        draft.build()
     }
 
     fn request_of(&self, seq: Seq) -> Result<Event, CoreError> {
@@ -43,11 +44,11 @@ impl<'a> Requests<'a> {
             return Ok(event);
         }
 
-        let call = event.call().ok_or(RunbookError::NoCall(seq))?;
+        let call = event.call().ok_or(CoreError::NoCall(seq))?;
         let request = self.find(call)?;
 
         if request.kind() != EventKind::Requested {
-            return Err(RunbookError::NotARequest(call).into());
+            return Err(CoreError::NotARequest(call));
         }
 
         Ok(request)
@@ -56,7 +57,7 @@ impl<'a> Requests<'a> {
     fn find(&self, seq: Seq) -> Result<Event, CoreError> {
         let event = self.reader.get(seq)?;
 
-        Ok(event.ok_or(RunbookError::NoEvent(seq))?)
+        event.ok_or(CoreError::NoEvent(seq))
     }
 
     fn step(request: &Event) -> DraftStep {

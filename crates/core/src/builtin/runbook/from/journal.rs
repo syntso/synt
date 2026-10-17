@@ -3,13 +3,13 @@ mod requests;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use super::Drafted;
 use crate::CoreError;
-use crate::blocking::blocking;
-use crate::runbooks::{OneLine, RunbookError, Runbooks};
+use crate::runbooks::Runbooks;
 use requests::Requests;
+use synt_proto::OneLine;
 
 const MOST_EVENTS: usize = 100;
 const DEFAULT_NAME: &str = "Steps from the journal";
@@ -52,7 +52,7 @@ impl Action for RunbookFromJournal {
         params: FromJournalParams,
     ) -> Result<Drafted, ActionError> {
         if params.events.is_empty() || params.events.len() > MOST_EVENTS {
-            return Err(RunbookError::Picks {
+            return Err(CoreError::Picks {
                 what: "events",
                 most: MOST_EVENTS,
                 numbers: "journal numbers",
@@ -63,10 +63,10 @@ impl Action for RunbookFromJournal {
         let journal = self.runbooks.journal().clone();
         let name = match params.name {
             Some(name) => name,
-            None => OneLine::new(DEFAULT_NAME)?,
+            None => OneLine::new(DEFAULT_NAME).map_err(CoreError::NotOneLine)?,
         };
 
-        let runbook = blocking::<_, CoreError>(move || {
+        let runbook = blocking::<_, _, CoreError>(move || {
             let reader = journal.reader()?;
 
             Requests::new(&reader).draft(&params.events, name)

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{EndReason, SessionId};
+use crate::Millis;
 use crate::{Notice, StreamId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -15,7 +16,7 @@ pub struct SessionEnded {
     #[serde(default)]
     pub signal: Option<String>,
 
-    pub duration_ms: u64,
+    pub duration_ms: Millis,
 }
 
 impl Notice for SessionEnded {

@@ -60,7 +60,7 @@ impl<'a> ThreeWay<'a> {
 #[cfg(test)]
 mod tests {
     use super::{REMOVED_AND_CHANGED, ThreeWay};
-    use crate::document::{DocumentKind, DocumentPath, Draft, Revision};
+    use crate::document::{DocumentKind, DocumentPath, Draft, ExtensionDocumentPath, Revision};
     use crate::id::ProjectId;
     use crate::merge::DocumentMerger;
     use crate::seal::{Keyring, Naming};
@@ -88,7 +88,7 @@ mod tests {
     fn uml() -> DocumentKind {
         DocumentKind::Extension {
             extension: "uml".to_owned(),
-            suffix: "uml".to_owned(),
+            path: ExtensionDocumentPath::try_from("orders.uml".to_owned()).unwrap(),
         }
     }
 

@@ -8,7 +8,7 @@ use ureq::{Agent, AsSendBody, Body, RequestExt};
 use super::{
     CheckedResolver, Destination, HttpRequest, HttpResponse, Revealed, SecretAccess, TrustedTls,
 };
-use crate::error::HttpError;
+use crate::ExtensionError;
 use crate::manifest::Capabilities;
 
 pub(crate) struct Exchange {
@@ -34,7 +34,7 @@ impl Exchange {
         request: &HttpRequest,
         capabilities: &Capabilities,
         secrets: Option<&SecretAccess<'_>>,
-    ) -> Result<HttpResponse, HttpError> {
+    ) -> Result<HttpResponse, ExtensionError> {
         let method = request.checked_method()?;
         let destination = Destination::listed_in(request.url(), capabilities)?;
         request.check_headers()?;
@@ -54,12 +54,12 @@ impl Exchange {
         destination: &Destination,
         capabilities: &Capabilities,
         secrets: Option<&SecretAccess<'_>>,
-    ) -> Result<Vec<Revealed>, HttpError> {
+    ) -> Result<Vec<Revealed>, ExtensionError> {
         if request.secrets().is_empty() {
             return Ok(Vec::new());
         }
 
-        let secrets = secrets.ok_or(HttpError::NoSecrets)?;
+        let secrets = secrets.ok_or(ExtensionError::NoSecrets)?;
 
         secrets.reveal(request.secrets(), destination, capabilities)
     }
@@ -70,7 +70,7 @@ impl Exchange {
         builder: Builder,
         body: Option<Vec<u8>>,
         timeout: Duration,
-    ) -> Result<Response<Body>, HttpError> {
+    ) -> Result<Response<Body>, ExtensionError> {
         match body {
             Some(body) => self.call(url, builder.body(body), timeout),
             None => self.call(url, builder.body(()), timeout),
@@ -82,8 +82,8 @@ impl Exchange {
         url: &str,
         request: Result<Request<impl AsSendBody>, ureq::http::Error>,
         timeout: Duration,
-    ) -> Result<Response<Body>, HttpError> {
-        let request = request.map_err(|source| HttpError::Request {
+    ) -> Result<Response<Body>, ExtensionError> {
+        let request = request.map_err(|source| ExtensionError::Request {
             url: url.to_owned(),
             source,
         })?;
@@ -93,7 +93,7 @@ impl Exchange {
             .configure()
             .timeout_global(Some(timeout))
             .run()
-            .map_err(|source| HttpError::Transport {
+            .map_err(|source| ExtensionError::Transport {
                 url: url.to_owned(),
                 source,
             })

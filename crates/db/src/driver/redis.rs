@@ -36,10 +36,11 @@ impl Redis {
 
         let socket = TcpStream::connect((endpoint.host(), endpoint.port()))
             .await
-            .map_err(|error| DbError::Connect(format!("{endpoint}: {error}")))?;
-        socket
-            .set_nodelay(true)
-            .map_err(|error| DbError::Connect(error.to_string()))?;
+            .map_err(|source| DbError::Unreachable {
+                endpoint: endpoint.to_string(),
+                source,
+            })?;
+        socket.set_nodelay(true)?;
 
         match server.tls() {
             TlsMode::Disable => Self::start(&info, socket).await,
@@ -54,19 +55,15 @@ impl Redis {
     }
 
     async fn secure(server: &Server, socket: TcpStream) -> Result<TlsStream<TcpStream>, DbError> {
-        let config = server
-            .tls()
-            .client_config()?
-            .ok_or_else(|| DbError::Tls("tls was asked for but not set up".to_owned()))?;
+        let config = server.tls().client_config()?.ok_or(DbError::TlsNotSetUp)?;
         let host = server.place().host().unwrap_or_default().to_owned();
-        let name = ServerName::try_from(host.clone()).map_err(|_| {
-            DbError::Tls(format!("{host:?} cannot be checked against a certificate"))
-        })?;
+        let name =
+            ServerName::try_from(host.clone()).map_err(|_| DbError::UncheckableHost(host))?;
 
         TlsConnector::from(Arc::clone(&config))
             .connect(name, socket)
             .await
-            .map_err(|error| DbError::Tls(error.to_string()))
+            .map_err(DbError::Handshake)
     }
 
     async fn start<C>(info: &RedisConnectionInfo, stream: C) -> Result<Self, DbError>

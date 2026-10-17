@@ -1,15 +1,14 @@
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
+use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
-use rusqlite::ToSql;
-use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::{Deserialize, Serialize, Serializer};
 
 use super::VaultKind;
-use crate::CoreError;
+use crate::PlatformError;
 
 const LONGEST_NAME: usize = 64;
 const REFERENCE_SCHEME: &str = "secret://";
@@ -22,16 +21,18 @@ pub struct VaultName<K> {
 }
 
 impl<K: VaultKind> VaultName<K> {
-    pub fn parse(text: &str) -> Result<Self, CoreError> {
+    pub const LONGEST: usize = LONGEST_NAME;
+
+    pub fn parse(text: &str) -> Result<Self, PlatformError> {
         if text.is_empty() || text.len() > LONGEST_NAME {
-            return Err(CoreError::VaultNameLength {
+            return Err(PlatformError::VaultNameLength {
                 noun: K::NOUN,
                 longest: LONGEST_NAME,
             });
         }
 
         if !text.split('/').all(Self::is_segment) {
-            return Err(CoreError::InvalidVaultName {
+            return Err(PlatformError::InvalidVaultName {
                 noun: K::NOUN,
                 text: text.to_owned(),
             });
@@ -40,7 +41,7 @@ impl<K: VaultKind> VaultName<K> {
         Ok(Self::checked(text.to_owned()))
     }
 
-    pub fn from_reference(reference: &str) -> Option<Result<Self, CoreError>> {
+    pub fn from_reference(reference: &str) -> Option<Result<Self, PlatformError>> {
         let name = reference.strip_prefix(REFERENCE_SCHEME)?;
 
         Some(Self::parse(name))
@@ -54,11 +55,11 @@ impl<K: VaultKind> VaultName<K> {
         format!("{REFERENCE_SCHEME}{}", self.text)
     }
 
-    pub(crate) fn vault_item(&self) -> String {
+    pub fn vault_item(&self) -> String {
         format!("{}{}", K::VAULT_PREFIX, self.text.replace('/', "."))
     }
 
-    pub(crate) fn recast<Other: VaultKind>(&self) -> VaultName<Other> {
+    pub fn recast<Other: VaultKind>(&self) -> VaultName<Other> {
         VaultName::checked(self.text.clone())
     }
 
@@ -78,9 +79,9 @@ impl<K: VaultKind> VaultName<K> {
 }
 
 impl<K: VaultKind> TryFrom<String> for VaultName<K> {
-    type Error = CoreError;
+    type Error = PlatformError;
 
-    fn try_from(text: String) -> Result<Self, CoreError> {
+    fn try_from(text: String) -> Result<Self, PlatformError> {
         Self::parse(&text)
     }
 }
@@ -102,9 +103,27 @@ impl<K> PartialEq for VaultName<K> {
 
 impl<K> Eq for VaultName<K> {}
 
+impl<K> PartialOrd for VaultName<K> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<K> Ord for VaultName<K> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.text.cmp(&other.text)
+    }
+}
+
 impl<K> Hash for VaultName<K> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.text.hash(state);
+    }
+}
+
+impl<K> Borrow<str> for VaultName<K> {
+    fn borrow(&self) -> &str {
+        &self.text
     }
 }
 
@@ -137,19 +156,5 @@ impl<K> JsonSchema for VaultName<K> {
 
     fn json_schema(generator: &mut SchemaGenerator) -> Schema {
         String::json_schema(generator)
-    }
-}
-
-impl<K> ToSql for VaultName<K> {
-    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
-        self.text.to_sql()
-    }
-}
-
-impl<K: VaultKind> FromSql for VaultName<K> {
-    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        let text = value.as_str()?;
-
-        Self::parse(text).map_err(|error| FromSqlError::Other(Box::new(error)))
     }
 }

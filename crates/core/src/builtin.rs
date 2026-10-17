@@ -18,6 +18,7 @@ mod tunnel;
 pub use db::Databases;
 pub use grant::{GrantActions, GrantList, GrantRevoke};
 pub use journal::{JournalActions, JournalPage, JournalVerify};
+pub(crate) use k8s::ForwardId;
 pub use k8s::Kube;
 pub use key::{KeyActions, KeyGenerate, KeyImport, KeyList, KeyRemove};
 pub use ping::{Ping, Pong};
@@ -30,6 +31,7 @@ pub use session::{
     SessionIntegration, SessionList, SessionResize, SshSessionOpen,
 };
 pub use sftp::Files;
+pub(crate) use ssh::failure as ssh_failure;
 pub use ssh::{SshActions, SshConnections, SshExec, SshWarm};
 pub use sync::SyncActions;
 pub use tunnel::{TunnelActions, TunnelClose, TunnelList, TunnelOpen};

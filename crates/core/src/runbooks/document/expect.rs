@@ -8,7 +8,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::runbooks::RunbookError;
+use crate::CoreError;
 use crate::runbooks::param::Values;
 use crate::runbooks::template::TextTemplate;
 
@@ -42,7 +42,7 @@ impl Expect {
         self.exit.unwrap_or(0)
     }
 
-    pub(crate) fn render(&self, values: &Values) -> Result<Self, RunbookError> {
+    pub(crate) fn render(&self, values: &Values) -> Result<Self, CoreError> {
         let contains = self
             .contains
             .as_deref()
@@ -55,7 +55,7 @@ impl Expect {
         })
     }
 
-    pub(crate) fn judge(&self, result: &Value) -> Result<(), RunbookError> {
+    pub(crate) fn judge(&self, result: &Value) -> Result<(), CoreError> {
         self.judge_exit(result)?;
         self.judge_output(result)?;
 
@@ -66,19 +66,19 @@ impl Expect {
         Ok(())
     }
 
-    fn judge_exit(&self, result: &Value) -> Result<(), RunbookError> {
+    fn judge_exit(&self, result: &Value) -> Result<(), CoreError> {
         let carried = result.get(EXIT);
 
         let wanted = match (self.exit, carried) {
             (None, None) => return Ok(()),
-            (Some(wanted), None) => return Err(RunbookError::NoExitCarried(wanted)),
+            (Some(wanted), None) => return Err(CoreError::NoExitCarried(wanted)),
             (_, Some(_)) => self.exit_wanted(),
         };
 
         match carried.and_then(Value::as_i64) {
             Some(exit) if exit == wanted => Ok(()),
-            Some(exit) => Err(RunbookError::WrongExit { exit, wanted }),
-            None => Err(RunbookError::NoExitCode {
+            Some(exit) => Err(CoreError::WrongExit { exit, wanted }),
+            None => Err(CoreError::NoExitCode {
                 wanted,
                 signal: result
                     .get(SIGNAL)
@@ -88,7 +88,7 @@ impl Expect {
         }
     }
 
-    fn judge_output(&self, result: &Value) -> Result<(), RunbookError> {
+    fn judge_output(&self, result: &Value) -> Result<(), CoreError> {
         let Some(wanted) = &self.contains else {
             return Ok(());
         };
@@ -102,24 +102,20 @@ impl Expect {
             return Ok(());
         }
 
-        Err(RunbookError::OutputLacks(wanted.clone()))
+        Err(CoreError::OutputLacks(wanted.clone()))
     }
 
-    fn judge_field(
-        result: &Value,
-        pointer: &JsonPointer,
-        wanted: &Value,
-    ) -> Result<(), RunbookError> {
+    fn judge_field(result: &Value, pointer: &JsonPointer, wanted: &Value) -> Result<(), CoreError> {
         let pointer_text = pointer.as_str();
 
         match result.pointer(pointer_text) {
             Some(found) if found == wanted => Ok(()),
-            Some(found) => Err(RunbookError::WrongField {
+            Some(found) => Err(CoreError::WrongField {
                 pointer: pointer_text.to_owned(),
                 found: found.clone(),
                 wanted: wanted.clone(),
             }),
-            None => Err(RunbookError::MissingField {
+            None => Err(CoreError::ResultLacks {
                 pointer: pointer_text.to_owned(),
                 wanted: wanted.clone(),
             }),

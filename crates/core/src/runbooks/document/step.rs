@@ -5,9 +5,10 @@ pub use action::StepAction;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use synt_proto::OneLine;
 
-use super::{Expect, OnFailure, OneLine, Retry};
-use crate::runbooks::RunbookError;
+use super::{Expect, OnFailure, Retry};
+use crate::CoreError;
 use crate::runbooks::param::ParamName;
 use crate::runbooks::template::JsonTemplate;
 
@@ -54,7 +55,7 @@ impl Step {
         }
     }
 
-    pub(crate) fn check(&self) -> Result<(), RunbookError> {
+    pub(crate) fn check(&self) -> Result<(), CoreError> {
         match &self.retry {
             Some(retry) => retry.check(),
             None => Ok(()),

@@ -1,12 +1,10 @@
 mod expect;
 mod on_failure;
-mod one_line;
 mod retry;
 mod step;
 
 pub use expect::Expect;
 pub use on_failure::OnFailure;
-pub use one_line::OneLine;
 pub use retry::Retry;
 pub use step::{Step, StepAction};
 
@@ -14,10 +12,11 @@ use std::collections::BTreeSet;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use synt_proto::RunPhase;
+use synt_proto::{OneLine, RunPhase};
 
-use super::RunbookError;
 use super::param::{ParamName, ParamSpec};
+
+use crate::CoreError;
 
 const MOST_PARAMS: usize = 50;
 const MOST_STEPS: usize = 100;
@@ -50,9 +49,9 @@ impl RunbookDocument {
         }
     }
 
-    pub(crate) fn from_toml(text: &str) -> Result<Self, RunbookError> {
+    pub(crate) fn from_toml(text: &str) -> Result<Self, CoreError> {
         let document: Self = toml::from_str(text)
-            .map_err(|error| RunbookError::Malformed(error.message().to_owned()))?;
+            .map_err(|error| CoreError::Malformed(error.message().to_owned()))?;
 
         document.check()?;
         Ok(document)
@@ -86,7 +85,7 @@ impl RunbookDocument {
         self.steps.iter().chain(&self.rollback)
     }
 
-    pub(crate) fn check(&self) -> Result<(), RunbookError> {
+    pub(crate) fn check(&self) -> Result<(), CoreError> {
         self.check_params()?;
         self.check_steps()?;
         self.check_rollback()?;
@@ -94,9 +93,9 @@ impl RunbookDocument {
         self.check_params_used()
     }
 
-    fn check_params(&self) -> Result<(), RunbookError> {
+    fn check_params(&self) -> Result<(), CoreError> {
         if self.params.len() > MOST_PARAMS {
-            return Err(RunbookError::TooManyParams(MOST_PARAMS));
+            return Err(CoreError::TooManyParams(MOST_PARAMS));
         }
 
         let mut seen = BTreeSet::new();
@@ -105,16 +104,16 @@ impl RunbookDocument {
             spec.check()?;
 
             if !seen.insert(spec.name()) {
-                return Err(RunbookError::DeclaredTwice(spec.name().clone()));
+                return Err(CoreError::DeclaredTwice(spec.name().clone()));
             }
         }
 
         Ok(())
     }
 
-    fn check_steps(&self) -> Result<(), RunbookError> {
+    fn check_steps(&self) -> Result<(), CoreError> {
         if self.steps.is_empty() || self.steps.len() > MOST_STEPS {
-            return Err(RunbookError::StepCount(MOST_STEPS));
+            return Err(CoreError::StepCount(MOST_STEPS));
         }
 
         for (number, step) in (1..).zip(&self.steps) {
@@ -128,15 +127,15 @@ impl RunbookDocument {
             .any(|step| step.on_failure() == OnFailure::Rollback);
 
         if rolls_back && self.rollback.is_empty() {
-            return Err(RunbookError::NoRollback);
+            return Err(CoreError::NoRollback);
         }
 
         Ok(())
     }
 
-    fn check_rollback(&self) -> Result<(), RunbookError> {
+    fn check_rollback(&self) -> Result<(), CoreError> {
         if self.rollback.len() > MOST_STEPS {
-            return Err(RunbookError::RollbackCount(MOST_STEPS));
+            return Err(CoreError::RollbackCount(MOST_STEPS));
         }
 
         for (number, step) in (1..).zip(&self.rollback) {
@@ -147,17 +146,17 @@ impl RunbookDocument {
         Ok(())
     }
 
-    fn check_rollback_step(step: &Step) -> Result<(), RunbookError> {
+    fn check_rollback_step(step: &Step) -> Result<(), CoreError> {
         step.check()?;
 
         if step.on_failure() != OnFailure::Stop {
-            return Err(RunbookError::RollbackOnFailure);
+            return Err(CoreError::RollbackOnFailure);
         }
 
         Ok(())
     }
 
-    fn check_params_used(&self) -> Result<(), RunbookError> {
+    fn check_params_used(&self) -> Result<(), CoreError> {
         let declared: BTreeSet<&ParamName> = self.params.iter().map(ParamSpec::name).collect();
 
         let undeclared = self
@@ -166,7 +165,7 @@ impl RunbookDocument {
             .find(|name| !declared.contains(name));
 
         match undeclared {
-            Some(name) => Err(RunbookError::UndeclaredParam(name)),
+            Some(name) => Err(CoreError::UndeclaredParam(name)),
             None => Ok(()),
         }
     }

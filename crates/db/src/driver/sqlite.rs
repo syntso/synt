@@ -128,8 +128,7 @@ impl Sqlite {
             let connection = connection.lock().unwrap_or_else(PoisonError::into_inner);
             Self::guarded(&connection, access, work)
         })
-        .await
-        .map_err(|error| DbError::Lost(error.to_string()))?
+        .await?
     }
 
     fn guarded<T>(

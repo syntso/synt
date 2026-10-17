@@ -1,10 +1,11 @@
 mod suffix;
 
 use serde::{Deserialize, Serialize};
+use synt_proto::OneLine;
 
 pub use suffix::Suffix;
 
-use crate::manifest::{LocalId, OneLine};
+use crate::manifest::LocalId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use super::node::ViewNode;
-use crate::error::ViewError;
+use crate::ExtensionError;
 
 const DEEPEST: usize = 32;
 const MOST_NODES: usize = 10_000;
@@ -16,19 +16,19 @@ impl<'a> ViewCheck<'a> {
         Self { owns, nodes: 0 }
     }
 
-    pub(crate) fn tree(mut self, tree: &Value) -> Result<(), ViewError> {
+    pub(crate) fn tree(mut self, tree: &Value) -> Result<(), ExtensionError> {
         self.node(tree, 0)
     }
 
-    pub(crate) fn value(mut self, value: &Value) -> Result<(), ViewError> {
+    pub(crate) fn value(mut self, value: &Value) -> Result<(), ExtensionError> {
         self.anything(value, 0)
     }
 
-    pub(super) fn count(&mut self, depth: usize) -> Result<(), ViewError> {
+    pub(super) fn count(&mut self, depth: usize) -> Result<(), ExtensionError> {
         self.nodes += 1;
 
         if self.nodes > MOST_NODES || depth > DEEPEST {
-            return Err(ViewError::TooLarge {
+            return Err(ExtensionError::ViewTooLarge {
                 most: MOST_NODES,
                 deepest: DEEPEST,
             });
@@ -37,19 +37,19 @@ impl<'a> ViewCheck<'a> {
         Ok(())
     }
 
-    pub(super) fn bound(&self, action: &str) -> Result<(), ViewError> {
+    pub(super) fn bound(&self, action: &str) -> Result<(), ExtensionError> {
         if !(self.owns)(action) {
-            return Err(ViewError::ForeignAction(action.to_owned()));
+            return Err(ExtensionError::ForeignBinding(action.to_owned()));
         }
 
         Ok(())
     }
 
-    fn node(&mut self, value: &Value, depth: usize) -> Result<(), ViewError> {
+    fn node(&mut self, value: &Value, depth: usize) -> Result<(), ExtensionError> {
         ViewNode::parse(value)?.check(self, depth)
     }
 
-    fn anything(&mut self, value: &Value, depth: usize) -> Result<(), ViewError> {
+    fn anything(&mut self, value: &Value, depth: usize) -> Result<(), ExtensionError> {
         match value {
             Value::Object(fields) if fields.contains_key("type") => self.node(value, depth),
             Value::Object(fields) => fields
@@ -68,9 +68,9 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::ViewCheck;
-    use crate::error::ViewError;
+    use crate::ExtensionError;
 
-    fn checked(tree: &Value) -> Result<(), ViewError> {
+    fn checked(tree: &Value) -> Result<(), ExtensionError> {
         let owns = |action: &str| action.starts_with("uptime.");
 
         ViewCheck::new(&owns).tree(tree)

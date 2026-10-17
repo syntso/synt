@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use synt_journal::{Anchors, DeviceKey, JournalId, KeyStore, KeyStoreError};
+use synt_journal::{Anchors, DeviceKey, JournalError, JournalId, KeyStore};
 use synt_platform::Vault;
 
 use crate::CoreError;
@@ -53,7 +53,7 @@ impl JournalKeys {
 }
 
 impl KeyStore for JournalKeys {
-    fn device_key(&self) -> Result<DeviceKey, KeyStoreError> {
+    fn device_key(&self) -> Result<DeviceKey, JournalError> {
         let key = self
             .stored_device_key()?
             .ok_or_else(|| CoreError::DeviceKeyMissing(self.vault.place()))?;
@@ -61,18 +61,18 @@ impl KeyStore for JournalKeys {
         Ok(key)
     }
 
-    fn ensure_device_key(&self) -> Result<DeviceKey, KeyStoreError> {
+    fn ensure_device_key(&self) -> Result<DeviceKey, JournalError> {
         match self.stored_device_key()? {
             Some(key) => Ok(key),
             None => Ok(self.new_device_key()?),
         }
     }
 
-    fn anchors(&self, journal: JournalId) -> Result<Option<Anchors>, KeyStoreError> {
+    fn anchors(&self, journal: JournalId) -> Result<Option<Anchors>, JournalError> {
         Ok(self.stored_anchors(journal)?)
     }
 
-    fn save_anchors(&self, journal: JournalId, anchors: &Anchors) -> Result<(), KeyStoreError> {
+    fn save_anchors(&self, journal: JournalId, anchors: &Anchors) -> Result<(), JournalError> {
         self.vault
             .write(&Self::anchors_item(journal), &anchors.to_bytes())
             .map_err(CoreError::from)?;

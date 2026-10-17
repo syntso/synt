@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ManifestError;
+use crate::ExtensionError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -21,17 +21,17 @@ impl Api {
         }
     }
 
-    pub fn parse(text: &str) -> Result<Self, ManifestError> {
+    pub fn parse(text: &str) -> Result<Self, ExtensionError> {
         Self::SUPPORTED
             .into_iter()
             .find(|api| api.as_str() == text)
             .ok_or_else(|| Self::unsupported(text))
     }
 
-    fn unsupported(text: &str) -> ManifestError {
+    fn unsupported(text: &str) -> ExtensionError {
         let supported: Vec<&str> = Self::SUPPORTED.iter().map(|api| api.as_str()).collect();
 
-        ManifestError::UnsupportedApi {
+        ExtensionError::UnsupportedApi {
             api: text.to_owned(),
             supported: supported.join(" and "),
         }
@@ -39,9 +39,9 @@ impl Api {
 }
 
 impl TryFrom<String> for Api {
-    type Error = ManifestError;
+    type Error = ExtensionError;
 
-    fn try_from(text: String) -> Result<Self, ManifestError> {
+    fn try_from(text: String) -> Result<Self, ExtensionError> {
         Self::parse(&text)
     }
 }

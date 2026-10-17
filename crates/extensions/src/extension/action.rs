@@ -3,14 +3,13 @@ mod spec;
 use std::sync::Arc;
 
 use serde_json::Value;
-use synt_actions::{ActionError, Context, DynamicAction, Handle, Risk};
+use synt_actions::{ActionError, Context, DynamicAction, Handle, Risk, blocking};
 use synt_journal::ResourceRef;
 use tokio::runtime::Handle as RuntimeHandle;
 
 pub(crate) use spec::ActionSpec;
 
 use super::Guest;
-use crate::blocking::Blocking;
 use crate::builtin::CallingActor;
 use crate::runtime::GuestCall;
 
@@ -69,7 +68,8 @@ impl DynamicAction for ExtensionAction {
         let context = context.clone();
         let runtime = RuntimeHandle::current();
 
-        let reply = Blocking::run(move || guest.run(&call, context, runtime)).await?;
+        let reply =
+            blocking::<_, _, ActionError>(move || guest.run(&call, context, runtime)).await?;
 
         Ok(reply.into_value())
     }

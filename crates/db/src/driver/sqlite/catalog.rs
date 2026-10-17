@@ -108,5 +108,5 @@ impl CatalogRow for Row<'_> {
 }
 
 fn field<T: FromSql>(row: &Row<'_>, name: &str) -> Result<T, DbError> {
-    row.get(name).map_err(|_| DbError::unexpected_catalog_row())
+    row.get(name).map_err(|_| DbError::UnexpectedRow)
 }

@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ManifestError;
+use crate::ExtensionError;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -18,16 +18,16 @@ impl LocalId {
 }
 
 impl TryFrom<String> for LocalId {
-    type Error = ManifestError;
+    type Error = ExtensionError;
 
-    fn try_from(text: String) -> Result<Self, ManifestError> {
+    fn try_from(text: String) -> Result<Self, ExtensionError> {
         let starts_with_letter = text.starts_with(|first: char| first.is_ascii_lowercase());
         let plain = text.chars().all(|character| {
             character.is_ascii_lowercase() || character.is_ascii_digit() || "-_".contains(character)
         });
 
         if !starts_with_letter || !plain || text.len() > Self::LONGEST {
-            return Err(ManifestError::LocalId(text));
+            return Err(ExtensionError::LocalId(text));
         }
 
         Ok(Self(text))

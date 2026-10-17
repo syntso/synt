@@ -3,10 +3,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use synt_platform::{read_plain_file, replace_file};
-use synt_sync::ProjectFolder;
+use synt_sync::{ExtensionDocumentPath, ProjectFolder};
 
 use super::DocumentInfo;
-use super::path::DocumentPath;
 use crate::call::FailureCode;
 use crate::interface::GuestError;
 
@@ -18,7 +17,7 @@ pub(super) const LARGEST_DOCUMENT: u64 = 4 * 1024 * 1024;
 pub(super) struct DocumentPlace {
     project: ProjectFolder,
     extension: String,
-    path: DocumentPath,
+    path: ExtensionDocumentPath,
     kind: String,
 }
 
@@ -26,7 +25,7 @@ impl DocumentPlace {
     pub(super) fn new(
         project: ProjectFolder,
         extension: &str,
-        path: DocumentPath,
+        path: ExtensionDocumentPath,
         kind: String,
     ) -> Self {
         Self {

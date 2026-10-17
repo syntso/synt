@@ -72,9 +72,9 @@ impl Relay {
 
         let port = self.port();
         let mut forwarder = self.pods.portforward(self.pod(), &[port]).await?;
-        let stream = forwarder.take_stream(port).ok_or_else(|| {
-            KubeError::Io(format!("the cluster opened no stream for port {port}"))
-        })?;
+        let stream = forwarder
+            .take_stream(port)
+            .ok_or(KubeError::NoStream(port))?;
 
         let (remote_read, remote_write) = io::split(stream);
         let (local_read, local_write) = socket.into_split();

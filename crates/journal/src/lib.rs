@@ -18,7 +18,7 @@ mod verify;
 pub use anchors::{Anchors, Mark};
 pub use chain::{DeviceKey, Link};
 pub use clock::{Clock, SystemClock};
-pub use error::{JournalError, KeyStoreError};
+pub use error::JournalError;
 pub use event::{Appended, Details, Event, EventKind, NewEvent};
 pub use filter::Filter;
 pub use journal::{Journal, JournalBuilder, JournalId, JournalReader, JournalWriter, Pruned};

@@ -1,5 +1,5 @@
 use serde::Serialize;
-use synt_proto::{EndReason, SessionEnded, StreamId};
+use synt_proto::{EndReason, Millis, SessionEnded, StreamId};
 
 use super::SessionId;
 
@@ -9,7 +9,7 @@ pub struct Ending {
     pub reason: EndReason,
     pub exit: Option<u32>,
     pub signal: Option<String>,
-    pub duration_ms: u64,
+    pub duration_ms: Millis,
     pub output_bytes: u64,
     pub blocks: u64,
     pub kex: Option<String>,

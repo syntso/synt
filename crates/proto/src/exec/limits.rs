@@ -3,8 +3,10 @@ use std::time::Duration;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::KubeError;
+use crate::ProtoError;
 
+const DEFAULT_OUTPUT_BYTES: usize = 1024 * 1024;
+const DEFAULT_TIMEOUT: Duration = Duration::from_mins(10);
 const LONGEST_TIMEOUT: Duration = Duration::from_hours(24);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -17,16 +19,16 @@ pub struct ExecLimits {
 impl Default for ExecLimits {
     fn default() -> Self {
         Self {
-            timeout: Duration::from_mins(10),
-            output_bytes: 1024 * 1024,
+            timeout: DEFAULT_TIMEOUT,
+            output_bytes: DEFAULT_OUTPUT_BYTES,
         }
     }
 }
 
 impl TryFrom<Option<u64>> for ExecLimits {
-    type Error = KubeError;
+    type Error = ProtoError;
 
-    fn try_from(timeout_seconds: Option<u64>) -> Result<Self, KubeError> {
+    fn try_from(timeout_seconds: Option<u64>) -> Result<Self, ProtoError> {
         let Some(seconds) = timeout_seconds else {
             return Ok(Self::default());
         };
@@ -34,10 +36,10 @@ impl TryFrom<Option<u64>> for ExecLimits {
         let timeout = Duration::from_secs(seconds);
 
         if timeout.is_zero() || timeout > LONGEST_TIMEOUT {
-            return Err(KubeError::invalid(format!(
-                "timeout_seconds must be between 1 and {}, got {seconds}",
-                LONGEST_TIMEOUT.as_secs()
-            )));
+            return Err(ProtoError::ExecTimeout {
+                seconds,
+                longest: LONGEST_TIMEOUT.as_secs(),
+            });
         }
 
         Ok(Self {
@@ -64,6 +66,13 @@ mod tests {
 
         assert_eq!(limits.timeout, Duration::from_secs(30));
         assert_eq!(limits.output_bytes, ExecLimits::default().output_bytes);
+    }
+
+    #[test]
+    fn the_limits_are_described_as_an_optional_number_of_seconds() {
+        let schema = serde_json::to_value(schemars::schema_for!(ExecLimits)).unwrap();
+
+        assert_eq!(schema["type"], serde_json::json!(["integer", "null"]));
     }
 
     #[test]

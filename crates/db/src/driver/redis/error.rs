@@ -12,7 +12,7 @@ impl From<RedisError> for DbError {
         }
 
         if error.is_io_error() || error.is_connection_dropped() {
-            return Self::Lost(error.to_string());
+            return Self::RedisLost(error);
         }
 
         Self::server(error.to_string(), None)

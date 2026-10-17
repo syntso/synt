@@ -126,6 +126,5 @@ impl CatalogRow for Row {
 }
 
 fn field<T: FromSqlOwned>(row: &Row, name: &str) -> Result<T, DbError> {
-    row.try_get(name)
-        .map_err(|_| DbError::unexpected_catalog_row())
+    row.try_get(name).map_err(|_| DbError::UnexpectedRow)
 }

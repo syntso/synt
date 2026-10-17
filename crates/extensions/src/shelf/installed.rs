@@ -1,12 +1,15 @@
+use std::error::Error;
+
 use rusqlite::Row;
 use rusqlite::types::Type;
 use semver::Version;
 use synt_journal::Timestamp;
+use synt_proto::OneLine;
 
+use crate::ExtensionError;
 use crate::install::Package;
-use crate::manifest::{ExtensionId, OneLine};
+use crate::manifest::ExtensionId;
 use crate::sha256::Sha256;
-use crate::{ExtensionError, ManifestError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Installed {
@@ -100,10 +103,11 @@ impl Installed {
         })
     }
 
-    fn checked<T: TryFrom<String, Error = ManifestError>>(
-        row: &Row<'_>,
-        column: &str,
-    ) -> rusqlite::Result<T> {
+    fn checked<T>(row: &Row<'_>, column: &str) -> rusqlite::Result<T>
+    where
+        T: TryFrom<String>,
+        T::Error: Error + Send + Sync + 'static,
+    {
         let text: String = row.get(column)?;
 
         T::try_from(text).map_err(|error| {

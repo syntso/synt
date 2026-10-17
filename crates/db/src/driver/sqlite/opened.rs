@@ -17,8 +17,11 @@ pub(super) struct Opened {
 impl Opened {
     pub(super) fn open(path: &Path, access: Access) -> Result<Self, DbError> {
         let connection =
-            Connection::open_with_flags(path, Self::flags(access)).map_err(|error| {
-                DbError::Connect(format!("cannot open {}: {error}", path.display()))
+            Connection::open_with_flags(path, Self::flags(access)).map_err(|source| {
+                DbError::Unopened {
+                    path: path.to_owned(),
+                    source,
+                }
             })?;
 
         connection.busy_timeout(BUSY_LIMIT)?;

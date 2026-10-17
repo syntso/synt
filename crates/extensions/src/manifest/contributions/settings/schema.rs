@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::error::{ManifestError, SettingsError};
+use crate::ExtensionError;
 
 const LARGEST_VALUES: usize = 64 * 1024;
 
@@ -10,12 +10,14 @@ const LARGEST_VALUES: usize = 64 * 1024;
 pub struct SettingsSchema(Value);
 
 impl SettingsSchema {
-    pub(crate) fn check(&self, values: &Value) -> Result<(), SettingsError> {
+    pub(crate) fn check(&self, values: &Value) -> Result<(), ExtensionError> {
         if values.to_string().len() > LARGEST_VALUES {
-            return Err(SettingsError::TooLarge(LARGEST_VALUES));
+            return Err(ExtensionError::SettingsTooLarge(LARGEST_VALUES));
         }
 
-        let values = values.as_object().ok_or(SettingsError::NotObject)?;
+        let values = values
+            .as_object()
+            .ok_or(ExtensionError::SettingsNotObject)?;
 
         self.check_required(values)?;
 
@@ -24,7 +26,7 @@ impl SettingsSchema {
             .try_for_each(|(name, value)| self.check_property(name, value))
     }
 
-    fn check_required(&self, values: &Map<String, Value>) -> Result<(), SettingsError> {
+    fn check_required(&self, values: &Map<String, Value>) -> Result<(), ExtensionError> {
         let required = self
             .0
             .get("required")
@@ -37,22 +39,22 @@ impl SettingsSchema {
             .find(|name| !values.contains_key(*name));
 
         match missing {
-            Some(name) => Err(SettingsError::Required(name.to_owned())),
+            Some(name) => Err(ExtensionError::RequiredSetting(name.to_owned())),
             None => Ok(()),
         }
     }
 
-    fn check_property(&self, name: &str, value: &Value) -> Result<(), SettingsError> {
+    fn check_property(&self, name: &str, value: &Value) -> Result<(), ExtensionError> {
         let property = self
             .0
             .get("properties")
             .and_then(|properties| properties.get(name))
-            .ok_or_else(|| SettingsError::Unknown(name.to_owned()))?;
+            .ok_or_else(|| ExtensionError::UnknownSetting(name.to_owned()))?;
 
         if let Some(kind) = property.get("type").and_then(Value::as_str)
             && !Self::has_type(value, kind)
         {
-            return Err(SettingsError::WrongType {
+            return Err(ExtensionError::SettingType {
                 name: name.to_owned(),
                 kind: kind.to_owned(),
             });
@@ -61,7 +63,7 @@ impl SettingsSchema {
         let allowed = property.get("enum").and_then(Value::as_array);
 
         if allowed.is_some_and(|allowed| !allowed.contains(value)) {
-            return Err(SettingsError::NotListed(name.to_owned()));
+            return Err(ExtensionError::SettingNotListed(name.to_owned()));
         }
 
         Ok(())
@@ -82,14 +84,14 @@ impl SettingsSchema {
 }
 
 impl TryFrom<Value> for SettingsSchema {
-    type Error = ManifestError;
+    type Error = ExtensionError;
 
-    fn try_from(schema: Value) -> Result<Self, ManifestError> {
+    fn try_from(schema: Value) -> Result<Self, ExtensionError> {
         let is_object = schema.get("type").and_then(Value::as_str) == Some("object");
         let has_properties = schema.get("properties").is_some_and(Value::is_object);
 
         if !is_object || !has_properties {
-            return Err(ManifestError::SettingsSchema);
+            return Err(ExtensionError::SettingsSchema);
         }
 
         Ok(Self(schema))
@@ -125,7 +127,7 @@ mod tests {
     fn accepts_values_that_match_the_schema() {
         let checked = schema().check(&json!({ "url": "https://x", "every": 5, "unit": "m" }));
 
-        assert_eq!(checked, Ok(()));
+        assert!(checked.is_ok(), "{checked:?}");
     }
 
     #[test]

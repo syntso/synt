@@ -1,10 +1,9 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use super::listed::ListedDocument;
-use crate::blocking::Blocking;
 use crate::documents::DocumentStore;
 use crate::{ExtensionError, Extensions};
 
@@ -70,6 +69,6 @@ impl Action for ExtensionDocuments {
     ) -> Result<Vec<ListedDocument>, ActionError> {
         let action = self.clone();
 
-        Blocking::run(move || action.listed(&params.project)).await
+        blocking(move || action.listed(&params.project)).await
     }
 }

@@ -5,7 +5,8 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
 use super::{ForwardId, ForwardInfo};
-use crate::builtin::k8s::{K8sError, Kube};
+use crate::CoreError;
+use crate::builtin::k8s::Kube;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sPortForwardClose {
@@ -56,6 +57,6 @@ impl Action for K8sPortForwardClose {
     ) -> Result<ForwardInfo, ActionError> {
         let closed = self.kube.forwards().close(params.id).await;
 
-        Ok(closed.ok_or(K8sError::NoForward(params.id))?)
+        Ok(closed.ok_or(CoreError::NoForward(params.id))?)
     }
 }

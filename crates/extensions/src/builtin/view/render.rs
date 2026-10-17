@@ -3,12 +3,12 @@ use std::sync::Arc;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 use synt_journal::ResourceRef;
+use tokio::runtime::Handle;
 
 use super::rendered::Rendered;
 use crate::Extensions;
-use crate::blocking::Blocking;
 use crate::builtin::CallingActor;
 use crate::extension::Guest;
 use crate::runtime::GuestCall;
@@ -45,8 +45,9 @@ impl ExtensionViewRender {
         let guest = Arc::clone(guest);
         let view = view.to_owned();
 
-        Blocking::run_with_runtime(move |runtime| guest.render(&view, &call, context, runtime))
-            .await
+        let runtime = Handle::current();
+
+        blocking(move || guest.render(&view, &call, context, runtime)).await
     }
 
     fn checked_tree(guest: &Guest, text: &str) -> Result<Value, ActionError> {

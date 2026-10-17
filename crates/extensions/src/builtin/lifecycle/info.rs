@@ -1,8 +1,9 @@
 use serde::Serialize;
 use serde_json::{Value, json};
+use synt_proto::OneLine;
 
 use crate::extension::Loaded;
-use crate::manifest::{Api, Capabilities, Description, ExtensionId, Manifest, OneLine};
+use crate::manifest::{Api, Capabilities, Description, ExtensionId, Manifest};
 use crate::sha256::Sha256;
 use crate::shelf::Installed;
 

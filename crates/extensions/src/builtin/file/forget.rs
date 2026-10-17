@@ -1,10 +1,10 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
+use crate::ExtensionError;
 use crate::Extensions;
-use crate::blocking::Blocking;
 
 #[derive(Clone)]
 pub(crate) struct ExtensionFileForget {
@@ -40,7 +40,7 @@ impl Action for ExtensionFileForget {
     async fn run(&self, _context: &Context, params: HandleParams) -> Result<Value, ActionError> {
         let extensions = self.extensions.clone();
 
-        Blocking::run(move || {
+        blocking(move || -> Result<_, ExtensionError> {
             let picks = extensions.services().shelf().picks();
             let forgotten = picks.forget(&params.extension, &params.handle)?;
 

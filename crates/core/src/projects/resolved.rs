@@ -3,6 +3,7 @@ mod database;
 pub(crate) use database::ResolvedDatabase;
 
 use std::fmt;
+use std::num::NonZeroU16;
 
 use synt_kube::ClusterSpec;
 use synt_ssh::{Destination, Target};
@@ -13,7 +14,7 @@ pub(crate) enum Resolved {
     Tunnel {
         host: Target,
         remote: Destination,
-        local: Option<u16>,
+        local: Option<NonZeroU16>,
     },
     Cluster {
         spec: ClusterSpec,

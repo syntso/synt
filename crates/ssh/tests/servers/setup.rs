@@ -1,7 +1,8 @@
 use std::future;
 use std::time::Duration;
 
-use synt_ssh::{ExecLimits, ExecOutput, Pool, PoolBuilder, SshError, Target};
+use synt_proto::ExecLimits;
+use synt_ssh::{ExecOutcome, Pool, PoolBuilder, SshError, Target};
 use synt_test_servers::{SshHome, SshServers};
 
 pub struct Setup {
@@ -58,7 +59,7 @@ impl Setup {
         .through(vec![self.bastion()])
     }
 
-    pub async fn run(&self, target: &Target, command: &str) -> Result<ExecOutput, SshError> {
+    pub async fn run(&self, target: &Target, command: &str) -> Result<ExecOutcome, SshError> {
         self.run_within(target, command, ExecLimits::default())
             .await
     }
@@ -68,7 +69,7 @@ impl Setup {
         target: &Target,
         command: &str,
         limits: ExecLimits,
-    ) -> Result<ExecOutput, SshError> {
+    ) -> Result<ExecOutcome, SshError> {
         self.pool
             .exec(target, command, limits, future::pending())
             .await
@@ -76,7 +77,7 @@ impl Setup {
 
     pub async fn client_port(&self, target: &Target) -> String {
         let output = self.run(target, "echo $SSH_CLIENT").await.unwrap();
-        let words: Vec<&str> = output.stdout.split_whitespace().collect();
+        let words: Vec<&str> = output.output.stdout.split_whitespace().collect();
 
         words[1].to_owned()
     }

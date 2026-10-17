@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use synt_journal::JournalWriter;
+use synt_journal::{Clock, JournalWriter, SystemClock};
 use synt_platform::Vault;
 
 use super::Syncer;
@@ -17,6 +17,7 @@ pub struct SyncerBuilder {
     projects: Arc<dyn OpenProjects>,
     journal: Option<JournalWriter>,
     merger: Option<Arc<dyn DocumentMerger>>,
+    clock: Arc<dyn Clock>,
 }
 
 impl SyncerBuilder {
@@ -31,6 +32,7 @@ impl SyncerBuilder {
             projects,
             journal: None,
             merger: None,
+            clock: Arc::new(SystemClock),
         }
     }
 
@@ -46,6 +48,12 @@ impl SyncerBuilder {
         self
     }
 
+    #[must_use]
+    pub fn clock(mut self, clock: Arc<dyn Clock>) -> Self {
+        self.clock = clock;
+        self
+    }
+
     pub fn open(self) -> Result<Syncer, SyncError> {
         let history = History::open(&self.state)?;
         let engine = Engine::new(
@@ -54,6 +62,7 @@ impl SyncerBuilder {
             self.projects,
             self.journal,
             self.merger,
+            self.clock,
         );
 
         Ok(Syncer::new(engine))

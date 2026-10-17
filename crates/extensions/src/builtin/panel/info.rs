@@ -1,7 +1,8 @@
 use serde::Serialize;
 use serde_json::{Value, json};
+use synt_proto::OneLine;
 
-use crate::manifest::{AssetPath, LocalId, OneLine, Panel};
+use crate::manifest::{AssetPath, LocalId, Panel};
 
 const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self' \
      'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; \

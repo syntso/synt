@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::runbooks::RunbookError;
+use crate::CoreError;
 
 const LONGEST_TEXT: usize = 4096;
 const LONGEST_WORD: usize = 256;
@@ -16,29 +16,29 @@ impl<'a> Given<'a> {
         Self { value }
     }
 
-    pub(super) fn text(&self) -> Result<&'a str, RunbookError> {
+    pub(super) fn text(&self) -> Result<&'a str, CoreError> {
         let Some(text) = self.value.as_str() else {
-            return Err(RunbookError::NotText(self.value.clone()));
+            return Err(CoreError::NotText(self.value.clone()));
         };
 
         if text.len() > LONGEST_TEXT {
-            return Err(RunbookError::TextTooLong(LONGEST_TEXT));
+            return Err(CoreError::TextTooLong(LONGEST_TEXT));
         }
 
         if text.contains(char::is_control) {
-            return Err(RunbookError::ControlInText);
+            return Err(CoreError::ControlInText);
         }
 
         Ok(text)
     }
 
-    pub(super) fn word(&self) -> Result<&'a str, RunbookError> {
+    pub(super) fn word(&self) -> Result<&'a str, CoreError> {
         let word = self.text()?;
         let allowed =
             |character: char| character.is_ascii_alphanumeric() || WORD_SYMBOLS.contains(character);
 
         if word.is_empty() || word.len() > LONGEST_WORD || !word.chars().all(allowed) {
-            return Err(RunbookError::NotWord {
+            return Err(CoreError::NotWord {
                 word: word.to_owned(),
                 longest: LONGEST_WORD,
                 symbols: WORD_SYMBOLS,
@@ -48,26 +48,26 @@ impl<'a> Given<'a> {
         Ok(word)
     }
 
-    pub(super) fn integer(&self) -> Result<i64, RunbookError> {
+    pub(super) fn integer(&self) -> Result<i64, CoreError> {
         let parsed = match self.value {
             Value::Number(number) => number.as_i64(),
             Value::String(text) => text.trim().parse().ok(),
             _ => None,
         };
 
-        parsed.ok_or_else(|| RunbookError::NotInteger(self.value.clone()))
+        parsed.ok_or_else(|| CoreError::NotInteger(self.value.clone()))
     }
 
-    pub(super) fn boolean(&self) -> Result<bool, RunbookError> {
+    pub(super) fn boolean(&self) -> Result<bool, CoreError> {
         match self.value {
             Value::Bool(flag) => Ok(*flag),
             Value::String(text) if text == "true" => Ok(true),
             Value::String(text) if text == "false" => Ok(false),
-            _ => Err(RunbookError::NotBoolean(self.value.clone())),
+            _ => Err(CoreError::NotBoolean(self.value.clone())),
         }
     }
 
-    pub(super) fn target(&self) -> Result<&'a str, RunbookError> {
+    pub(super) fn target(&self) -> Result<&'a str, CoreError> {
         let target = self.text()?;
         let plain = !target.is_empty()
             && !target.starts_with('-')
@@ -75,17 +75,17 @@ impl<'a> Given<'a> {
             && !target.contains(WILDCARDS);
 
         if !plain {
-            return Err(RunbookError::NotTarget(target.to_owned()));
+            return Err(CoreError::NotTarget(target.to_owned()));
         }
 
         Ok(target)
     }
 
-    pub(super) fn path(&self) -> Result<&'a str, RunbookError> {
+    pub(super) fn path(&self) -> Result<&'a str, CoreError> {
         let path = self.text()?;
 
         if path.is_empty() {
-            return Err(RunbookError::EmptyPath);
+            return Err(CoreError::EmptyPathParam);
         }
 
         Ok(path)

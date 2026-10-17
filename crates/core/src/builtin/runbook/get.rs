@@ -1,8 +1,8 @@
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
 use super::RunbookParams;
-use crate::blocking::blocking;
+use crate::CoreError;
 use crate::runbooks::{RunbookEntry, Runbooks};
 
 #[derive(Debug, Clone)]
@@ -35,7 +35,7 @@ impl Action for RunbookGet {
     ) -> Result<RunbookEntry, ActionError> {
         let runbooks = self.runbooks.clone();
 
-        blocking(move || {
+        blocking(move || -> Result<_, CoreError> {
             let document = runbooks.folder(&params.project)?.read(&params.name)?;
 
             Ok(RunbookEntry::new(params.name, document))

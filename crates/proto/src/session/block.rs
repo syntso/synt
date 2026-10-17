@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::SessionId;
+use crate::Millis;
 use crate::{Notice, StreamId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -15,7 +16,7 @@ pub struct SessionBlock {
     #[serde(default)]
     pub exit: Option<i32>,
 
-    pub duration_ms: u64,
+    pub duration_ms: Millis,
     pub output_start: u64,
     pub output_end: u64,
 }
@@ -29,7 +30,7 @@ mod tests {
     use serde_json::json;
 
     use super::SessionBlock;
-    use crate::{Notice, SessionId, StreamId};
+    use crate::{Millis, Notice, SessionId, StreamId};
 
     #[test]
     fn a_block_travels_as_a_notification() {
@@ -39,7 +40,7 @@ mod tests {
             block: 3,
             command: Some("false".to_owned()),
             exit: Some(1),
-            duration_ms: 4,
+            duration_ms: Millis::new(4),
             output_start: 120,
             output_end: 120,
         };

@@ -1,15 +1,21 @@
 use std::io;
 use std::path::PathBuf;
+use std::time::Duration;
 
+use serde_json::Value;
 use synt_actions::ActionError;
-use synt_db::Engine;
-use synt_journal::{JournalError, JournalId, KeyStoreError};
-use synt_platform::{KeyPlace, PlatformError};
+use synt_db::{DbError, Engine, StatementKind};
+use synt_journal::{ActionId, JournalError, JournalId, ResourceRef, Seq};
+use synt_kube::KubeError;
+use synt_platform::{KeyPlace, PlatformError, SecretName};
+use synt_proto::{ProtoError, RunPhase};
+use synt_ssh::SshError;
 use synt_sync::SyncError;
 use thiserror::Error;
+use tokio::task::JoinError;
 
-use crate::runbooks::RunbookError;
-use crate::secrets::SecretName;
+use crate::builtin::{ForwardId, ssh_failure};
+use crate::runbooks::{ParamName, RunbookName};
 use crate::ssh_keys::KeyName;
 use crate::terminals::SessionId;
 
@@ -19,10 +25,22 @@ pub enum CoreError {
     Io(#[from] io::Error),
 
     #[error("key storage: {0}")]
-    Platform(#[from] PlatformError),
+    Platform(#[source] PlatformError),
+
+    #[error(transparent)]
+    VaultName(PlatformError),
 
     #[error(transparent)]
     Journal(#[from] JournalError),
+
+    #[error("the revocation was not journaled: {0}")]
+    NotJournaled(#[source] JournalError),
+
+    #[error(transparent)]
+    Proto(#[from] ProtoError),
+
+    #[error("{0}")]
+    Json(#[from] serde_json::Error),
 
     #[error("state database: {0}")]
     State(#[from] rusqlite::Error),
@@ -30,11 +48,14 @@ pub enum CoreError {
     #[error("ssh: {0}")]
     Ssh(#[from] synt_ssh::SshError),
 
+    #[error("{0}")]
+    KeyImport(#[source] synt_ssh::SshError),
+
     #[error("system random source: {0}")]
     Random(#[from] getrandom::Error),
 
     #[error("the work stopped unexpectedly")]
-    Stopped,
+    Stopped(#[from] JoinError),
 
     #[error("{0}")]
     Shell(#[source] synt_ssh::SshError),
@@ -44,9 +65,6 @@ pub enum CoreError {
 
     #[error("could not start the shell: {0}")]
     PtyStart(#[source] PlatformError),
-
-    #[error(transparent)]
-    Runbook(#[from] RunbookError),
 
     #[error("{} needs one of {}", .command, .choices.join(", "))]
     CommandUsage {
@@ -99,15 +117,6 @@ pub enum CoreError {
          the core will not start a new journal over it"
     )]
     UnknownJournal { journal: PathBuf, place: KeyPlace },
-
-    #[error("a {noun} name must be 1 to {longest} characters")]
-    VaultNameLength { noun: &'static str, longest: usize },
-
-    #[error(
-        "{text:?} is not a valid {noun} name: use letters, digits, '-' and '_', \
-         with '/' between parts"
-    )]
-    InvalidVaultName { noun: &'static str, text: String },
 
     #[error("there is already a key named {0}; remove it first")]
     KeyExists(KeyName),
@@ -340,6 +349,12 @@ pub enum CoreError {
     #[error("{0} must be between 1 and 65535")]
     PortZero(&'static str),
 
+    #[error("local_port must be between 1 and 65535; leave it out to pick a free port")]
+    LocalPortZero,
+
+    #[error("remote_host and remote_port go together")]
+    RemoteApart,
+
     #[error("user must be a login name, got {0:?}")]
     NotALogin(String),
 
@@ -390,6 +405,382 @@ pub enum CoreError {
          store it with secret.put"
     )]
     PasswordNotSecret,
+
+    #[error(transparent)]
+    NotOneLine(ProtoError),
+
+    #[error(transparent)]
+    BadName(Box<CoreError>),
+
+    #[error("param {0:?}: a name starts with a letter or _ and holds only letters, digits and _")]
+    BadParamName(String),
+
+    #[error("expect field {0:?} must be a JSON pointer such as /state")]
+    BadPointer(String),
+
+    #[error("action: {0}")]
+    BadAction(#[source] ProtoError),
+
+    #[error("{0}")]
+    BadReference(#[source] ProtoError),
+
+    #[error("a runbook has at most {0} params")]
+    TooManyParams(usize),
+
+    #[error("param {0} is declared twice")]
+    DeclaredTwice(ParamName),
+
+    #[error("a runbook has 1 to {0} steps")]
+    StepCount(usize),
+
+    #[error("a runbook has at most {0} rollback steps")]
+    RollbackCount(usize),
+
+    #[error("a step rolls back, but the runbook has no rollback steps")]
+    NoRollback,
+
+    #[error("rollback steps always go on after a failure, so on_failure does not apply")]
+    RollbackOnFailure,
+
+    #[error("{action} cannot be a step of a runbook")]
+    NestedRunbook { action: ActionId },
+
+    #[error("{{{0}}} names no param; declare it, or write {{{{ and }}}} for literal braces")]
+    UndeclaredParam(ParamName),
+
+    #[error("{} {number}: {source}", phase_noun(*.phase))]
+    Step {
+        phase: RunPhase,
+        number: usize,
+        source: Box<CoreError>,
+    },
+
+    #[error("retry attempts must be 1 to {most}, got {attempts}")]
+    Attempts { attempts: u32, most: u32 },
+
+    #[error("retry every_seconds must be at most {longest}, got {pause}")]
+    Pause { pause: u64, longest: u64 },
+
+    #[error("param {0}: a choice needs choices")]
+    NoChoices(ParamName),
+
+    #[error("param {0}: only a choice has choices")]
+    StrayChoices(ParamName),
+
+    #[error("param {0}: only an integer has min and max")]
+    StrayBounds(ParamName),
+
+    #[error("param {name}: min {min} is above max {max}")]
+    UpsideDown { name: ParamName, min: i64, max: i64 },
+
+    #[error("expected text, got {0}")]
+    NotText(Value),
+
+    #[error("text is longer than {0} bytes")]
+    TextTooLong(usize),
+
+    #[error("text cannot hold control characters such as new lines")]
+    ControlInText,
+
+    #[error("{word:?} is not a word: use 1 to {longest} letters, digits or {symbols}")]
+    NotWord {
+        word: String,
+        longest: usize,
+        symbols: &'static str,
+    },
+
+    #[error("expected a whole number, got {0}")]
+    NotInteger(Value),
+
+    #[error("expected true or false, got {0}")]
+    NotBoolean(Value),
+
+    #[error("{0:?} is not a target: name one host, such as @project/api-1 or deploy@10.0.1.12")]
+    NotTarget(String),
+
+    #[error("a path cannot be empty")]
+    EmptyPathParam,
+
+    #[error("{chosen:?} is not one of {}", .choices.join(", "))]
+    NotAChoice {
+        chosen: String,
+        choices: Vec<String>,
+    },
+
+    #[error("{number} is outside {}..{}", bound(*.min), bound(*.max))]
+    OutOfBounds {
+        number: i64,
+        min: Option<i64>,
+        max: Option<i64>,
+    },
+
+    #[error("the runbook has no param {0}")]
+    UnknownParam(String),
+
+    #[error("param {0} is required")]
+    MissingParam(ParamName),
+
+    #[error("param {name}: {source}")]
+    Param {
+        name: ParamName,
+        source: Box<CoreError>,
+    },
+
+    #[error("no value for param {0}")]
+    NoValue(String),
+
+    #[error("expected exit {0}, but the result has no exit")]
+    NoExitCarried(i64),
+
+    #[error("exit {exit}, expected {wanted}")]
+    WrongExit { exit: i64, wanted: i64 },
+
+    #[error("no exit code, expected {wanted}{}", signal_note(.signal.as_deref()))]
+    NoExitCode { wanted: i64, signal: Option<String> },
+
+    #[error("the output does not contain {0:?}")]
+    OutputLacks(String),
+
+    #[error("{pointer} is {found}, expected {wanted}")]
+    WrongField {
+        pointer: String,
+        found: Value,
+        wanted: Value,
+    },
+
+    #[error("the result has no {pointer}, expected {wanted}")]
+    ResultLacks { pointer: String, wanted: Value },
+
+    #[error("there is no action {0}")]
+    NoAction(ActionId),
+
+    #[error("{0} is for the person only, so a runbook cannot run it")]
+    PersonOnly(ActionId),
+
+    #[error("{0} needs a target")]
+    NeedsTarget(ActionId),
+
+    #[error("{0} takes no target")]
+    TakesNoTarget(ActionId),
+
+    #[error("{0} does not name a host this core can reach")]
+    Unreachable(ResourceRef),
+
+    #[error(transparent)]
+    Refused(ActionError),
+
+    #[error("runbook {name}: {source}")]
+    Runbook {
+        name: RunbookName,
+        source: Box<CoreError>,
+    },
+
+    #[error("there is no such runbook")]
+    NoSuchRunbook,
+
+    #[error("the file is not UTF-8 text")]
+    NotUtf8,
+
+    #[error("{0}")]
+    UnreadableRunbook(#[source] io::Error),
+
+    #[error("{0}")]
+    Malformed(String),
+
+    #[error("cannot write {name}: {source}")]
+    Unwritable {
+        name: RunbookName,
+        source: toml::ser::Error,
+    },
+
+    #[error("runbook {name} of project {project}: {source}")]
+    InProject {
+        name: RunbookName,
+        project: String,
+        source: Box<CoreError>,
+    },
+
+    #[error(
+        "runbook {name} of project {project} is now {actual}, which is not what the call was \
+         admitted for; run it again"
+    )]
+    Moved {
+        name: RunbookName,
+        project: String,
+        actual: String,
+    },
+
+    #[error("the runbook cannot be written as TOML: {0}")]
+    Unprintable(#[source] toml::ser::Error),
+
+    #[error("cannot write runbook {name}: {source}")]
+    NotSaved {
+        name: RunbookName,
+        source: io::Error,
+    },
+
+    #[error("the journal has no event {0}")]
+    NoEvent(Seq),
+
+    #[error("journal event {0} belongs to no call")]
+    NoCall(Seq),
+
+    #[error("journal event {0} is not a request")]
+    NotARequest(Seq),
+
+    #[error("{what} must list 1 to {most} {numbers}")]
+    Picks {
+        what: &'static str,
+        most: usize,
+        numbers: &'static str,
+    },
+
+    #[error("there is no open session {0}")]
+    NoSessionNamed(String),
+
+    #[error("session {0} is a local shell, so its commands have no host to run on")]
+    LocalSession(String),
+
+    #[error("the session has no finished block {0}")]
+    NoBlock(u64),
+
+    #[error("block {0} has no command line; its shell did not report one")]
+    NoCommand(u64),
+
+    #[error("runbooks are not connected to a running core")]
+    NotConnected,
+
+    #[error("runbooks are already connected to a core")]
+    AlreadyConnected,
+
+    #[error("this call has no connection to report progress on")]
+    NoProgressConnection,
+
+    #[error("the runbook was not planned before it ran")]
+    NotPlanned,
+
+    #[error("there is no running run {0}")]
+    NotRunning(u64),
+
+    #[error(transparent)]
+    Database(#[from] DbError),
+
+    #[error(transparent)]
+    Tunnel(SshError),
+
+    #[error(transparent)]
+    Action(#[from] ActionError),
+
+    #[error("{0}")]
+    DbTarget(Box<CoreError>),
+
+    #[error("the target is no longer a database")]
+    NoLongerDatabase,
+
+    #[error("the database actions are shutting down")]
+    ShuttingDown,
+
+    #[error("no answer within {} s, so the call was stopped", .0.as_secs())]
+    DbTimeout(Duration),
+
+    #[error(
+        "{target} is now reached through a root login, which the call was not admitted for; \
+         run it again so it is asked as privileged"
+    )]
+    RootLogin { target: String },
+
+    #[error(
+        "{target} now leads to {reached}, which is not what the call was admitted for; \
+         run it again so it is checked for the new place"
+    )]
+    DbMoved { target: String, reached: String },
+
+    #[error("give either sql or command")]
+    NoStatement,
+
+    #[error("sql is empty")]
+    EmptySql,
+
+    #[error("command is empty")]
+    EmptyCommand,
+
+    #[error("a redis command carries its values in the command itself, not in params")]
+    CommandParams,
+
+    #[error("redis takes a command, such as [\"GET\", \"user:1\"], not sql")]
+    SqlForRedis,
+
+    #[error("this database takes sql, not a command")]
+    CommandForSql,
+
+    #[error("{field} must be between 1 and {most}")]
+    OutOfRange { field: &'static str, most: u64 },
+
+    #[error("redis has no query plans to explain")]
+    NoPlans,
+
+    #[error("db.explain takes one statement the parser understands, got {0}")]
+    NotOneStatement(StatementKind),
+
+    #[error("give the statement itself; db.explain adds EXPLAIN")]
+    AlreadyExplained,
+
+    #[error(transparent)]
+    Kube(#[from] KubeError),
+
+    #[error("{0} is not a cluster")]
+    NotAClusterTarget(ResourceRef),
+
+    #[error("{0}")]
+    KubePlace(KubeError),
+
+    #[error("the cluster can only be reached from inside the core")]
+    OutsideCore,
+
+    #[error("reading the kubeconfig stopped unexpectedly")]
+    KubeconfigStopped,
+
+    #[error(
+        "{0} names secrets now, which was not known when the call was admitted; \
+         run it again so it is asked as privileged"
+    )]
+    SecretsNow(String),
+
+    #[error(
+        "{0} is cluster-scoped, which was not known when the call was admitted; \
+         run it again so it is asked as privileged"
+    )]
+    ClusterScopedNow(String),
+
+    #[error("follow and stream go together: name the stream to follow the logs on")]
+    FollowWithoutStream,
+
+    #[error("no stream was started by request {0}")]
+    NoStream(Seq),
+
+    #[error("the stream of request {0} belongs to another caller")]
+    StreamOfAnother(Seq),
+
+    #[error("this call has no connection to stream over")]
+    NoStreamConnection,
+
+    #[error("there is no open port forward {0}")]
+    NoForward(ForwardId),
+
+    #[error(
+        "{0} is now reached through a root login, which the call was not admitted for; \
+         run it again so it is asked as privileged"
+    )]
+    RootLoginNow(ResourceRef),
+
+    #[error(
+        "{target} now leads to {destination}, which is not what the call was admitted for; \
+         run it again so it is checked for the new place"
+    )]
+    DestinationChanged {
+        target: ResourceRef,
+        destination: String,
+    },
 }
 
 impl CoreError {
@@ -399,25 +790,227 @@ impl CoreError {
             reason: Box::new(reason),
         }
     }
+
+    pub(crate) fn in_step(self, phase: RunPhase, number: usize) -> Self {
+        Self::Step {
+            phase,
+            number,
+            source: Box::new(self),
+        }
+    }
+
+    pub(crate) fn in_param(self, name: &ParamName) -> Self {
+        Self::Param {
+            name: name.clone(),
+            source: Box::new(self),
+        }
+    }
+
+    pub(crate) fn in_runbook(self, name: &RunbookName) -> Self {
+        Self::Runbook {
+            name: name.clone(),
+            source: Box::new(self),
+        }
+    }
+
+    pub(crate) fn in_project(self, name: &RunbookName, project: &str) -> Self {
+        Self::InProject {
+            name: name.clone(),
+            project: project.to_owned(),
+            source: Box::new(self),
+        }
+    }
+
+    fn is_invalid_params(&self) -> bool {
+        matches!(
+            self,
+            Self::NotOneLine(..)
+                | Self::BadName(..)
+                | Self::BadParamName(..)
+                | Self::BadPointer(..)
+                | Self::BadAction(..)
+                | Self::BadReference(..)
+                | Self::TooManyParams(..)
+                | Self::DeclaredTwice(..)
+                | Self::StepCount(..)
+                | Self::RollbackCount(..)
+                | Self::NoRollback
+                | Self::RollbackOnFailure
+                | Self::NestedRunbook { .. }
+                | Self::UndeclaredParam(..)
+                | Self::Step { .. }
+                | Self::Attempts { .. }
+                | Self::Pause { .. }
+                | Self::NoChoices(..)
+                | Self::StrayChoices(..)
+                | Self::StrayBounds(..)
+                | Self::UpsideDown { .. }
+                | Self::NotText(..)
+                | Self::TextTooLong(..)
+                | Self::ControlInText
+                | Self::NotWord { .. }
+                | Self::NotInteger(..)
+                | Self::NotBoolean(..)
+                | Self::NotTarget(..)
+                | Self::EmptyPathParam
+                | Self::NotAChoice { .. }
+                | Self::OutOfBounds { .. }
+                | Self::UnknownParam(..)
+                | Self::MissingParam(..)
+                | Self::Param { .. }
+                | Self::NoValue(..)
+                | Self::NoExitCarried(..)
+                | Self::WrongExit { .. }
+                | Self::NoExitCode { .. }
+                | Self::OutputLacks(..)
+                | Self::WrongField { .. }
+                | Self::ResultLacks { .. }
+                | Self::NoAction(..)
+                | Self::PersonOnly(..)
+                | Self::NeedsTarget(..)
+                | Self::TakesNoTarget(..)
+                | Self::Unreachable(..)
+                | Self::Refused(..)
+                | Self::Runbook { .. }
+                | Self::NoSuchRunbook
+                | Self::NotUtf8
+                | Self::UnreadableRunbook(..)
+                | Self::Malformed(..)
+                | Self::Unwritable { .. }
+                | Self::InProject { .. }
+                | Self::NoEvent(..)
+                | Self::NoCall(..)
+                | Self::NotARequest(..)
+                | Self::Picks { .. }
+                | Self::LocalSession(..)
+                | Self::NoBlock(..)
+                | Self::NoCommand(..)
+                | Self::DbTarget(..)
+                | Self::NoStatement
+                | Self::EmptySql
+                | Self::EmptyCommand
+                | Self::CommandParams
+                | Self::SqlForRedis
+                | Self::CommandForSql
+                | Self::OutOfRange { .. }
+                | Self::NoPlans
+                | Self::NotOneStatement(..)
+                | Self::AlreadyExplained
+                | Self::FollowWithoutStream
+        )
+    }
+}
+
+impl From<PlatformError> for CoreError {
+    fn from(error: PlatformError) -> Self {
+        match error {
+            PlatformError::VaultNameLength { .. } | PlatformError::InvalidVaultName { .. } => {
+                Self::VaultName(error)
+            }
+            other => Self::Platform(other),
+        }
+    }
 }
 
 impl From<CoreError> for ActionError {
     fn from(error: CoreError) -> Self {
+        if error.is_invalid_params() {
+            return Self::InvalidParams(error.to_string());
+        }
+
         match error {
-            CoreError::Runbook(error) => error.into(),
+            CoreError::Action(action) => action,
+            CoreError::Tunnel(ssh) => ssh_failure(ssh),
+            CoreError::Database(DbError::InvalidInput(reason))
+            | CoreError::Kube(KubeError::Invalid(reason)) => Self::InvalidParams(reason),
+            CoreError::Database(DbError::Server {
+                message,
+                code: Some(code),
+            }) => Self::Failed(format!("the server refused: {message} ({code})")),
+            CoreError::Kube(error @ KubeError::UnknownKind(_)) => {
+                Self::InvalidParams(error.to_string())
+            }
             other => Self::Failed(other.to_string()),
         }
     }
 }
 
-impl From<CoreError> for KeyStoreError {
+impl From<CoreError> for JournalError {
     fn from(error: CoreError) -> Self {
-        Self::new(error)
+        Self::key_store(error)
     }
 }
 
 impl From<CoreError> for SyncError {
     fn from(error: CoreError) -> Self {
         Self::Projects(Box::new(error))
+    }
+}
+
+fn phase_noun(phase: RunPhase) -> &'static str {
+    match phase {
+        RunPhase::Steps => "step",
+        RunPhase::Rollback => "rollback step",
+    }
+}
+
+fn bound(limit: Option<i64>) -> String {
+    limit.map(|limit| limit.to_string()).unwrap_or_default()
+}
+
+fn signal_note(signal: Option<&str>) -> String {
+    signal
+        .map(|signal| format!(" (ended by signal {signal})"))
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use synt_actions::ActionError;
+    use synt_db::DbError;
+
+    use super::CoreError;
+
+    fn action(error: CoreError) -> ActionError {
+        error.into()
+    }
+
+    #[test]
+    fn bad_input_to_the_database_is_a_parameter_error() {
+        let error = DbError::InvalidInput("the command is empty".to_owned());
+
+        assert_eq!(
+            action(error.into()),
+            ActionError::InvalidParams("the command is empty".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_refusal_names_the_server_code() {
+        let error = DbError::Server {
+            message: "permission denied".to_owned(),
+            code: Some("42501".to_owned()),
+        };
+
+        assert_eq!(
+            action(error.into()),
+            ActionError::Failed("the server refused: permission denied (42501)".to_owned())
+        );
+    }
+
+    #[test]
+    fn statement_mistakes_are_parameter_errors() {
+        assert_eq!(
+            action(CoreError::CommandForSql),
+            ActionError::InvalidParams("this database takes sql, not a command".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_failed_action_passes_through() {
+        assert_eq!(
+            action(ActionError::TargetRequired.into()),
+            ActionError::TargetRequired
+        );
     }
 }

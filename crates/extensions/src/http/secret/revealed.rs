@@ -1,7 +1,7 @@
 use zeroize::Zeroizing;
 
 use super::SecretHeader;
-use crate::error::HttpError;
+use crate::ExtensionError;
 
 pub(crate) struct Revealed {
     header: String,
@@ -24,12 +24,12 @@ impl Revealed {
         &self.header
     }
 
-    pub(crate) fn header_value(&self) -> Result<Zeroizing<String>, HttpError> {
+    pub(crate) fn header_value(&self) -> Result<Zeroizing<String>, ExtensionError> {
         let text = std::str::from_utf8(&self.value)
-            .map_err(|_| HttpError::SecretNotText(self.reference.clone()))?;
+            .map_err(|_| ExtensionError::SecretNotText(self.reference.clone()))?;
 
         if text.is_empty() || text.contains(char::is_control) {
-            return Err(HttpError::SecretNotHeader(self.reference.clone()));
+            return Err(ExtensionError::SecretNotHeader(self.reference.clone()));
         }
 
         Ok(Zeroizing::new(format!("{}{text}", self.prefix)))

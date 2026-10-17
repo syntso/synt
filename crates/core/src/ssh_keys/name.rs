@@ -1,4 +1,4 @@
-use crate::vault::{VaultKind, VaultName};
+use synt_platform::{VaultKind, VaultName};
 
 pub enum SshKeyItem {}
 

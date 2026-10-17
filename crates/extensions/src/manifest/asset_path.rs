@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ManifestError;
+use crate::ExtensionError;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -25,13 +25,13 @@ impl AssetPath {
 }
 
 impl TryFrom<String> for AssetPath {
-    type Error = ManifestError;
+    type Error = ExtensionError;
 
-    fn try_from(text: String) -> Result<Self, ManifestError> {
+    fn try_from(text: String) -> Result<Self, ExtensionError> {
         let plain = text.split('/').all(Self::is_plain_segment);
 
         if text.len() > Self::LONGEST || !plain {
-            return Err(ManifestError::AssetPath(text));
+            return Err(ExtensionError::AssetPath(text));
         }
 
         Ok(Self(text))

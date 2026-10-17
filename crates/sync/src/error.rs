@@ -23,6 +23,18 @@ pub enum SyncError {
     )]
     BadPath(String),
 
+    #[error("a document path holds at most {most_parts} parts and {longest} bytes")]
+    LongExtensionPath { most_parts: usize, longest: usize },
+
+    #[error(
+        "{0:?} is not a document path: use letters, digits, '-', '_' and '.', with '/' between \
+         parts and no part starting with '.'"
+    )]
+    BadExtensionPath(String),
+
+    #[error("{0:?} has no suffix naming its document type")]
+    NoSuffix(String),
+
     #[error("project {project} already syncs through {place}; run sync.disable first")]
     AlreadySyncs { project: ProjectId, place: Place },
 
@@ -157,6 +169,9 @@ impl SyncError {
             self,
             Self::BadId { .. }
                 | Self::BadPath(_)
+                | Self::LongExtensionPath { .. }
+                | Self::BadExtensionPath(_)
+                | Self::NoSuffix(_)
                 | Self::AlreadySyncs { .. }
                 | Self::NotJoined { .. }
                 | Self::RemovesItself

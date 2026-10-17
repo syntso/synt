@@ -1,5 +1,3 @@
-use std::error::Error as _;
-
 use tokio_postgres::Error;
 
 use crate::DbError;
@@ -18,16 +16,9 @@ impl From<Error> for DbError {
         }
 
         if error.is_closed() {
-            return Self::Lost(described(&error));
+            return Self::PostgresLost(error);
         }
 
-        Self::Connect(described(&error))
-    }
-}
-
-fn described(error: &Error) -> String {
-    match error.source() {
-        Some(source) => format!("{error}: {source}"),
-        None => error.to_string(),
+        Self::PostgresConnect(error)
     }
 }

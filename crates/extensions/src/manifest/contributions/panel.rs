@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use fields::PanelFields;
 use kind::PanelKind;
+use synt_proto::OneLine;
 
-use crate::ManifestError;
-use crate::manifest::{AssetPath, LocalId, OneLine};
+use crate::ExtensionError;
+use crate::manifest::{AssetPath, LocalId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "PanelFields")]
@@ -48,9 +49,9 @@ impl Panel {
 }
 
 impl TryFrom<PanelFields> for Panel {
-    type Error = ManifestError;
+    type Error = ExtensionError;
 
-    fn try_from(fields: PanelFields) -> Result<Self, ManifestError> {
+    fn try_from(fields: PanelFields) -> Result<Self, ExtensionError> {
         let PanelFields {
             id,
             title,
@@ -61,7 +62,7 @@ impl TryFrom<PanelFields> for Panel {
         let kind = match (view, entry) {
             (Some(view), None) => PanelKind::View(view),
             (None, Some(entry)) => PanelKind::Entry(entry),
-            _ => return Err(ManifestError::PanelKind(id)),
+            _ => return Err(ExtensionError::PanelKind(id)),
         };
 
         Ok(Self { id, title, kind })

@@ -35,7 +35,7 @@ impl SshKeyTable {
             .lock()
             .query_row(
                 &format!("SELECT {COLUMNS} FROM ssh_keys WHERE name = ?1"),
-                [name],
+                [name.as_str()],
                 Self::row,
             )
             .optional()?;
@@ -47,7 +47,7 @@ impl SshKeyTable {
         self.state.lock().execute(
             &format!("INSERT INTO ssh_keys ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5)"),
             (
-                &key.name,
+                key.name.as_str(),
                 &key.kind,
                 &key.public_key,
                 &key.fingerprint,
@@ -61,13 +61,13 @@ impl SshKeyTable {
     pub(crate) fn delete(&self, name: &KeyName) -> Result<(), CoreError> {
         self.state
             .lock()
-            .execute("DELETE FROM ssh_keys WHERE name = ?1", [name])?;
+            .execute("DELETE FROM ssh_keys WHERE name = ?1", [name.as_str()])?;
 
         Ok(())
     }
 
     fn row(row: &Row<'_>) -> rusqlite::Result<KeyInfo> {
-        let name: KeyName = row.get("name")?;
+        let name: KeyName = State::vault_name(row, "name")?;
 
         Ok(KeyInfo {
             reference: name.reference(),

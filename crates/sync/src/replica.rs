@@ -10,7 +10,6 @@ pub(crate) use settled::Settled;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use crate::clock::unix_millis;
 use crate::document::{DocumentPath, Draft, Revision};
 use crate::history::{History, Origin, StoredDocument};
 use crate::id::{MemberId, ProjectId, RevisionId};
@@ -20,6 +19,7 @@ use crate::seal::Naming;
 use crate::{ProjectFolder, SyncError};
 use outcome::Outcome;
 use scan::Scan;
+use synt_journal::Clock;
 use target::Target;
 
 pub(crate) struct Replica {
@@ -28,6 +28,7 @@ pub(crate) struct Replica {
     naming: Naming,
     me: MemberId,
     merger: Option<Arc<dyn DocumentMerger>>,
+    clock: Arc<dyn Clock>,
 }
 
 impl Replica {
@@ -37,6 +38,7 @@ impl Replica {
         naming: Naming,
         me: MemberId,
         merger: Option<Arc<dyn DocumentMerger>>,
+        clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             history,
@@ -44,6 +46,7 @@ impl Replica {
             naming,
             me,
             merger,
+            clock,
         }
     }
 
@@ -173,7 +176,7 @@ impl Replica {
         let draft = Draft {
             path: path.clone(),
             parents,
-            at: unix_millis(),
+            at: u64::try_from(self.clock.now().as_millis()).unwrap_or_default(),
             body,
             conflicts: Vec::new(),
             author: Some(self.me.clone()),

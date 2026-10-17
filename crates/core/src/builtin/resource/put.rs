@@ -1,10 +1,9 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 use synt_journal::ResourceRef;
 
-use crate::blocking::blocking;
 use crate::projects::{Projects, Resource, ResourceEntry};
 
 const SECRET_SCHEME: &str = "secret://";

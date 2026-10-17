@@ -1,9 +1,9 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 
-use crate::blocking::blocking;
+use crate::CoreError;
 use crate::runbooks::{RunbookListing, Runbooks};
 
 #[derive(Debug, Clone)]
@@ -46,6 +46,7 @@ impl Action for RunbookList {
     ) -> Result<RunbookListing, ActionError> {
         let runbooks = self.runbooks.clone();
 
-        blocking(move || runbooks.folder(&params.project)?.listing()).await
+        blocking(move || -> Result<_, CoreError> { runbooks.folder(&params.project)?.listing() })
+            .await
     }
 }

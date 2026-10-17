@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ManifestError;
+use crate::ExtensionError;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -12,22 +12,22 @@ pub struct ExtensionId(String);
 impl ExtensionId {
     pub(crate) const LONGEST: usize = 40;
 
-    pub(crate) fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
 impl TryFrom<String> for ExtensionId {
-    type Error = ManifestError;
+    type Error = ExtensionError;
 
-    fn try_from(text: String) -> Result<Self, ManifestError> {
+    fn try_from(text: String) -> Result<Self, ExtensionError> {
         let starts_with_letter = text.starts_with(|first: char| first.is_ascii_lowercase());
         let plain = text.chars().all(|character| {
             character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
         });
 
         if !starts_with_letter || !plain || text.len() > Self::LONGEST {
-            return Err(ManifestError::ExtensionId(text));
+            return Err(ExtensionError::ExtensionId(text));
         }
 
         Ok(Self(text))

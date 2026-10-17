@@ -9,9 +9,8 @@ impl From<Error> for DbError {
                 server.message,
                 Some(format!("{} ({})", server.code, server.state)),
             ),
-            Error::Driver(DriverError::ConnectionClosed) => Self::Lost(error.to_string()),
-            Error::Io(io) => Self::Connect(io.to_string()),
-            other => Self::Connect(other.to_string()),
+            Error::Driver(DriverError::ConnectionClosed) => Self::MysqlLost(error),
+            other => Self::MysqlConnect(other),
         }
     }
 }

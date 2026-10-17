@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use serde::{Deserialize, Serialize};
 use synt_journal::ActionId;
 
-use crate::ManifestError;
+use crate::ExtensionError;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -20,18 +20,18 @@ impl ActionName {
 }
 
 impl TryFrom<String> for ActionName {
-    type Error = ManifestError;
+    type Error = ExtensionError;
 
-    fn try_from(text: String) -> Result<Self, ManifestError> {
+    fn try_from(text: String) -> Result<Self, ExtensionError> {
         if let Err(source) = ActionId::new(text.as_str()) {
-            return Err(ManifestError::ActionName {
+            return Err(ExtensionError::ActionName {
                 action: text,
                 source,
             });
         }
 
         if text.contains(['*', '?']) {
-            return Err(ManifestError::ActionPattern(text));
+            return Err(ExtensionError::ActionPattern(text));
         }
 
         Ok(Self(text))

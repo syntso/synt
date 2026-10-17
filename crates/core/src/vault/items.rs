@@ -2,10 +2,9 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use synt_platform::{Lock, Vault};
+use synt_platform::{Lock, Vault, VaultKind, VaultName};
 use zeroize::Zeroizing;
 
-use super::{VaultKind, VaultName};
 use crate::CoreError;
 
 pub(crate) struct VaultItems<K> {

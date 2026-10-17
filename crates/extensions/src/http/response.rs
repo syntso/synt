@@ -4,7 +4,7 @@ use ureq::Body;
 use ureq::http::Response;
 
 use super::{Header, Revealed};
-use crate::error::HttpError;
+use crate::ExtensionError;
 
 const LARGEST_BODY: u64 = 8 * 1024 * 1024;
 
@@ -19,7 +19,7 @@ impl HttpResponse {
     pub(crate) fn received(
         mut response: Response<Body>,
         revealed: &[Revealed],
-    ) -> Result<Self, HttpError> {
+    ) -> Result<Self, ExtensionError> {
         let status = response.status().as_u16();
         let headers = response
             .headers()
@@ -36,7 +36,7 @@ impl HttpResponse {
             .with_config()
             .limit(LARGEST_BODY)
             .read_to_vec()
-            .map_err(HttpError::ResponseBody)?;
+            .map_err(ExtensionError::ResponseBody)?;
         let body = revealed
             .iter()
             .fold(body, |body, secret| secret.scrub(&body));
@@ -56,10 +56,10 @@ impl HttpResponse {
         &self.headers
     }
 
-    pub(crate) fn decoded_body(&self) -> Result<Vec<u8>, HttpError> {
+    pub(crate) fn decoded_body(&self) -> Result<Vec<u8>, ExtensionError> {
         BASE64
             .decode(self.body.as_bytes())
-            .map_err(HttpError::ResponseNotBase64)
+            .map_err(ExtensionError::ResponseNotBase64)
     }
 
     pub(crate) fn body_size(&self) -> usize {

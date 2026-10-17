@@ -9,6 +9,15 @@ use crate::{KeyPlace, UserId};
 
 #[derive(Debug, Error)]
 pub enum PlatformError {
+    #[error("a {noun} name must be 1 to {longest} characters")]
+    VaultNameLength { noun: &'static str, longest: usize },
+
+    #[error(
+        "{text:?} is not a valid {noun} name: use letters, digits, '-' and '_', \
+         with '/' between parts"
+    )]
+    InvalidVaultName { noun: &'static str, text: String },
+
     #[error("{0}")]
     Io(#[from] io::Error),
 

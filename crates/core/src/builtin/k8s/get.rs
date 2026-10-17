@@ -4,7 +4,9 @@ use serde_json::{Value, json};
 use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 
-use super::{K8sError, KindFacts, Kube, ObjectParams};
+use super::{KindFacts, Kube, ObjectParams};
+
+use crate::CoreError;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sGet {
@@ -26,7 +28,7 @@ impl K8sGet {
         Self { kube }
     }
 
-    async fn get(&self, context: &Context, object: &ObjectParams) -> Result<Value, K8sError> {
+    async fn get(&self, context: &Context, object: &ObjectParams) -> Result<Value, CoreError> {
         let cluster = self.kube.cluster(context).await?;
         let kind = self.kube.kind(context, &cluster, &object.kind).await?;
 

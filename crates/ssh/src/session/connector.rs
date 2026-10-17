@@ -72,7 +72,7 @@ impl Connector {
     }
 
     async fn dial(&self, hop: &Target) -> Result<TcpStream, SshError> {
-        let destination = hop.destination();
+        let destination = hop.destination()?;
         let remembered = self.addresses.is_remembered(&destination);
 
         match self.dial_once(hop).await {
@@ -83,7 +83,7 @@ impl Connector {
     }
 
     async fn dial_once(&self, hop: &Target) -> Result<TcpStream, SshError> {
-        let destination = hop.destination();
+        let destination = hop.destination()?;
 
         let addresses = self
             .addresses

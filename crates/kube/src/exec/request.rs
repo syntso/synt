@@ -6,10 +6,12 @@ use k8s_openapi::api::core::v1::Pod;
 use kube::api::{AttachParams, AttachedProcess};
 use schemars::JsonSchema;
 use serde::Deserialize;
+use synt_proto::{CappedText, ExecLimits};
+use tokio::io::AsyncRead;
 use tokio::time;
 
-use super::{Captured, Collected, ExitStatus};
-use crate::{Cluster, Command, ExecLimits, ExecOutput, KubeError, Namespace, ObjectName};
+use super::{Captured, ExitStatus};
+use crate::{Cluster, Command, ExecOutcome, KubeError, Namespace, ObjectName};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct ExecRequest {
@@ -39,24 +41,21 @@ impl ExecRequest {
         cluster: &Cluster,
         limits: ExecLimits,
         stop: impl Future<Output = ()>,
-    ) -> Result<ExecOutput, KubeError> {
+    ) -> Result<ExecOutcome, KubeError> {
         let started = Instant::now();
         let capturing = self.capture(cluster, limits.output_bytes);
 
         let captured = bounded(limits, stop, capturing).await?;
 
-        Ok(ExecOutput::new(captured, started.elapsed()))
+        Ok(ExecOutcome::new(captured, started.elapsed()))
     }
 
     async fn capture(&self, cluster: &Cluster, limit: usize) -> Result<Captured, KubeError> {
         let mut process = self.attach(cluster).await?;
         let status = process.take_status();
 
-        let (stdout, stderr) = future::join(
-            Collected::read(process.stdout(), limit),
-            Collected::read(process.stderr(), limit),
-        )
-        .await;
+        let (stdout, stderr) =
+            future::join(read(process.stdout(), limit), read(process.stderr(), limit)).await;
         let status = match status {
             Some(status) => status.await,
             None => None,
@@ -65,7 +64,7 @@ impl ExecRequest {
         process
             .join()
             .await
-            .map_err(|error| KubeError::Connect(error.to_string()))?;
+            .map_err(|error| KubeError::Attach(Box::new(error)))?;
 
         Ok(Captured {
             status: ExitStatus::from_status(status),
@@ -93,6 +92,15 @@ impl ExecRequest {
             Some(container) => params.container(container.as_str()),
             None => params,
         }
+    }
+}
+
+async fn read(stream: Option<impl AsyncRead + Unpin>, limit: usize) -> CappedText {
+    let text = CappedText::new(limit);
+
+    match stream {
+        Some(stream) => text.read_from(stream).await,
+        None => text,
     }
 }
 

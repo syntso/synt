@@ -22,8 +22,7 @@ impl<'a, C: GenericClient + Sync> Session<'a, C> {
     pub(super) async fn version(&self) -> Result<String, DbError> {
         let row = self.client.query_one(VERSION, &[]).await?;
 
-        row.try_get("version")
-            .map_err(|_| DbError::unexpected_catalog_row())
+        row.try_get("version").map_err(|_| DbError::UnexpectedRow)
     }
 
     pub(super) async fn run(&self, query: Query<'_>) -> Result<Rows, DbError> {

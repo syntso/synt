@@ -9,8 +9,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use synt_platform::Lock;
 use tokio_util::sync::CancellationToken;
 
-use super::RunbookError;
 use active::ActiveRun;
+
+use crate::CoreError;
 
 type Active = HashMap<u64, ActiveRun>;
 
@@ -29,12 +30,12 @@ impl Runs {
         RunGuard::new(run, self.clone(), stop)
     }
 
-    pub(crate) fn stop(&self, run: u64) -> Result<String, RunbookError> {
+    pub(crate) fn stop(&self, run: u64) -> Result<String, CoreError> {
         let active = self
             .lock()
             .get(&run)
             .cloned()
-            .ok_or(RunbookError::NotRunning(run))?;
+            .ok_or(CoreError::NotRunning(run))?;
 
         Ok(active.stop())
     }

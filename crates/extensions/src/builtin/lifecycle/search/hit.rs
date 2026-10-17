@@ -1,6 +1,7 @@
 use serde::Serialize;
+use synt_proto::OneLine;
 
-use crate::manifest::{Capabilities, Description, ExtensionId, OneLine};
+use crate::manifest::{Capabilities, Description, ExtensionId};
 use crate::remote::Listing;
 use crate::shelf::Installed;
 

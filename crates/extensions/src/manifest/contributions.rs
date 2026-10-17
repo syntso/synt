@@ -19,7 +19,7 @@ pub use settings::{Settings, SettingsSchema};
 pub use sidebar_section::SidebarSection;
 pub use status_item::StatusItem;
 
-use crate::ManifestError;
+use crate::ExtensionError;
 use crate::manifest::{ActionName, LocalId};
 
 const MOST_ENTRIES: usize = 32;
@@ -95,7 +95,7 @@ impl Contributions {
         commands.chain(menus).map(ActionName::as_str)
     }
 
-    pub(crate) fn check(&self) -> Result<(), ManifestError> {
+    pub(crate) fn check(&self) -> Result<(), ExtensionError> {
         self.check_sizes()?;
         self.check_unique()?;
         self.check_document_panels()
@@ -105,7 +105,7 @@ impl Contributions {
         self.panel.iter().find(|panel| panel.id().as_str() == id)
     }
 
-    fn check_sizes(&self) -> Result<(), ManifestError> {
+    fn check_sizes(&self) -> Result<(), ExtensionError> {
         let sizes = [
             ("sidebar", self.sidebar.len()),
             ("document", self.document.len()),
@@ -116,7 +116,7 @@ impl Contributions {
         ];
 
         match sizes.into_iter().find(|(_, size)| *size > MOST_ENTRIES) {
-            Some((point, size)) => Err(ManifestError::TooManyEntries {
+            Some((point, size)) => Err(ExtensionError::TooManyEntries {
                 point,
                 size,
                 most: MOST_ENTRIES,
@@ -125,7 +125,7 @@ impl Contributions {
         }
     }
 
-    fn check_unique(&self) -> Result<(), ManifestError> {
+    fn check_unique(&self) -> Result<(), ExtensionError> {
         Self::unique("sidebar id", self.sidebar.iter().map(SidebarSection::id))?;
         Self::unique("panel id", self.panel.iter().map(Panel::id))?;
         Self::unique("status id", self.status.iter().map(StatusItem::id))?;
@@ -139,7 +139,7 @@ impl Contributions {
         )
     }
 
-    fn check_document_panels(&self) -> Result<(), ManifestError> {
+    fn check_document_panels(&self) -> Result<(), ExtensionError> {
         let missing = self
             .document
             .iter()
@@ -147,7 +147,7 @@ impl Contributions {
             .find(|panel| self.panel(panel.as_str()).is_none());
 
         match missing {
-            Some(panel) => Err(ManifestError::MissingPanel(panel.clone())),
+            Some(panel) => Err(ExtensionError::MissingPanel(panel.clone())),
             None => Ok(()),
         }
     }
@@ -155,12 +155,12 @@ impl Contributions {
     fn unique<'a, T: Ord + Display + 'a>(
         field: &'static str,
         values: impl Iterator<Item = &'a T>,
-    ) -> Result<(), ManifestError> {
+    ) -> Result<(), ExtensionError> {
         let mut seen = BTreeSet::new();
 
         for value in values {
             if !seen.insert(value) {
-                return Err(ManifestError::Duplicate {
+                return Err(ExtensionError::Duplicate {
                     field,
                     value: value.to_string(),
                 });

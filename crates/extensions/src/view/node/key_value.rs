@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::error::ViewError;
+use crate::ExtensionError;
 
 #[derive(Debug, Deserialize)]
 pub(in crate::view) struct KeyValue {
@@ -12,9 +12,9 @@ pub(in crate::view) struct KeyValue {
 }
 
 impl KeyValue {
-    pub(in crate::view) fn check(&self) -> Result<(), ViewError> {
+    pub(in crate::view) fn check(&self) -> Result<(), ExtensionError> {
         if self.value.is_array() || self.value.is_object() {
-            return Err(ViewError::KeyValue);
+            return Err(ExtensionError::KeyValue);
         }
 
         Ok(())

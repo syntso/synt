@@ -1,10 +1,10 @@
 use serde_json::Value;
 use synt_actions::Risk;
 use synt_journal::ActionId;
+use synt_proto::OneLine;
 
 use crate::ExtensionError;
 use crate::interface::DescribedAction;
-use crate::manifest::OneLine;
 
 const LARGEST_SCHEMA: usize = 64 * 1024;
 

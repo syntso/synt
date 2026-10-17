@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ManifestError;
+use crate::ExtensionError;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -17,11 +17,11 @@ impl Description {
 }
 
 impl TryFrom<String> for Description {
-    type Error = ManifestError;
+    type Error = ExtensionError;
 
-    fn try_from(text: String) -> Result<Self, ManifestError> {
+    fn try_from(text: String) -> Result<Self, ExtensionError> {
         if text.len() > Self::LONGEST || text.contains(char::is_control) {
-            return Err(ManifestError::Description);
+            return Err(ExtensionError::Description);
         }
 
         Ok(Self(text))

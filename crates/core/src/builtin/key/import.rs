@@ -3,11 +3,11 @@ use std::path::PathBuf;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
-use synt_actions::{Action, ActionError, Context, Risk};
+use synt_actions::{Action, ActionError, Context, Risk, blocking};
 use synt_journal::ResourceRef;
 use synt_ssh::StoredKey;
 
-use crate::blocking::blocking;
+use crate::CoreError;
 use crate::ssh_keys::{KeyInfo, KeyName, SshKeys};
 
 #[derive(Clone)]
@@ -58,7 +58,7 @@ impl Action for KeyImport {
     async fn run(&self, _context: &Context, params: ImportParams) -> Result<KeyInfo, ActionError> {
         let key = StoredKey::import(&params.private_key_path)
             .await
-            .map_err(|error| ActionError::Failed(error.to_string()))?;
+            .map_err(CoreError::KeyImport)?;
 
         let keys = self.keys.clone();
 

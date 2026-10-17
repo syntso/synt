@@ -1,6 +1,7 @@
 use serde::Deserialize;
+use synt_proto::OneLine;
 
-use crate::manifest::{AssetPath, LocalId, OneLine};
+use crate::manifest::{AssetPath, LocalId};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

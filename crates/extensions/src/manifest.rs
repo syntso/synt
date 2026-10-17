@@ -8,8 +8,6 @@ mod event_topic;
 mod extension_id;
 mod http_host;
 mod local_id;
-mod one_line;
-mod secret_name;
 mod unchecked;
 
 use serde::{Deserialize, Serialize};
@@ -24,12 +22,11 @@ pub use event_topic::EventTopic;
 pub use extension_id::ExtensionId;
 pub use http_host::HttpHost;
 pub use local_id::LocalId;
-pub use one_line::OneLine;
-pub use secret_name::SecretName;
 
+use synt_proto::OneLine;
 use unchecked::Unchecked;
 
-use crate::{ExtensionError, ManifestError};
+use crate::ExtensionError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "Unchecked")]
@@ -96,7 +93,7 @@ impl Manifest {
             .map(|kind| kind.kind_name(self.id.as_str()))
     }
 
-    fn check(&self) -> Result<(), ManifestError> {
+    fn check(&self) -> Result<(), ExtensionError> {
         self.check_api()?;
         self.check_calls()?;
         self.capabilities.check_secret_hosts()?;
@@ -106,40 +103,40 @@ impl Manifest {
         self.check_contributed_actions()
     }
 
-    fn check_api(&self) -> Result<(), ManifestError> {
+    fn check_api(&self) -> Result<(), ExtensionError> {
         let needs_newer = self.capabilities.uses_api_0_2() || !self.contributes.is_empty();
 
         if self.api == Api::V0_1 && needs_newer {
-            return Err(ManifestError::NeedsNewerApi);
+            return Err(ExtensionError::NeedsNewerApi);
         }
 
         Ok(())
     }
 
-    fn check_calls(&self) -> Result<(), ManifestError> {
+    fn check_calls(&self) -> Result<(), ExtensionError> {
         let own = self
             .capabilities
             .calls()
             .find(|action| action.namespace() == self.id.as_str());
 
         match own {
-            Some(action) => Err(ManifestError::CallsItself(action.to_string())),
+            Some(action) => Err(ExtensionError::CallsItself(action.to_string())),
             None => Ok(()),
         }
     }
 
-    fn check_documents(&self) -> Result<(), ManifestError> {
+    fn check_documents(&self) -> Result<(), ExtensionError> {
         let granted = self.capabilities.documents();
         let contributed = self.contributes.has_documents();
 
         match (granted, contributed) {
-            (true, false) => Err(ManifestError::DocumentsWithoutType),
-            (false, true) => Err(ManifestError::TypeWithoutDocuments),
+            (true, false) => Err(ExtensionError::DocumentsWithoutType),
+            (false, true) => Err(ExtensionError::TypeWithoutDocuments),
             _ => Ok(()),
         }
     }
 
-    fn check_contributed_actions(&self) -> Result<(), ManifestError> {
+    fn check_contributed_actions(&self) -> Result<(), ExtensionError> {
         let prefix = format!("{}.", self.id);
 
         match self
@@ -147,16 +144,16 @@ impl Manifest {
             .actions()
             .find(|action| !action.starts_with(&prefix))
         {
-            Some(action) => Err(ManifestError::ForeignAction(action.to_owned())),
+            Some(action) => Err(ExtensionError::ForeignCommand(action.to_owned())),
             None => Ok(()),
         }
     }
 }
 
 impl TryFrom<Unchecked> for Manifest {
-    type Error = ManifestError;
+    type Error = ExtensionError;
 
-    fn try_from(fields: Unchecked) -> Result<Self, ManifestError> {
+    fn try_from(fields: Unchecked) -> Result<Self, ExtensionError> {
         let Unchecked {
             id,
             name,

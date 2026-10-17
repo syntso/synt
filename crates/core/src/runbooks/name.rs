@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::RunbookError;
+use crate::CoreError;
 use crate::projects::ResourceName;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
@@ -11,19 +11,19 @@ use crate::projects::ResourceName;
 pub struct RunbookName(String);
 
 impl RunbookName {
-    pub(crate) fn new(name: impl Into<String>) -> Result<Self, RunbookError> {
+    pub(crate) fn new(name: impl Into<String>) -> Result<Self, CoreError> {
         let name = name.into();
 
-        ResourceName::parse(&name).map_err(|error| RunbookError::BadName(Box::new(error)))?;
+        ResourceName::parse(&name).map_err(|error| CoreError::BadName(Box::new(error)))?;
 
         Ok(Self(name))
     }
 }
 
 impl TryFrom<String> for RunbookName {
-    type Error = RunbookError;
+    type Error = CoreError;
 
-    fn try_from(name: String) -> Result<Self, RunbookError> {
+    fn try_from(name: String) -> Result<Self, CoreError> {
         Self::new(name)
     }
 }

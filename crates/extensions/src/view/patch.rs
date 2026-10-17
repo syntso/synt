@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use operation::Operation;
 
-use crate::error::ViewError;
+use crate::ExtensionError;
 
 const MOST_OPERATIONS: usize = 1_000;
 
@@ -14,17 +14,18 @@ pub(crate) struct ViewPatch {
 }
 
 impl ViewPatch {
-    pub(crate) fn parse(patch: &Value) -> Result<Self, ViewError> {
-        let operations = Vec::<Operation>::deserialize(patch)?;
+    pub(crate) fn parse(patch: &Value) -> Result<Self, ExtensionError> {
+        let operations =
+            Vec::<Operation>::deserialize(patch).map_err(ExtensionError::MalformedView)?;
 
         if operations.is_empty() || operations.len() > MOST_OPERATIONS {
-            return Err(ViewError::PatchSize(MOST_OPERATIONS));
+            return Err(ExtensionError::PatchSize(MOST_OPERATIONS));
         }
 
         Ok(Self { operations })
     }
 
-    pub(crate) fn check(&self, owns: &dyn Fn(&str) -> bool) -> Result<(), ViewError> {
+    pub(crate) fn check(&self, owns: &dyn Fn(&str) -> bool) -> Result<(), ExtensionError> {
         self.operations
             .iter()
             .try_for_each(|operation| operation.check(owns))

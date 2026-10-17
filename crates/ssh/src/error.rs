@@ -9,6 +9,8 @@ use russh_sftp::protocol::StatusCode;
 use ssh2_config::SshParserError;
 use thiserror::Error;
 
+use crate::TargetProblem;
+
 type Cause = Arc<dyn StdError + Send + Sync>;
 
 const SFTP_CLOSED: &str = "session closed";
@@ -28,8 +30,11 @@ pub enum SshError {
     #[error("cannot resolve {target:?}: {reason}")]
     Resolve {
         target: String,
-        reason: &'static str,
+        reason: TargetProblem,
     },
+
+    #[error("{0:?} is not a destination: write host:port with a port from 1 to 65535")]
+    NotADestination(String),
 
     #[error("cannot connect to {host}: {cause}")]
     Connect { host: String, cause: Cause },

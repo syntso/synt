@@ -3,18 +3,18 @@ use std::fmt::{self, Display, Formatter};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::runbooks::RunbookError;
+use crate::CoreError;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(try_from = "String", into = "String")]
 pub struct JsonPointer(String);
 
 impl JsonPointer {
-    pub(crate) fn new(pointer: impl Into<String>) -> Result<Self, RunbookError> {
+    pub(crate) fn new(pointer: impl Into<String>) -> Result<Self, CoreError> {
         let pointer = pointer.into();
 
         if !pointer.starts_with('/') || pointer.contains(char::is_control) {
-            return Err(RunbookError::BadPointer(pointer));
+            return Err(CoreError::BadPointer(pointer));
         }
 
         Ok(Self(pointer))
@@ -26,9 +26,9 @@ impl JsonPointer {
 }
 
 impl TryFrom<String> for JsonPointer {
-    type Error = RunbookError;
+    type Error = CoreError;
 
-    fn try_from(pointer: String) -> Result<Self, RunbookError> {
+    fn try_from(pointer: String) -> Result<Self, CoreError> {
         Self::new(pointer)
     }
 }

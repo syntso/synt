@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
-use crate::error::ViewError;
+use crate::ExtensionError;
 use crate::view::check::ViewCheck;
 
 #[derive(Debug, Deserialize)]
@@ -16,7 +16,7 @@ pub(in crate::view) struct Binding {
 }
 
 impl Binding {
-    pub(in crate::view) fn check(&self, census: &ViewCheck<'_>) -> Result<(), ViewError> {
+    pub(in crate::view) fn check(&self, census: &ViewCheck<'_>) -> Result<(), ExtensionError> {
         census.bound(&self.action)
     }
 }

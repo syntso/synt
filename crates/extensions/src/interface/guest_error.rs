@@ -1,14 +1,13 @@
+use std::error::Error;
+use std::fmt::{self, Display, Formatter};
 use std::io;
 
 use synt_actions::ActionError;
-use thiserror::Error;
 
 use crate::ExtensionError;
 use crate::call::{CallFailure, FailureCode};
-use crate::error::HttpError;
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("{code}: {message}")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuestError {
     code: FailureCode,
     message: String,
@@ -65,17 +64,19 @@ impl From<ExtensionError> for GuestError {
     }
 }
 
-impl From<HttpError> for GuestError {
-    fn from(error: HttpError) -> Self {
-        Self::failed(error.to_string())
-    }
-}
-
 impl From<GuestError> for ActionError {
     fn from(error: GuestError) -> Self {
         Self::failed(error.to_string())
     }
 }
+
+impl Display for GuestError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}: {}", self.code, self.message)
+    }
+}
+
+impl Error for GuestError {}
 
 impl From<CallFailure> for GuestError {
     fn from(failure: CallFailure) -> Self {

@@ -8,8 +8,10 @@ use synt_journal::ResourceRef;
 use synt_kube::{Cluster, LogRequest, LogText, Namespace};
 use synt_proto::StreamId;
 
+use super::Kube;
 use super::streams::{Pump, StreamStarted};
-use super::{K8sError, Kube};
+
+use crate::CoreError;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sLogs {
@@ -37,9 +39,9 @@ pub(crate) enum Logs {
 }
 
 impl LogsParams {
-    fn followed_on(&self) -> Result<Option<StreamId>, K8sError> {
+    fn followed_on(&self) -> Result<Option<StreamId>, CoreError> {
         if self.follow != self.stream.is_some() {
-            return Err(K8sError::FollowWithoutStream);
+            return Err(CoreError::FollowWithoutStream);
         }
 
         Ok(self.stream)
@@ -51,7 +53,7 @@ impl K8sLogs {
         Self { kube }
     }
 
-    async fn logs(&self, context: &Context, params: LogsParams) -> Result<Logs, K8sError> {
+    async fn logs(&self, context: &Context, params: LogsParams) -> Result<Logs, CoreError> {
         let cluster = self.kube.cluster(context).await?;
 
         if let Some(stream) = params.followed_on()? {
@@ -69,7 +71,7 @@ impl K8sLogs {
         cluster: Arc<Cluster>,
         stream: StreamId,
         request: LogRequest,
-    ) -> Result<Logs, K8sError> {
+    ) -> Result<Logs, CoreError> {
         let pump = Pump::open(context, stream)?;
         let logs = request.follow(&cluster).await?;
 

@@ -1,3 +1,4 @@
+mod blocking;
 mod catalog;
 mod completed;
 mod context;
@@ -11,6 +12,7 @@ mod registry;
 mod runnable;
 mod typed;
 
+pub use blocking::blocking;
 pub use catalog::Catalog;
 pub use completed::Completed;
 pub use context::Context;

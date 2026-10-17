@@ -3,7 +3,9 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::Restarted;
 
-use super::{K8sError, Kube, ObjectParams};
+use super::{Kube, ObjectParams};
+
+use crate::CoreError;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sRolloutRestart {
@@ -19,7 +21,7 @@ impl K8sRolloutRestart {
         &self,
         context: &Context,
         object: &ObjectParams,
-    ) -> Result<Restarted, K8sError> {
+    ) -> Result<Restarted, CoreError> {
         let cluster = self.kube.cluster(context).await?;
         let kind = self.kube.kind(context, &cluster, &object.kind).await?;
 

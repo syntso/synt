@@ -1,6 +1,5 @@
 mod document;
 mod draft;
-mod error;
 mod folder;
 mod name;
 mod param;
@@ -10,13 +9,12 @@ mod runs;
 mod shell;
 mod template;
 
-pub(crate) use document::OneLine;
 pub use document::RunbookDocument;
 pub(crate) use draft::{Draft, DraftStep};
-pub use error::RunbookError;
 pub(crate) use folder::RunbookFolder;
 pub use folder::{RunbookEntry, RunbookListing};
 pub use name::RunbookName;
+pub(crate) use param::ParamName;
 pub(crate) use plan::Plan;
 pub use run::RunReport;
 pub use runs::Runs;
@@ -56,10 +54,10 @@ impl Runbooks {
         }
     }
 
-    pub fn connect(&self, core: &Arc<Core>) -> Result<(), RunbookError> {
+    pub fn connect(&self, core: &Arc<Core>) -> Result<(), CoreError> {
         self.core
             .set(Arc::downgrade(core))
-            .map_err(|_| RunbookError::AlreadyConnected)
+            .map_err(|_| CoreError::AlreadyConnected)
     }
 
     pub fn runs(&self) -> Runs {
@@ -102,11 +100,11 @@ impl Runbooks {
         context: &Context,
         plan: &Plan,
         approve_steps: bool,
-    ) -> Result<RunReport, RunbookError> {
+    ) -> Result<RunReport, CoreError> {
         let core = self.core()?;
         let link = context
             .connection::<Link>()
-            .ok_or(RunbookError::NoConnection)?;
+            .ok_or(CoreError::NoProgressConnection)?;
         let runbook = plan.actor()?;
 
         let id = context.request();
@@ -122,15 +120,15 @@ impl Runbooks {
             .await)
     }
 
-    pub(crate) fn stop(&self, run: u64) -> Result<String, RunbookError> {
+    pub(crate) fn stop(&self, run: u64) -> Result<String, CoreError> {
         self.runs.stop(run)
     }
 
-    fn core(&self) -> Result<Arc<Core>, RunbookError> {
+    fn core(&self) -> Result<Arc<Core>, CoreError> {
         self.core
             .get()
             .and_then(Weak::upgrade)
-            .ok_or(RunbookError::NotConnected)
+            .ok_or(CoreError::NotConnected)
     }
 }
 

@@ -3,7 +3,7 @@ use serde_json::Value;
 use synt_actions::{Handle, Prepared, Risk};
 use synt_journal::{ActionId, ResourceRef};
 
-use crate::runbooks::RunbookError;
+use crate::CoreError;
 use crate::runbooks::document::{Expect, OnFailure, Retry, Step};
 use crate::runbooks::param::{ParamKind, Values};
 use crate::runbooks::template::{JsonTemplate, TextTemplate};
@@ -37,12 +37,12 @@ impl PlannedStep {
         step: &Step,
         values: &Values,
         lookup: &impl Fn(&ActionId) -> Option<Handle>,
-    ) -> Result<Self, RunbookError> {
+    ) -> Result<Self, CoreError> {
         let action = step.action().id().clone();
         let target = Self::render_target(step.target(), values)?;
         let params = Value::Object(step.params().render(values)?);
 
-        let handle = lookup(&action).ok_or_else(|| RunbookError::NoAction(action.clone()))?;
+        let handle = lookup(&action).ok_or_else(|| CoreError::NoAction(action.clone()))?;
         let prepared = Self::prepare(&handle, target.as_ref(), &params)?;
 
         Ok(Self {
@@ -131,7 +131,7 @@ impl PlannedStep {
     fn render_target(
         target: Option<&str>,
         values: &Values,
-    ) -> Result<Option<ResourceRef>, RunbookError> {
+    ) -> Result<Option<ResourceRef>, CoreError> {
         let Some(target) = target else {
             return Ok(None);
         };
@@ -139,12 +139,12 @@ impl PlannedStep {
         let text = TextTemplate::parse(target).render_text(values)?;
         let checked = ParamKind::Target.accept(&Value::from(text))?;
         let reference = ResourceRef::new(checked.as_str().unwrap_or_default())
-            .map_err(RunbookError::BadReference)?;
+            .map_err(CoreError::BadReference)?;
 
         Ok(Some(reference))
     }
 
-    fn render_expect(expect: Option<&Expect>, values: &Values) -> Result<Expect, RunbookError> {
+    fn render_expect(expect: Option<&Expect>, values: &Values) -> Result<Expect, CoreError> {
         match expect {
             Some(expect) => expect.render(values),
             None => Ok(Expect::default()),
@@ -155,28 +155,30 @@ impl PlannedStep {
         handle: &Handle,
         target: Option<&ResourceRef>,
         params: &Value,
-    ) -> Result<Prepared, RunbookError> {
+    ) -> Result<Prepared, CoreError> {
         Self::admit(handle, target)?;
 
-        let prepared = handle.prepare(target, params.clone())?;
+        let prepared = handle
+            .prepare(target, params.clone())
+            .map_err(CoreError::Refused)?;
 
         if let Some(target) = target.filter(|_| prepared.destination().is_none()) {
-            return Err(RunbookError::Unreachable(target.clone()));
+            return Err(CoreError::Unreachable(target.clone()));
         }
 
         Ok(prepared)
     }
 
-    fn admit(handle: &Handle, target: Option<&ResourceRef>) -> Result<(), RunbookError> {
+    fn admit(handle: &Handle, target: Option<&ResourceRef>) -> Result<(), CoreError> {
         let action = handle.id();
 
         if handle.person_only() {
-            return Err(RunbookError::PersonOnly(action.clone()));
+            return Err(CoreError::PersonOnly(action.clone()));
         }
 
         match (handle.takes_target(), target) {
-            (true, None) => Err(RunbookError::NeedsTarget(action.clone())),
-            (false, Some(_)) => Err(RunbookError::TakesNoTarget(action.clone())),
+            (true, None) => Err(CoreError::NeedsTarget(action.clone())),
+            (false, Some(_)) => Err(CoreError::TakesNoTarget(action.clone())),
             _ => Ok(()),
         }
     }

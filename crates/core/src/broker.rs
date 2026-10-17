@@ -2,6 +2,7 @@ mod apps;
 mod open_question;
 mod registration;
 mod rule;
+mod unanswered;
 mod until_restart;
 mod waiting;
 
@@ -10,6 +11,7 @@ pub(crate) use registration::Registration;
 use apps::Apps;
 use open_question::OpenQuestion;
 use rule::Rule;
+use unanswered::Unanswered;
 use until_restart::UntilRestart;
 use waiting::Waiting;
 
@@ -32,11 +34,7 @@ use crate::log::log;
 
 const PATIENCE: Duration = Duration::from_secs(120);
 
-const NO_ONE_AVAILABLE: &str = "no one is available to approve";
-const TIMED_OUT: &str = "approval timed out";
-const UNSENDABLE: &str = "the approval request cannot be sent";
 const REFUSED_BY_PERSON: &str = "the person denied the request";
-const REQUESTER_GONE: &str = "the requester disconnected";
 
 #[derive(Debug)]
 pub struct Broker {
@@ -111,7 +109,7 @@ impl Broker {
 
         match self.consult(request).await {
             Ok(decision) => self.settle(decision, request, grantable).await,
-            Err(reason) => Decision::deny(reason),
+            Err(unanswered) => Decision::deny(unanswered.to_string()),
         }
     }
 
@@ -126,26 +124,28 @@ impl Broker {
         Some(Decision::Granted(grant))
     }
 
-    async fn consult(&self, request: &AccessRequest<'_>) -> Result<ApprovalDecision, &'static str> {
+    async fn consult(&self, request: &AccessRequest<'_>) -> Result<ApprovalDecision, Unanswered> {
         if request.departed.is_cancelled() {
-            return Err(REQUESTER_GONE);
+            return Err(Unanswered::RequesterGone);
         }
 
         let mut question = self.waiting.open(self.next_id());
 
         let approval = request.approval(question.id());
-        let notification = approval.to_notification().map_err(|_| UNSENDABLE)?;
+        let notification = approval
+            .to_notification()
+            .map_err(|_| Unanswered::Unsendable)?;
 
         if self.apps.broadcast(&notification) == 0 {
-            return Err(NO_ONE_AVAILABLE);
+            return Err(Unanswered::NoOneAvailable);
         }
 
         let answered = tokio::select! {
-            () = request.departed.cancelled() => return Err(REQUESTER_GONE),
+            () = request.departed.cancelled() => return Err(Unanswered::RequesterGone),
             answered = time::timeout(self.patience, question.answer()) => answered,
         };
 
-        answered.ok().flatten().ok_or(TIMED_OUT)
+        answered.ok().flatten().ok_or(Unanswered::TimedOut)
     }
 
     async fn settle(

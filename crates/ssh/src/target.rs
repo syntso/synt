@@ -1,7 +1,9 @@
+mod problem;
 mod spec;
 
 use std::path::PathBuf;
 
+pub use problem::TargetProblem;
 use spec::Spec;
 
 use crate::config::{HostSettings, UserConfig};
@@ -129,7 +131,7 @@ impl Target {
         format!("{}:{}", self.host, self.port)
     }
 
-    pub(crate) fn destination(&self) -> Destination {
+    pub(crate) fn destination(&self) -> Result<Destination, SshError> {
         Destination::new(self.host.clone(), self.port)
     }
 
@@ -183,7 +185,7 @@ impl Target {
             .or_else(synt_platform::user_name)
             .ok_or_else(|| SshError::Resolve {
                 target: text.to_owned(),
-                reason: "no user given and none found in the environment",
+                reason: TargetProblem::NoUser,
             })?;
 
         let host = settings.host_name.map_or_else(

@@ -3,7 +3,9 @@ use synt_actions::{Action, ActionError, Context, Risk};
 use synt_journal::ResourceRef;
 use synt_kube::{EventLine, EventQuery};
 
-use super::{K8sError, Kube};
+use super::Kube;
+
+use crate::CoreError;
 
 #[derive(Debug, Clone)]
 pub(crate) struct K8sEvents {
@@ -19,7 +21,7 @@ impl K8sEvents {
         &self,
         context: &Context,
         query: &EventQuery,
-    ) -> Result<Vec<EventLine>, K8sError> {
+    ) -> Result<Vec<EventLine>, CoreError> {
         let cluster = self.kube.cluster(context).await?;
 
         Ok(query.run(&cluster).await?)

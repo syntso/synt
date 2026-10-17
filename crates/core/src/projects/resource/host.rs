@@ -76,7 +76,7 @@ impl HostResource {
 
         named.map_err(|reason| CoreError::IdentityName {
             identity: identity.to_owned(),
-            reason: Box::new(reason),
+            reason: Box::new(reason.into()),
         })
     }
 

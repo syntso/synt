@@ -4,7 +4,7 @@ use std::fmt::{self, Display, Formatter};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::runbooks::RunbookError;
+use crate::CoreError;
 
 const LONGEST: usize = 64;
 
@@ -15,11 +15,11 @@ const LONGEST: usize = 64;
 pub struct ParamName(String);
 
 impl ParamName {
-    pub(crate) fn new(name: impl Into<String>) -> Result<Self, RunbookError> {
+    pub(crate) fn new(name: impl Into<String>) -> Result<Self, CoreError> {
         let name = name.into();
 
         if !Self::fits(&name) {
-            return Err(RunbookError::BadParamName(name));
+            return Err(CoreError::BadParamName(name));
         }
 
         Ok(Self(name))
@@ -45,9 +45,9 @@ impl ParamName {
 }
 
 impl TryFrom<String> for ParamName {
-    type Error = RunbookError;
+    type Error = CoreError;
 
-    fn try_from(name: String) -> Result<Self, RunbookError> {
+    fn try_from(name: String) -> Result<Self, CoreError> {
         Self::new(name)
     }
 }

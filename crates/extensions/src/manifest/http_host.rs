@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ManifestError;
+use crate::ExtensionError;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -31,9 +31,9 @@ impl HttpHost {
 }
 
 impl TryFrom<String> for HttpHost {
-    type Error = ManifestError;
+    type Error = ExtensionError;
 
-    fn try_from(text: String) -> Result<Self, ManifestError> {
+    fn try_from(text: String) -> Result<Self, ExtensionError> {
         let (host, port) = match text.rsplit_once(':') {
             Some((host, port)) => (host, Some(port)),
             None => (text.as_str(), None),
@@ -42,7 +42,7 @@ impl TryFrom<String> for HttpHost {
         let plain_port = port.is_none_or(|port| port.parse::<u16>().is_ok_and(|port| port > 0));
 
         if !Self::is_plain_host(host) || !plain_port {
-            return Err(ManifestError::HttpHost(text));
+            return Err(ExtensionError::HttpHost(text));
         }
 
         Ok(Self(text))

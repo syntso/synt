@@ -18,7 +18,7 @@ use percent::percent_decode;
 use sighting::Sighting;
 
 use serde::Serialize;
-use synt_proto::{SessionBlock, StreamId};
+use synt_proto::{Millis, SessionBlock, StreamId};
 
 use super::SessionId;
 
@@ -28,7 +28,7 @@ pub struct Block {
     pub number: u64,
     pub command: Option<String>,
     pub exit: Option<i32>,
-    pub duration_ms: u64,
+    pub duration_ms: Millis,
     pub output_start: u64,
     pub output_end: u64,
 }
