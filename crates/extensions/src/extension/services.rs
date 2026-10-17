@@ -3,10 +3,10 @@ mod core_link;
 use std::sync::{Arc, OnceLock};
 
 use synt_journal::{Clock, Timestamp};
+use synt_sync::OpenProjects;
 
 pub(crate) use core_link::CoreLink;
 
-use crate::documents::ProjectFolders;
 use crate::http::SecretSource;
 use crate::shelf::Shelf;
 
@@ -14,7 +14,7 @@ pub(crate) struct Services {
     shelf: Shelf,
     clock: Arc<dyn Clock>,
     secrets: OnceLock<Arc<dyn SecretSource>>,
-    folders: OnceLock<Arc<dyn ProjectFolders>>,
+    folders: OnceLock<Arc<dyn OpenProjects>>,
     link: OnceLock<CoreLink>,
 }
 
@@ -41,7 +41,7 @@ impl Services {
         self.secrets.get()
     }
 
-    pub(crate) fn folders(&self) -> Option<&dyn ProjectFolders> {
+    pub(crate) fn folders(&self) -> Option<&dyn OpenProjects> {
         self.folders.get().map(AsRef::as_ref)
     }
 
@@ -53,7 +53,7 @@ impl Services {
         Self::set_once(&self.secrets, secrets, "secrets");
     }
 
-    pub(crate) fn give_folders(&self, folders: Arc<dyn ProjectFolders>) {
+    pub(crate) fn give_folders(&self, folders: Arc<dyn OpenProjects>) {
         Self::set_once(&self.folders, folders, "project folders");
     }
 

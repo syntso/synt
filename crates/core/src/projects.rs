@@ -1,7 +1,6 @@
 mod change;
 mod file;
 mod folder;
-mod id;
 mod info;
 mod local_path;
 mod open;
@@ -18,7 +17,6 @@ mod target_ref;
 mod text;
 
 pub use change::ProjectChange;
-pub use id::ProjectId;
 pub use info::ProjectInfo;
 pub(crate) use place::ProjectPlace;
 pub use problem::Problem;
@@ -29,6 +27,7 @@ pub use resource::{
 };
 pub(crate) use resource::{ResourceFolder, ResourceName};
 pub use slug::ProjectSlug;
+pub use synt_sync::ProjectId;
 
 use file::ProjectFile;
 use folder::ProjectFolder;
@@ -329,7 +328,7 @@ impl Projects {
             return Ok(slug.clone());
         }
 
-        let id = ProjectId::parse(project).ok_or_else(not_open)?;
+        let id = ProjectId::parse(project).map_err(|_| not_open())?;
 
         opened
             .iter()

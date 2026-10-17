@@ -22,7 +22,7 @@ impl ProjectSlug {
             return Err(CoreError::PersonalSlug(slug.to_owned()));
         }
 
-        if ProjectId::fits(slug) {
+        if ProjectId::parse(slug).is_ok() {
             return Err(CoreError::IdShapedSlug(slug.to_owned()));
         }
 

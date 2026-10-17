@@ -246,8 +246,8 @@ pub enum CoreError {
     )]
     ProjectIdMissing(PathBuf),
 
-    #[error("a project id is {length} lowercase hex characters, got {0:?}", length = crate::projects::ProjectId::LENGTH)]
-    InvalidProjectId(String),
+    #[error(transparent)]
+    Sync(#[from] SyncError),
 
     #[error("{} must be a plain folder, not a link", .0.display())]
     LinkedFolder(PathBuf),

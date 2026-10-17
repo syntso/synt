@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use synt_actions::{ActionError, Registry};
 use synt_core::{
-    AlwaysGrants, Arguments, Broker, Core, CoreCaller, CoreFolders, CoreScreen, Databases,
-    EventFeed, ExtensionMerger, Files, GrantActions, IdleWatch, JournalActions, KeyActions, Kube,
+    AlwaysGrants, Arguments, Broker, Core, CoreCaller, CoreScreen, Databases, EventFeed,
+    ExtensionMerger, Files, GrantActions, IdleWatch, JournalActions, KeyActions, Kube,
     LoginCommand, Ping, ProjectActions, Projects, ResourceActions, RunbookActions, RunbookError,
     Runbooks, SecretActions, Secrets, Server, SessionActions, SshActions, SshKeys, Storage,
     SyncActions, Terminals, TunnelActions, VERSION,
@@ -157,7 +157,7 @@ fn extensions(
         Remote::official()?,
     )?
     .with_secrets(Arc::new(builtins.secrets.clone()))
-    .with_projects(Arc::new(CoreFolders::new(builtins.projects.clone())));
+    .with_projects(Arc::new(builtins.projects.clone()));
 
     Ok(extensions)
 }

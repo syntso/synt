@@ -27,6 +27,7 @@ synt-actions.workspace = true
 synt-journal.workspace = true
 synt-platform.workspace = true
 synt-proto.workspace = true
+synt-sync.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 tokio-util.workspace = true

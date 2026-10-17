@@ -41,7 +41,7 @@ pub use builtin::{
 };
 pub use core::{Core, VERSION};
 pub use error::CoreError;
-pub use extensions::{CoreCaller, CoreFolders, CoreScreen, EventFeed, ExtensionMerger};
+pub use extensions::{CoreCaller, CoreScreen, EventFeed, ExtensionMerger};
 pub use grants::{AlwaysGrants, GrantId, GrantScope, GrantSeal, StandingGrant};
 pub use idle::{Activity, IdleWatch};
 pub use login_command::LoginCommand;

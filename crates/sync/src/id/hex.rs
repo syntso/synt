@@ -1,7 +1,7 @@
 use crate::SyncError;
 
-const ID_BYTES: usize = 16;
-const ID_LENGTH: usize = ID_BYTES * 2;
+pub(super) const ID_BYTES: usize = 16;
+pub(crate) const ID_LENGTH: usize = ID_BYTES * 2;
 
 pub(super) fn encode(digest: &[u8]) -> String {
     let bytes = &digest[..ID_BYTES.min(digest.len())];
@@ -45,6 +45,8 @@ macro_rules! hex_id {
             pub fn parse(text: &str) -> Result<Self, $crate::SyncError> {
                 Self::try_from(text.to_owned())
             }
+
+            pub const LENGTH: usize = $crate::id::hex::ID_LENGTH;
 
             pub fn get(&self) -> &str {
                 &self.0

@@ -3,7 +3,7 @@ mod entry;
 use std::collections::BTreeSet;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use synt_platform::{read_plain_file, replace_file};
 
@@ -27,6 +27,10 @@ impl ProjectFolder {
 
     pub fn id(&self) -> &ProjectId {
         &self.id
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     pub(crate) fn check(&self) -> Result<(), SyncError> {

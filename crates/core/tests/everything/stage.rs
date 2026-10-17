@@ -6,8 +6,8 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 use synt_client::{Client, ClientError};
 use synt_core::{
-    Broker, Core, CoreCaller, CoreFolders, CoreScreen, EventFeed, ExtensionMerger, ProjectList,
-    ProjectOpen, Projects, SecretList, SecretPut, SecretRemove, Secrets,
+    Broker, Core, CoreCaller, CoreScreen, EventFeed, ExtensionMerger, ProjectList, ProjectOpen,
+    Projects, SecretList, SecretPut, SecretRemove, Secrets,
 };
 use synt_extensions::{Extensions, Remote, Runtime};
 use synt_journal::{Event, EventKind, Filter, Seq};
@@ -244,7 +244,7 @@ fn assemble(grounds: &Grounds) -> (Arc<Core>, Extensions, Projects, Syncer) {
     )
     .unwrap()
     .with_secrets(Arc::new(secrets))
-    .with_projects(Arc::new(CoreFolders::new(projects.clone())));
+    .with_projects(Arc::new(projects.clone()));
 
     let syncer = Syncer::builder(
         &grounds.state_path(),

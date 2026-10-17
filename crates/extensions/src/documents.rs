@@ -4,7 +4,6 @@ mod opened;
 mod path;
 mod pending;
 mod place;
-mod projects;
 mod walk;
 mod written;
 
@@ -12,12 +11,12 @@ pub(crate) use info::DocumentInfo;
 pub use merger::MergeSides;
 pub(crate) use merger::Merger;
 pub(crate) use opened::Opened;
-pub use projects::{ProjectFolder, ProjectFolders};
 pub(crate) use written::Written;
 
 use path::DocumentPath;
 use pending::Pending;
 use place::{DocumentPlace, LARGEST_DOCUMENT};
+use synt_sync::{OpenProjects, ProjectFolder};
 use walk::Walk;
 
 use crate::call::FailureCode;
@@ -29,14 +28,14 @@ use crate::shelf::{Revisions, StoredRevision};
 pub(crate) struct DocumentStore<'a> {
     manifest: &'a Manifest,
     revisions: &'a Revisions,
-    folders: &'a dyn ProjectFolders,
+    folders: &'a dyn OpenProjects,
 }
 
 impl<'a> DocumentStore<'a> {
     pub(crate) fn new(
         manifest: &'a Manifest,
         revisions: &'a Revisions,
-        folders: &'a dyn ProjectFolders,
+        folders: &'a dyn OpenProjects,
     ) -> Self {
         Self {
             manifest,

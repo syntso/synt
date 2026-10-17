@@ -4,12 +4,13 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use synt_actions::{ActionDescription, ActionError, Catalog, Handle, Registry, Risk};
 use synt_journal::{ActionId, SystemClock};
+use synt_sync::OpenProjects;
 
 use crate::ExtensionError;
 use crate::background::ExtensionEvent;
 use crate::builtin::{ExtensionInfo, Registration, SearchHit};
 use crate::call::Caller;
-use crate::documents::{MergeSides, ProjectFolders};
+use crate::documents::MergeSides;
 use crate::extension::{ActionSpec, Candidate, CoreLink, Guest, Loaded, Roster, Services};
 use crate::http::SecretSource;
 use crate::install::{Admission, InstallFolder, InstalledFiles, LocalBuild, Package};
@@ -60,7 +61,7 @@ impl Extensions {
     }
 
     #[must_use]
-    pub fn with_projects(self, folders: Arc<dyn ProjectFolders>) -> Self {
+    pub fn with_projects(self, folders: Arc<dyn OpenProjects>) -> Self {
         self.services.give_folders(folders);
         self
     }

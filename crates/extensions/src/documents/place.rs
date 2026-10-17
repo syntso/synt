@@ -3,9 +3,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use synt_platform::{read_plain_file, replace_file};
+use synt_sync::ProjectFolder;
 
+use super::DocumentInfo;
 use super::path::DocumentPath;
-use super::{DocumentInfo, ProjectFolder};
 use crate::call::FailureCode;
 use crate::interface::GuestError;
 
@@ -37,11 +38,11 @@ impl DocumentPlace {
     }
 
     pub(super) fn root(project: &ProjectFolder, extension: &str) -> PathBuf {
-        project.path().join(FOLDER).join(extension)
+        project.root().join(FOLDER).join(extension)
     }
 
     pub(super) fn project_id(&self) -> &str {
-        self.project.id()
+        self.project.id().get()
     }
 
     pub(super) fn path(&self) -> &str {
@@ -58,7 +59,7 @@ impl DocumentPlace {
 
     pub(super) fn info(&self, body: &[u8]) -> DocumentInfo {
         DocumentInfo::new(
-            self.project.id().to_owned(),
+            self.project.id().get().to_owned(),
             self.path.as_str().to_owned(),
             self.kind.clone(),
             body,
@@ -122,7 +123,7 @@ impl DocumentPlace {
 
     fn folders(&self) -> Vec<PathBuf> {
         let mut current = Self::root(&self.project, &self.extension);
-        let mut folders = vec![self.project.path().join(FOLDER), current.clone()];
+        let mut folders = vec![self.project.root().join(FOLDER), current.clone()];
 
         let segments: Vec<&str> = self.path.segments().collect();
         let (_, inner) = segments.split_last().unwrap_or((&"", &[]));
