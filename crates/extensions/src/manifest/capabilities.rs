@@ -3,7 +3,9 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use synt_actions::Risk;
 
-use super::{ActionName, EventTopic, HttpHost, SecretName};
+use synt_platform::SecretName;
+
+use super::{ActionName, EventTopic, HttpHost};
 use crate::ManifestError;
 use crate::files::FileAccess;
 
@@ -53,6 +55,10 @@ impl Capabilities {
 
     pub(crate) fn reaches(&self, host: &str) -> bool {
         self.http.iter().any(|listed| listed.as_str() == host)
+    }
+
+    pub(crate) fn secret_named(&self, secret: &str) -> Option<&SecretName> {
+        self.secrets.get_key_value(secret).map(|(name, _)| name)
     }
 
     pub(crate) fn may_attach(&self, secret: &str, host: &str) -> bool {

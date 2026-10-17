@@ -3,6 +3,7 @@ mod manifest;
 mod settings;
 mod view;
 
+use std::error::Error as StdError;
 use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -118,6 +119,9 @@ pub enum ExtensionError {
 
     #[error("{0}")]
     Http(#[from] HttpError),
+
+    #[error("{0}")]
+    Secret(#[source] Box<dyn StdError + Send + Sync>),
 
     #[error(
         "the component cannot be used: the component is not an extension for api {api}: {reason}"

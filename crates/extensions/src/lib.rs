@@ -25,7 +25,7 @@ pub use error::{ExtensionError, ManifestError};
 pub use extensions::Extensions;
 pub use files::FileAccess;
 pub use http::SecretSource;
-pub use manifest::{Api, Capabilities, Contributions, EventTopic, Manifest};
+pub use manifest::{Api, Capabilities, Contributions, EventTopic, ExtensionId, Manifest};
 pub use remote::Remote;
 pub use runtime::Runtime;
 pub use ui::{Screen, ScreenUpdate};

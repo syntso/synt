@@ -48,10 +48,9 @@ pub use projects::{
     TunnelResource,
 };
 pub use runbooks::{RunbookError, Runbooks, Runs};
-pub use secrets::{SecretInfo, SecretItem, SecretName, Secrets};
+pub use secrets::{SecretInfo, Secrets};
 pub use server::Server;
 pub use ssh_keys::{KeyInfo, KeyName, SshKeyItem, SshKeys};
 pub use state::State;
 pub use storage::Storage;
 pub use terminals::Terminals;
-pub use vault::{VaultKind, VaultName};

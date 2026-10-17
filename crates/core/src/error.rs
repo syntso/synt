@@ -4,13 +4,12 @@ use std::path::PathBuf;
 use synt_actions::ActionError;
 use synt_db::Engine;
 use synt_journal::{JournalError, JournalId, KeyStoreError};
-use synt_platform::{KeyPlace, PlatformError};
+use synt_platform::{KeyPlace, PlatformError, SecretName};
 use synt_sync::SyncError;
 use thiserror::Error;
 use tokio::task::JoinError;
 
 use crate::runbooks::RunbookError;
-use crate::secrets::SecretName;
 use crate::ssh_keys::KeyName;
 use crate::terminals::SessionId;
 
@@ -20,7 +19,10 @@ pub enum CoreError {
     Io(#[from] io::Error),
 
     #[error("key storage: {0}")]
-    Platform(#[from] PlatformError),
+    Platform(#[source] PlatformError),
+
+    #[error(transparent)]
+    VaultName(PlatformError),
 
     #[error(transparent)]
     Journal(#[from] JournalError),
@@ -100,15 +102,6 @@ pub enum CoreError {
          the core will not start a new journal over it"
     )]
     UnknownJournal { journal: PathBuf, place: KeyPlace },
-
-    #[error("a {noun} name must be 1 to {longest} characters")]
-    VaultNameLength { noun: &'static str, longest: usize },
-
-    #[error(
-        "{text:?} is not a valid {noun} name: use letters, digits, '-' and '_', \
-         with '/' between parts"
-    )]
-    InvalidVaultName { noun: &'static str, text: String },
 
     #[error("there is already a key named {0}; remove it first")]
     KeyExists(KeyName),
@@ -404,6 +397,17 @@ impl CoreError {
         Self::Field {
             field,
             reason: Box::new(reason),
+        }
+    }
+}
+
+impl From<PlatformError> for CoreError {
+    fn from(error: PlatformError) -> Self {
+        match error {
+            PlatformError::VaultNameLength { .. } | PlatformError::InvalidVaultName { .. } => {
+                Self::VaultName(error)
+            }
+            other => Self::Platform(other),
         }
     }
 }

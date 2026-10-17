@@ -1,7 +1,8 @@
 use rusqlite::{OptionalExtension, Row};
 use synt_journal::Timestamp;
+use synt_platform::SecretName;
 
-use super::{SecretInfo, SecretName};
+use super::SecretInfo;
 use crate::CoreError;
 use crate::state::State;
 
@@ -33,7 +34,7 @@ impl SecretTable {
             .lock()
             .query_row(
                 "SELECT name, bytes, created_at FROM secrets WHERE name = ?1",
-                [name],
+                [name.as_str()],
                 Self::row,
             )
             .optional()?;
@@ -45,7 +46,7 @@ impl SecretTable {
         self.state.lock().execute(
             "INSERT OR REPLACE INTO secrets (name, bytes, created_at) VALUES (?1, ?2, ?3)",
             (
-                &secret.name,
+                secret.name.as_str(),
                 i64::try_from(secret.bytes).unwrap_or(i64::MAX),
                 secret.created_at.as_millis(),
             ),
@@ -57,7 +58,7 @@ impl SecretTable {
     pub(crate) fn delete(&self, name: &SecretName) -> Result<(), CoreError> {
         self.state
             .lock()
-            .execute("DELETE FROM secrets WHERE name = ?1", [name])?;
+            .execute("DELETE FROM secrets WHERE name = ?1", [name.as_str()])?;
 
         self.forget_use(name)
     }
@@ -68,7 +69,7 @@ impl SecretTable {
             .lock()
             .query_row(
                 "SELECT used_for FROM secret_uses WHERE name = ?1",
-                [name],
+                [name.as_str()],
                 |row| row.get(0),
             )
             .optional()?;
@@ -79,7 +80,7 @@ impl SecretTable {
     pub(crate) fn bind_use(&self, name: &SecretName, used_for: &str) -> Result<(), CoreError> {
         self.state.lock().execute(
             "INSERT OR REPLACE INTO secret_uses (name, used_for) VALUES (?1, ?2)",
-            (name, used_for),
+            (name.as_str(), used_for),
         )?;
 
         Ok(())
@@ -88,13 +89,13 @@ impl SecretTable {
     pub(crate) fn forget_use(&self, name: &SecretName) -> Result<(), CoreError> {
         self.state
             .lock()
-            .execute("DELETE FROM secret_uses WHERE name = ?1", [name])?;
+            .execute("DELETE FROM secret_uses WHERE name = ?1", [name.as_str()])?;
 
         Ok(())
     }
 
     fn row(row: &Row<'_>) -> rusqlite::Result<SecretInfo> {
-        let name: SecretName = row.get("name")?;
+        let name: SecretName = State::vault_name(row, "name")?;
         let bytes: i64 = row.get("bytes")?;
 
         Ok(SecretInfo {

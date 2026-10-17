@@ -13,6 +13,8 @@ workspace = true
 [dependencies]
 directories.workspace = true
 portable-pty.workspace = true
+schemars.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 zeroize.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt", "signal", "sync", "time"] }

@@ -3,8 +3,9 @@ mod schema;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use rusqlite::Connection;
-use synt_platform::Lock;
+use rusqlite::types::Type;
+use rusqlite::{Connection, Row};
+use synt_platform::{Lock, VaultKind, VaultName};
 
 use crate::CoreError;
 
@@ -28,5 +29,16 @@ impl State {
 
     pub(crate) fn lock(&self) -> MutexGuard<'_, Connection> {
         self.connection.locked()
+    }
+
+    pub(crate) fn vault_name<K: VaultKind>(
+        row: &Row<'_>,
+        column: &str,
+    ) -> rusqlite::Result<VaultName<K>> {
+        let text: String = row.get(column)?;
+
+        VaultName::parse(&text).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(0, Type::Text, Box::new(error))
+        })
     }
 }

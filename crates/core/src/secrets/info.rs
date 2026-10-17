@@ -1,8 +1,7 @@
 use serde::Serialize;
 use serde_json::{Value, json};
 use synt_journal::Timestamp;
-
-use super::SecretName;
+use synt_platform::SecretName;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SecretInfo {

@@ -5,6 +5,9 @@ mod files;
 mod key_place;
 #[cfg(target_os = "macos")]
 mod keychain;
+mod kind;
+mod name;
+mod secret_item;
 mod weak;
 
 use std::path::Path;
@@ -18,6 +21,9 @@ use files::Files;
 pub use key_place::KeyPlace;
 #[cfg(target_os = "macos")]
 use keychain::Keychain;
+pub use kind::VaultKind;
+pub use name::VaultName;
+pub use secret_item::{SecretItem, SecretName};
 pub use weak::{WEAK_VAULT_FLAG, WeakVault};
 
 use crate::PlatformError;

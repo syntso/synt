@@ -1,18 +1,15 @@
 mod info;
-mod name;
 mod table;
 
 pub use info::SecretInfo;
-pub use name::{SecretItem, SecretName};
 pub(crate) use table::SecretTable;
 
-use std::error::Error;
 use std::str;
 use std::sync::Arc;
 
-use synt_extensions::SecretSource;
+use synt_extensions::{ExtensionError, ExtensionId, SecretSource};
 use synt_journal::{Clock, SystemClock};
-use synt_platform::Vault;
+use synt_platform::{SecretItem, SecretName, Vault};
 use zeroize::Zeroizing;
 
 use crate::CoreError;
@@ -134,12 +131,11 @@ impl Secrets {
 impl SecretSource for Secrets {
     fn reveal(
         &self,
-        name: &str,
-        extension: &str,
-    ) -> Result<Option<Zeroizing<Vec<u8>>>, Box<dyn Error + Send + Sync>> {
-        let name = SecretName::parse(name)?;
-
-        Ok(self.reveal_to(&name, extension)?)
+        name: &SecretName,
+        extension: &ExtensionId,
+    ) -> Result<Option<Zeroizing<Vec<u8>>>, ExtensionError> {
+        self.reveal_to(name, extension.as_str())
+            .map_err(|error| ExtensionError::Secret(Box::new(error)))
     }
 }
 
@@ -147,9 +143,10 @@ impl SecretSource for Secrets {
 mod tests {
     use std::sync::Arc;
 
-    use synt_extensions::SecretSource;
+    use synt_extensions::{ExtensionId, SecretSource};
+    use synt_platform::SecretName;
 
-    use super::{SecretName, Secrets};
+    use super::Secrets;
     use crate::state::State;
     use crate::vault::MemoryVault;
 
@@ -164,13 +161,17 @@ mod tests {
         (secrets, name, folder)
     }
 
+    fn extension(id: &str) -> ExtensionId {
+        ExtensionId::try_from(id.to_owned()).unwrap()
+    }
+
     #[test]
     fn a_secret_an_extension_used_is_not_sent_to_a_database() {
         let (secrets, name, _folder) = secrets();
 
         assert!(
             secrets
-                .reveal("grafana/token", "grafana")
+                .reveal(&name, &extension("grafana"))
                 .unwrap()
                 .is_some()
         );
@@ -194,7 +195,7 @@ mod tests {
             .read_text_for(&name, "the database postgres db:5432")
             .unwrap();
         let refused = secrets
-            .reveal("grafana/token", "grafana")
+            .reveal(&name, &extension("grafana"))
             .unwrap_err()
             .to_string();
 
@@ -208,12 +209,17 @@ mod tests {
     fn the_first_use_stays_allowed_and_putting_again_frees_the_secret() {
         let (secrets, name, _folder) = secrets();
 
-        secrets.reveal("grafana/token", "grafana").unwrap();
-        secrets.reveal("grafana/token", "grafana").unwrap();
-        assert!(secrets.reveal("grafana/token", "other").is_err());
+        secrets.reveal(&name, &extension("grafana")).unwrap();
+        secrets.reveal(&name, &extension("grafana")).unwrap();
+        assert!(secrets.reveal(&name, &extension("other")).is_err());
 
         secrets.put(&name, b"t0ken").unwrap();
 
-        assert!(secrets.reveal("grafana/token", "other").unwrap().is_some());
+        assert!(
+            secrets
+                .reveal(&name, &extension("other"))
+                .unwrap()
+                .is_some()
+        );
     }
 }

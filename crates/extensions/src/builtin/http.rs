@@ -61,14 +61,11 @@ impl Action for ExtensionHttp {
         context: &Context,
         params: HttpRequest,
     ) -> Result<HttpResponse, ActionError> {
-        let extension = Self::sender(context)?;
-        let capabilities = self
-            .extensions
-            .loaded(&extension)?
-            .guest()
-            .manifest()
-            .capabilities()
-            .clone();
+        let sender = Self::sender(context)?;
+        let loaded = self.extensions.loaded(&sender)?;
+        let manifest = loaded.guest().manifest();
+        let capabilities = manifest.capabilities().clone();
+        let extension = manifest.id().clone();
         let secrets = self.extensions.services().secrets().cloned();
         let exchange = Arc::clone(&self.exchange);
 

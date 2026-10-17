@@ -8,7 +8,6 @@ mod event_topic;
 mod extension_id;
 mod http_host;
 mod local_id;
-mod secret_name;
 mod unchecked;
 
 use serde::{Deserialize, Serialize};
@@ -23,7 +22,6 @@ pub use event_topic::EventTopic;
 pub use extension_id::ExtensionId;
 pub use http_host::HttpHost;
 pub use local_id::LocalId;
-pub use secret_name::SecretName;
 
 use synt_proto::OneLine;
 use unchecked::Unchecked;

@@ -4,12 +4,12 @@ use std::path::PathBuf;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use synt_db::{Engine, Server, TlsMode};
+use synt_platform::SecretName;
 use zeroize::Zeroizing;
 
 use super::{ResourceName, ResourceSpec};
 use crate::CoreError;
 use crate::projects::LocalPath;
-use crate::secrets::SecretName;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -50,7 +50,7 @@ impl DatabaseResource {
         let name = SecretName::from_reference(password).ok_or(CoreError::PasswordNotSecret)?;
 
         name.map(Some)
-            .map_err(|reason| CoreError::field("password", reason))
+            .map_err(|reason| CoreError::field("password", reason.into()))
     }
 
     pub(crate) fn tls(&self) -> TlsMode {

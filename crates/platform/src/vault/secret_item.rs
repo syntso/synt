@@ -1,4 +1,4 @@
-use crate::vault::{VaultKind, VaultName};
+use super::{VaultKind, VaultName};
 
 pub enum SecretItem {}
 
@@ -37,8 +37,10 @@ mod tests {
     }
 
     #[test]
-    fn names_follow_the_key_rules() {
-        for name in ["", "../x", "a.b", "a b"] {
+    fn names_follow_the_vault_rules() {
+        assert!(SecretName::parse("grafana/token").is_ok());
+
+        for name in ["", "../x", "a.b", "a b", "a//b", "/a", &"x".repeat(65)] {
             assert!(SecretName::parse(name).is_err(), "{name:?}");
         }
     }

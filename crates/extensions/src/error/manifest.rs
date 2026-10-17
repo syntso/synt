@@ -1,7 +1,9 @@
 use synt_proto::ProtoError;
 use thiserror::Error;
 
-use crate::manifest::{AssetPath, ExtensionId, HttpHost, LocalId, SecretName, Suffix};
+use synt_platform::{PlatformError, SecretName};
+
+use crate::manifest::{AssetPath, ExtensionId, HttpHost, LocalId, Suffix};
 
 #[derive(Debug, Error)]
 pub enum ManifestError {
@@ -37,11 +39,8 @@ pub enum ManifestError {
     )]
     HttpHost(String),
 
-    #[error(
-        "secret {0:?} must be 1 to {most} letters, digits, '-' and '_', with '/' between parts",
-        most = SecretName::LONGEST
-    )]
-    SecretName(String),
+    #[error(transparent)]
+    SecretName(#[from] PlatformError),
 
     #[error(
         "document suffix {0:?} must be 1 to {most} lowercase letters and digits",
