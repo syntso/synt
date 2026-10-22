@@ -1,8 +1,8 @@
-# Synt releases
+# Synt
 
 Builds of [Synt](https://synt.so) for macOS, Windows and Linux. The source of Synt is closed; the parts others build on are open: [mcp](https://github.com/syntso/mcp).
 
-Download the archive for your system from [Releases](https://github.com/syntso/releases/releases) and check it against `SHA256SUMS`:
+Download the archive for your system from [Releases](https://github.com/syntso/synt/releases) and check it against `SHA256SUMS`:
 
 ```bash
 shasum -a 256 -c SHA256SUMS --ignore-missing
