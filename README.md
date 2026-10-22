@@ -15,5 +15,3 @@ shasum -a 256 -c SHA256SUMS --ignore-missing
 | `synt-core-linux-x64.tar.gz` | Linux x86-64 |
 | `synt-core-linux-arm64.tar.gz` | Linux ARM64 |
 | `synt-core-windows-x64.zip` | Windows x86-64 |
-
-Security issues: security@synt.so.
