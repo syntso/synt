@@ -59,53 +59,62 @@ This repository is where Synt is published. The builds of every version are unde
 
 ## Install
 
-The core is a single program, `synt-core`. Pick the archive for your system:
+Each archive holds two programs: `synt-core`, the core, and `synt-mcp`, the bridge for AI agents. Keep them in the same folder.
 
 | System | Archive |
 |---|---|
-| macOS, Apple silicon | `synt-core-macos-arm64.tar.gz` |
-| macOS, Intel | `synt-core-macos-x64.tar.gz` |
-| Linux, x86-64 | `synt-core-linux-x64.tar.gz` |
-| Linux, ARM64 | `synt-core-linux-arm64.tar.gz` |
-| Windows, x86-64 | `synt-core-windows-x64.zip` |
+| macOS, Apple silicon | `synt-macos-arm64.tar.gz` |
+| macOS, Intel | `synt-macos-x64.tar.gz` |
+| Linux, x86-64 | `synt-linux-x64.tar.gz` |
+| Linux, ARM64 | `synt-linux-arm64.tar.gz` |
+| Windows, x86-64 | `synt-windows-x64.zip` |
 
 ### macOS and Linux
 
 ```bash
-curl -fsSLO https://github.com/syntso/synt/releases/latest/download/synt-core-macos-arm64.tar.gz
+curl -fsSLO https://github.com/syntso/synt/releases/latest/download/synt-macos-arm64.tar.gz
 curl -fsSLO https://github.com/syntso/synt/releases/latest/download/SHA256SUMS
 shasum -a 256 -c SHA256SUMS --ignore-missing
-tar -xzf synt-core-macos-arm64.tar.gz
-mkdir -p ~/.local/bin && mv synt-core ~/.local/bin/
+mkdir -p ~/.local/bin && tar -xzf synt-macos-arm64.tar.gz -C ~/.local/bin
 ```
 
-Use the archive name for your system in the first line. On Linux, `sha256sum -c SHA256SUMS --ignore-missing` does the same check.
+Use the archive name for your system in the first line. On Linux, `sha256sum -c SHA256SUMS --ignore-missing` does the same check. Make sure `~/.local/bin` is on your `PATH`.
 
 The macOS builds are not signed yet. Until they are, start the core with `--allow-login-keychain`: it then keeps its journal key in your login keychain, which other programs of your user can read.
 
 ### Windows
 
 ```powershell
-Invoke-WebRequest https://github.com/syntso/synt/releases/latest/download/synt-core-windows-x64.zip -OutFile synt-core.zip
-Expand-Archive synt-core.zip -DestinationPath "$env:LOCALAPPDATA\Synt"
+Invoke-WebRequest https://github.com/syntso/synt/releases/latest/download/synt-windows-x64.zip -OutFile synt.zip
+Expand-Archive synt.zip -DestinationPath "$env:LOCALAPPDATA\Synt"
 ```
 
 <br />
 
 ## AI agents
 
-[Synt MCP](https://github.com/syntso/mcp) gives Claude Code, Claude Desktop, Cursor, Codex, VS Code and any other MCP client the actions of Synt as tools. With the core in `~/.local/bin`:
+[Synt MCP](https://github.com/syntso/mcp) gives Claude Code, Claude Desktop, Cursor, Codex, VS Code and any other MCP client the actions of Synt as tools. It starts the core from its own folder when the core is not running:
 
 ```bash
-claude mcp add synt -- synt-mcp --core ~/.local/bin/synt-core
+claude mcp add synt -- synt-mcp
 ```
 
-On macOS, add `--allow-login-keychain` at the end until the builds are signed.
+On macOS, add `--allow-login-keychain` at the end until the builds are signed. Setup for every client is in [its README](https://github.com/syntso/mcp#connect-your-client).
 
-Setup for every client is in [its README](https://github.com/syntso/mcp#connect-your-client).
+<br />
+
+## Build on Synt
+
+| Repository | What it is | License |
+|---|---|---|
+| [sdk](https://github.com/syntso/sdk) | Write extensions in WebAssembly: the extension API and the Rust SDK | Apache-2.0 |
+| [extensions](https://github.com/syntso/extensions) | The registry of extensions, built and signed by Synt | Apache-2.0 |
+| [protocol](https://github.com/syntso/protocol) | The protocol of the core and a client for it | Apache-2.0 |
+| [mcp](https://github.com/syntso/mcp) | The bridge for AI agents | Apache-2.0 |
+| [ssh](https://github.com/syntso/ssh) | The SSH library inside Synt | AGPL-3.0 or commercial |
 
 <br />
 
 ## License
 
-Synt is closed source. The parts others build on are open, starting with [mcp](https://github.com/syntso/mcp).
+Synt itself is closed source. The parts others build on are open, as listed above. For a commercial license of the SSH library, write to license@synt.so.
