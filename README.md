@@ -30,7 +30,7 @@ This repository is where Synt is published. The builds of every version are unde
 ## What's inside
 
 <table>
-  <tr><td><b>SSH</b></td><td>ProxyJump, terminal sessions that track each command, resumable file transfers, tunnels</td></tr>
+  <tr><td><b>SSH</b></td><td>Built into the core: pooled connections, ProxyJump, terminal sessions that track each command, resumable file transfers and tunnels</td></tr>
   <tr><td><b>Kubernetes</b></td><td>Clusters reached directly or through an SSH host; apply with a server-side diff, logs, exec, port-forward</td></tr>
   <tr><td><b>Databases</b></td><td>PostgreSQL, MySQL, SQLite and Redis; every statement is judged by what it does, reads run read-only</td></tr>
   <tr><td><b>Runbooks</b></td><td>Steps with checks, retries and rollback; drafted from your terminal, exported as a shell script</td></tr>
@@ -111,10 +111,9 @@ On macOS, add `--allow-login-keychain` at the end until the builds are signed. S
 | [extensions](https://github.com/syntso/extensions) | The registry of extensions, built and signed by Synt | Apache-2.0 |
 | [protocol](https://github.com/syntso/protocol) | The protocol of the core and a client for it | Apache-2.0 |
 | [mcp](https://github.com/syntso/mcp) | The bridge for AI agents | Apache-2.0 |
-| [ssh](https://github.com/syntso/ssh) | The SSH library inside Synt | AGPL-3.0 or commercial |
 
 <br />
 
 ## License
 
-Synt itself is closed source. The parts others build on are open, as listed above. For a commercial license of the SSH library, write to license@synt.so.
+Synt, including its core and SSH implementation, is closed source. The repositories listed above are open source under their respective licenses.
